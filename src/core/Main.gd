@@ -20,7 +20,27 @@ func _ready() -> void:
 	player.equip_starter_drill()
 	player.get_node("DescentTracker").init(layer_manager)
 
+	_init_hazards(player.stats)
+
 	GameManager.start_match()
+
+
+func _init_hazards(stats: PlayerStats) -> void:
+	var depth := DepthHazard.new()
+	depth.name = "DepthHazard"
+	add_child(depth)
+	depth.init(stats)
+
+	var pressure := PressureSystem.new()
+	pressure.name = "PressureSystem"
+	add_child(pressure)
+	pressure.init(stats)
+
+	var storm := StormSystem.new()
+	storm.name = "StormSystem"
+	add_child(storm)
+	storm.init(stats)
+	storm.start()
 
 
 func _spawn_position(layer_manager: LayerManager) -> Vector2:
