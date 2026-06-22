@@ -13,9 +13,11 @@ var _jump_velocity: float = 0.0 # TBD: loaded from GameManager.data["player_jump
 
 var _terrain_manager: TerrainManager = null
 var _equipped_drill: DrillBase = null
+var _equipped_weapon: WeaponBase = null
 
 var _dig_target: Vector2i = Vector2i(-1, -1)
 var _dig_timer: float = 0.0
+var _attack_timer: float = 0.0  # counts down while swing is active
 
 
 func _ready() -> void:
@@ -36,6 +38,13 @@ func equip_starter_drill() -> void:
 	_equipped_drill.init_from_data()
 
 
+func equip_starter_weapon() -> void:
+	_equipped_weapon = WeaponBase.new()
+	_equipped_weapon.weapon_class = Constants.WeaponClass.SWORDS
+	_equipped_weapon.tier = Constants.Tier.COMMON
+	_equipped_weapon.init_from_data()
+
+
 func _physics_process(delta: float) -> void:
 	if stats.is_dead:
 		velocity = Vector2.ZERO
@@ -46,7 +55,7 @@ func _physics_process(delta: float) -> void:
 	_handle_jump()
 	_handle_movement()
 	_handle_drill(delta)
-	_handle_attack_input()
+	_handle_attack_input(delta)
 	move_and_slide()
 
 
@@ -114,10 +123,53 @@ func _calc_dig_duration(cell: Vector2i) -> float:
 	return duration
 
 
-func _handle_attack_input() -> void:
+func _handle_attack_input(delta: float) -> void:
+	if _attack_timer > 0.0:
+		_attack_timer -= delta
+		return
 	if Input.is_action_just_pressed("attack"):
 		_try_attack()
 
 
 func _try_attack() -> void:
-	pass # TODO(step 5): implement weapon/combat system
+	if _equipped_weapon == null or _equipped_weapon.is_broken:
+		return
+	# Swing duration = 1 / swing_speed; falls back to 0.5s while TBD.
+	var swing_spd: Variant = _equipped_weapon.swing_speed
+	_attack_timer = (1.0 / float(swing_spd)) if swing_spd != null else 0.5
+
+	# Raycast toward mouse to find the nearest hittable PlayerStats in range.
+	var attack_dir := (get_global_mouse_position() - global_position).normalized()
+	var reach: Variant = _equipped_weapon.attack_range
+	var reach_px := float(reach) if reach != null else float(Constants.TILE_SIZE * 3)
+
+	var space := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(
+			global_position,
+			global_position + attack_dir * reach_px,
+			0xFFFFFFFF,
+			[self]
+	)
+	var result := space.intersect_ray(query)
+	if result.is_empty():
+		return
+	var target_body = result.get("collider")
+	if target_body == null:
+		return
+	var target_stats: PlayerStats = target_body.get_node_or_null("PlayerStats")
+	if target_stats == null or target_stats == stats:
+		return
+
+	var dmg: Variant = _equipped_weapon.damage
+	if dmg == null:
+		return  # TBD: no base damage value yet
+	target_stats.take_damage(float(dmg))
+	_equipped_weapon.consume_durability(1.0)
+
+
+func is_drilling() -> bool:
+	return _dig_target != Vector2i(-1, -1)
+
+
+func is_attacking() -> bool:
+	return _attack_timer > 0.0

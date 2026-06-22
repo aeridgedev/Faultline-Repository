@@ -18,9 +18,11 @@ func _ready() -> void:
 	player.global_position = _spawn_position(layer_manager)
 	player.init_world(terrain_manager)
 	player.equip_starter_drill()
+	player.equip_starter_weapon()
 	player.get_node("DescentTracker").init(layer_manager)
 
 	_init_hazards(player.stats)
+	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
 
 	GameManager.start_match()
 

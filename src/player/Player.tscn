@@ -1,10 +1,14 @@
-[gd_scene load_steps=8 format=3 uid="uid://faultlineplayer01"]
+[gd_scene format=3 uid="uid://chblve8bek065"]
 
 [ext_resource type="Script" path="res://src/player/PlayerController.gd" id="1_ctrl"]
 [ext_resource type="Script" path="res://src/player/PlayerStats.gd" id="2_stats"]
 [ext_resource type="Script" path="res://src/player/Stamina.gd" id="3_stamina"]
 [ext_resource type="Script" path="res://src/player/DescentTracker.gd" id="4_descent"]
 [ext_resource type="Script" path="res://src/player/PlayerDeath.gd" id="5_death"]
+[ext_resource type="Script" path="res://src/systems/inventory/InventoryManager.gd" id="6_inv"]
+[ext_resource type="Script" path="res://src/systems/inventory/Hotbar.gd" id="7_hotbar"]
+[ext_resource type="Script" path="res://src/systems/inventory/AutoCollect.gd" id="8_auto"]
+[ext_resource type="Script" path="res://src/systems/relics/RelicManager.gd" id="9_relics"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(14, 28)
@@ -28,3 +32,15 @@ script = ExtResource("4_descent")
 
 [node name="PlayerDeath" type="Node" parent="."]
 script = ExtResource("5_death")
+
+[node name="InventoryManager" type="Node" parent="."]
+script = ExtResource("6_inv")
+
+[node name="Hotbar" type="Node" parent="."]
+script = ExtResource("7_hotbar")
+
+[node name="AutoCollect" type="Node" parent="."]
+script = ExtResource("8_auto")
+
+[node name="RelicManager" type="Node" parent="."]
+script = ExtResource("9_relics")

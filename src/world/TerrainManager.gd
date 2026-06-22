@@ -43,6 +43,10 @@ func cell_to_world(cell: Vector2i) -> Vector2:
 	return Vector2(cell * Constants.TILE_SIZE)
 
 
+func get_tile_registry() -> Dictionary:
+	return _tile_registry
+
+
 func clear_all() -> void:
 	_tile_registry.clear()
 	tile_map.clear()

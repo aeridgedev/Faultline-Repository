@@ -11,7 +11,6 @@ signal storm_deadline_reached
 
 var _stats: PlayerStats = null
 
-var _elapsed: float = 0.0
 var _phase_idx: int = 0
 var _deadline_fired: bool = false
 var _running: bool = false
@@ -23,17 +22,15 @@ func init(stats: PlayerStats) -> void:
 
 func start() -> void:
 	_running = true
-	_elapsed = 0.0
 	_phase_idx = 0
 	_deadline_fired = false
 
 
-# --- Time tracking and phase advancement (normal _process, not physics-rate) ---
+# --- Phase advancement reads from GameManager.match_elapsed (single source of truth) ---
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if not _running:
 		return
-	_elapsed += delta
 	_advance_phase_if_needed()
 	_check_deadline()
 
@@ -54,10 +51,11 @@ func _physics_process(delta: float) -> void:
 # --- Phase logic ---
 
 func _advance_phase_if_needed() -> void:
+	var elapsed := GameManager.match_elapsed
 	var phases := Constants.STORM_PHASES
 	while _phase_idx < phases.size() - 1:
 		var next: Dictionary = phases[_phase_idx + 1]
-		if _elapsed >= float(next["start"]):
+		if elapsed >= float(next["start"]):
 			_phase_idx += 1
 			storm_advanced.emit(phases[_phase_idx]["region"])
 		else:
@@ -67,7 +65,7 @@ func _advance_phase_if_needed() -> void:
 func _check_deadline() -> void:
 	if _deadline_fired:
 		return
-	if _elapsed < Constants.CORE_HOLLOW_DEADLINE_SECONDS:
+	if GameManager.match_elapsed < Constants.CORE_HOLLOW_DEADLINE_SECONDS:
 		return
 	_deadline_fired = true
 	storm_deadline_reached.emit()
@@ -101,7 +99,7 @@ func _region_to_layer_int(region: String) -> int:
 # --- Public query API (used by UI in step 8) ---
 
 func get_elapsed() -> float:
-	return _elapsed
+	return GameManager.match_elapsed
 
 
 func get_current_region() -> String:

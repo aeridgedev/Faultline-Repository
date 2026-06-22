@@ -10,6 +10,8 @@ var max_health: float  # TBD: loaded from GameManager.data at _ready; null-safe 
 var current_health: float
 
 var is_dead: bool = false
+var damage_reduction: float = 0.0   # 0.0–1.0; set by ToughnessRelic
+var life_capsule_active: bool = false  # set by LifeCapsule; consumed on first lethal hit
 
 var _current_layer: int = Constants.Layer.CRUST
 
@@ -25,7 +27,11 @@ func _ready() -> void:
 func take_damage(amount: float) -> void:
 	if is_dead:
 		return
-	current_health = clampf(current_health - amount, 0.0, max_health)
+	var effective := amount * (1.0 - clampf(damage_reduction, 0.0, 1.0))
+	current_health = clampf(current_health - effective, 0.0, max_health)
+	if current_health == 0.0 and life_capsule_active:
+		life_capsule_active = false
+		current_health = 1.0
 	health_changed.emit(current_health, max_health)
 	if current_health == 0.0:
 		is_dead = true

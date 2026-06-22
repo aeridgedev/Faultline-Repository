@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3 uid="uid://faultlineworld01"]
+[gd_scene format=3 uid="uid://daxv7728cos0w"]
 
 [ext_resource type="Script" path="res://src/world/LayerManager.gd" id="1_layer"]
 [ext_resource type="Script" path="res://src/world/TerrainManager.gd" id="2_terrain"]
