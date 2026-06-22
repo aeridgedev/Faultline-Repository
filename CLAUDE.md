@@ -37,14 +37,14 @@ game/
 ├── README.md
 ├── src/
 │   ├── core/                Constants.gd, GameManager.gd, DataLoader.gd, Main.gd/.tscn
-│   ├── world/               WorldGenerator, TerrainManager, LayerManager, ChestSpawner
+│   ├── world/               WorldGenerator, TerrainManager, TerrainTypes, LayerManager, ChestSpawner
 │   ├── player/              PlayerController, PlayerStats, Stamina, DescentTracker, PlayerDeath
 │   ├── systems/
 │   │   ├── inventory/       InventoryManager, Hotbar, AutoCollect
 │   │   ├── drill/           DrillBase, DrillClass, DrillTier, DrillUpgrade
 │   │   ├── weapon/          WeaponBase, WeaponClass, WeaponTier, WeaponUpgrade
 │   │   ├── armor/           ArmorBase, ArmorClass, ArmorTier
-│   │   ├── loot/            LootTable, LootDrop
+│   │   ├── loot/            LootTable, LootDrop, LootRestriction
 │   │   ├── relics/          RelicManager, BuffRelic, ToughnessRelic
 │   │   ├── throwables/      ThrowableBase + 7 throwables
 │   │   ├── consumables/     Lytes, Medkit, ThermalCapsule, Bloodstim, FaultBeacon
