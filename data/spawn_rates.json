@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "description": "Chest spawn formula parameters and special-item spawn rates. The chest spawn chance per layer is derived, not hand-set.",
+    "status": "PARTIAL — formula LOCKED, special rates TBD",
+    "formula": "spawnChance = 0.8 * (1 - depthFactor)^2"
+  },
+  "chest_spawn": {
+    "base": 0.8,
+    "by_layer": {
+      "Crust":      { "depth_factor": 0.0, "chance": 0.800 },
+      "Mantle":     { "depth_factor": 0.2, "chance": 0.512 },
+      "Outer Core": { "depth_factor": 0.4, "chance": 0.288 },
+      "Inner Core": { "depth_factor": 0.6, "chance": 0.128 }
+    }
+  },
+  "special_item_spawn_rates": {
+    "_status": "TBD",
+    "layer_breach_device": null,
+    "life_capsule": null,
+    "upgrade_template": "10% weight in relevant rarity pool (see loot_tables.json)",
+    "fault_beacon": null,
+    "deep_radar": null
+  }
+}

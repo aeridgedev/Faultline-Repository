@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "description": "Drill Class x Tier matrix. Class and Tier are INDEPENDENT — any class can be any tier. Upgrade Templates raise tier and fully restore durability. Legendary is the ceiling. No movement weight penalty.",
+    "status": "PLACEHOLDER — all numbers TBD pending balance pass",
+    "fields": {
+      "dig_time_mult": "multiplier on base dig time (lower = faster). Per terrain effectiveness lives in terrain_stats.json",
+      "durability": "number of tile-breaks before the drill is consumed/needs upgrade",
+      "spawn_weight": "relative class spawn weight; CURRENT VALUES INCOMPLETE (sum != 100)"
+    }
+  },
+  "classes": {
+    "Precision": {
+      "role": "TBD — narrow/efficient digging",
+      "spawn_weight": 30,
+      "tiers": {
+        "Common":    { "dig_time_mult": null, "durability": null },
+        "Rare":      { "dig_time_mult": null, "durability": null },
+        "Epic":      { "dig_time_mult": null, "durability": null },
+        "Legendary": { "dig_time_mult": null, "durability": null }
+      }
+    },
+    "Burst": {
+      "role": "TBD — area/multi-tile digging",
+      "spawn_weight": 20,
+      "tiers": {
+        "Common":    { "dig_time_mult": null, "durability": null },
+        "Rare":      { "dig_time_mult": null, "durability": null },
+        "Epic":      { "dig_time_mult": null, "durability": null },
+        "Legendary": { "dig_time_mult": null, "durability": null }
+      }
+    },
+    "Thermal": {
+      "role": "TBD — heat-based, strong vs certain terrain",
+      "spawn_weight": 10,
+      "tiers": {
+        "Common":    { "dig_time_mult": null, "durability": null },
+        "Rare":      { "dig_time_mult": null, "durability": null },
+        "Epic":      { "dig_time_mult": null, "durability": null },
+        "Legendary": { "dig_time_mult": null, "durability": null }
+      }
+    },
+    "Resonance": {
+      "role": "TBD — vibration-based, strong vs dense terrain",
+      "spawn_weight": 10,
+      "tiers": {
+        "Common":    { "dig_time_mult": null, "durability": null },
+        "Rare":      { "dig_time_mult": null, "durability": null },
+        "Epic":      { "dig_time_mult": null, "durability": null },
+        "Legendary": { "dig_time_mult": null, "durability": null }
+      }
+    }
+  }
+}

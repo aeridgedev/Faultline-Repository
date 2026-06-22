@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "description": "Per-terrain-type properties. Dig time is modified by drill class effectiveness and tier. Terrain affects movement speed. Terrain does NOT affect chest spawns and has no terrain-specific loot. Bedrock is hardest and bounds the playfield.",
+    "status": "PLACEHOLDER — all numbers TBD pending balance pass",
+    "fields": {
+      "base_dig_time": "seconds for a Common drill of a neutral class to break one tile",
+      "move_speed_mod": "movement multiplier when traversing/adjacent (1.0 = none)",
+      "class_effectiveness": "per drill-class multiplier on dig time (lower = the class is strong vs this terrain)"
+    }
+  },
+  "terrain": {
+    "Soil":       { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
+    "Rock":       { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
+    "Dense Rock": { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
+    "Crystal":    { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
+    "Bedrock":    { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } }
+  }
+}

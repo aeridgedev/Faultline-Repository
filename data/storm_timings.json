@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "description": "Storm descent schedule. Storm consumes one region every ~3.5 min. No Sudden Death. Anyone not in Core Hollow by 17:30 dies. Timings LOCKED; damage values TBD.",
+    "status": "TIMINGS LOCKED — damage TBD"
+  },
+  "core_hollow_deadline_seconds": 1050,
+  "phases": [
+    { "region": "Atmosphere",  "start": 0,    "end": 210,  "damage_per_second": null },
+    { "region": "Crust",       "start": 210,  "end": 420,  "damage_per_second": null },
+    { "region": "Mantle",      "start": 420,  "end": 630,  "damage_per_second": null },
+    { "region": "Outer Core",  "start": 630,  "end": 840,  "damage_per_second": null },
+    { "region": "Inner Core",  "start": 840,  "end": 1050, "damage_per_second": null },
+    { "region": "Core Hollow", "start": 1050, "end": -1,   "damage_per_second": null }
+  ]
+}

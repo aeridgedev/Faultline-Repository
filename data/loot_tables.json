@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "description": "Per-layer chest loot pools. Chest SPAWN chance is computed by Constants.chest_spawn_chance(); this file controls WHAT a spawned chest contains. Upgrade Template = 10% weight within the relevant rarity pool (not a flat per-chest roll). Loot pools are NOT terrain-specific.",
+    "status": "PLACEHOLDER — weights structural, tuning TBD",
+    "categories": ["drill", "weapon", "armor", "relic", "throwable", "consumable", "special", "upgrade_template"]
+  },
+  "layers": {
+    "Crust": {
+      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
+      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "upgrade_template_weight": 10
+    },
+    "Mantle": {
+      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
+      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "upgrade_template_weight": 10
+    },
+    "Outer Core": {
+      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
+      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "upgrade_template_weight": 10
+    },
+    "Inner Core": {
+      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
+      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "upgrade_template_weight": 10
+    }
+  }
+}
