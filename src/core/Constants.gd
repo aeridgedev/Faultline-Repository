@@ -77,7 +77,7 @@ const LAYER_DEPTH_FACTOR := {
 # ---------------------------------------------------------------------------
 const CHEST_BASE_SPAWN := 0.8
 
-static func chest_spawn_chance(depth_factor: float) -> float:
+func chest_spawn_chance(depth_factor: float) -> float:
 	return CHEST_BASE_SPAWN * pow(1.0 - depth_factor, 2.0)
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,30 @@
+[gd_scene load_steps=8 format=3 uid="uid://faultlineplayer01"]
+
+[ext_resource type="Script" path="res://src/player/PlayerController.gd" id="1_ctrl"]
+[ext_resource type="Script" path="res://src/player/PlayerStats.gd" id="2_stats"]
+[ext_resource type="Script" path="res://src/player/Stamina.gd" id="3_stamina"]
+[ext_resource type="Script" path="res://src/player/DescentTracker.gd" id="4_descent"]
+[ext_resource type="Script" path="res://src/player/PlayerDeath.gd" id="5_death"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
+size = Vector2(14, 28)
+
+[node name="Player" type="CharacterBody2D"]
+script = ExtResource("1_ctrl")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_1")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="PlayerStats" type="Node" parent="."]
+script = ExtResource("2_stats")
+
+[node name="Stamina" type="Node" parent="."]
+script = ExtResource("3_stamina")
+
+[node name="DescentTracker" type="Node" parent="."]
+script = ExtResource("4_descent")
+
+[node name="PlayerDeath" type="Node" parent="."]
+script = ExtResource("5_death")

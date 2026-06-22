@@ -1,22 +1,30 @@
 extends Node2D
-## Faultline — temporary boot/entry scene.
-##
-## Phase 0 placeholder. This will become the bootstrap that loads the world,
-## spawns the local player, and (later) hands off to the network client.
-## For now it just confirms the project boots and data loads correctly.
+## Faultline — bootstrap: generates world, spawns local player, starts match.
+
+const PlayerScene: PackedScene = preload("res://src/player/Player.tscn")
+
+@onready var _world: Node2D = $World
+
 
 func _ready() -> void:
-	print("=== Faultline boot ===")
-	print("Tiers: ", Constants.TIER_NAMES.values())
-	print("Layers: ", Constants.LAYER_NAMES.values())
-	print("Chest spawn — Crust: %.3f  Mantle: %.3f  Outer: %.3f  Inner: %.3f" % [
-		Constants.chest_spawn_chance(0.0),
-		Constants.chest_spawn_chance(0.2),
-		Constants.chest_spawn_chance(0.4),
-		Constants.chest_spawn_chance(0.6),
-	])
-	print("Carry slots — hotbar %d + armor %d + backpack %d = %d" % [
-		Constants.HOTBAR_SLOTS, Constants.ARMOR_SLOTS,
-		Constants.BACKPACK_SLOTS, Constants.TOTAL_CARRY_SLOTS,
-	])
-	print("======================")
+	var layer_manager: LayerManager = _world.get_node("LayerManager")
+	var terrain_manager: TerrainManager = _world.get_node("TerrainManager")
+
+	var generator := WorldGenerator.new()
+	generator.generate(terrain_manager, layer_manager, randi())
+
+	var player: PlayerController = PlayerScene.instantiate()
+	add_child(player)
+	player.global_position = _spawn_position(layer_manager)
+	player.init_world(terrain_manager)
+	player.equip_starter_drill()
+	player.get_node("DescentTracker").init(layer_manager)
+
+	GameManager.start_match()
+
+
+func _spawn_position(layer_manager: LayerManager) -> Vector2:
+	# TBD: scatter spawn across Crust top once world width is known; center for now.
+	var top_y: Variant = layer_manager.get_layer_top_y(Constants.Layer.CRUST)
+	var y := float(top_y) + Constants.TILE_SIZE * 2.0 if top_y != null else 0.0
+	return Vector2(640.0, y)  # TBD: x from world width
