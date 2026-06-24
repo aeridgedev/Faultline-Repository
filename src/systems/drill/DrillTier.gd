@@ -4,14 +4,13 @@ extends RefCounted
 
 
 static func _entry(dc: Constants.DrillClass, tier: Constants.Tier) -> Dictionary:
-	return (
-		GameManager.data
-		.get("drills", {})
-		.get("classes", {})
-		.get(Constants.DRILL_CLASS_NAMES[dc], {})
-		.get("tiers", {})
-		.get(Constants.TIER_NAMES[tier], {})
-	)
+	var class_key: String = Constants.DRILL_CLASS_NAMES[dc]
+	var tier_key: String  = Constants.TIER_NAMES[tier]
+	var drills   := GameManager.data.get("drills", {}) as Dictionary
+	var classes  := drills.get("classes", {}) as Dictionary
+	var cls_data := classes.get(class_key, {}) as Dictionary
+	var tiers    := cls_data.get("tiers", {}) as Dictionary
+	return tiers.get(tier_key, {}) as Dictionary
 
 
 # Multiplier on base terrain dig time (lower = faster). TBD: null until balance pass.

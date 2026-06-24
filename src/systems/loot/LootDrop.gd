@@ -14,8 +14,25 @@ var source_layer: Constants.Layer = Constants.Layer.CRUST
 
 
 func _ready() -> void:
-	# TBD(art): add Sprite2D child with tier-colored icon once assets exist.
-	pass
+	# TBD(art): replace with a real tier-colored chest/icon once assets exist.
+	# Dev placeholder: a tier-colored gem with a dark outline so loot is visible
+	# on the terrain and you can watch AutoCollect pick it up.
+	_build_dev_marker()
+
+
+func _build_dev_marker() -> void:
+	var tier: int = item_data.get("tier", Constants.Tier.COMMON)
+	var color: Color = Constants.TIER_COLORS.get(tier, Color(0.7, 0.7, 0.7))
+	var size := 10
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var outline := Color(0.04, 0.05, 0.08)
+	for y in range(size):
+		for x in range(size):
+			var edge: bool = x == 0 or y == 0 or x == size - 1 or y == size - 1
+			img.set_pixel(x, y, outline if edge else color)
+	var sprite := Sprite2D.new()
+	sprite.texture = ImageTexture.create_from_image(img)
+	add_child(sprite)
 
 
 ## Called by AutoCollect when within pickup radius.

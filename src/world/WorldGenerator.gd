@@ -14,7 +14,7 @@ func generate(terrain_manager: TerrainManager, layer_manager: LayerManager, seed
 	_rng.seed = seed_value
 
 	for layer in Constants.Layer.values():
-		_generate_layer(layer as Constants.Layer, _rng)
+		_generate_layer(layer, _rng)
 
 	_place_bedrock_border()
 
@@ -41,7 +41,7 @@ func _generate_layer(layer: Constants.Layer, rng: RandomNumberGenerator) -> void
 	# etc.) once balance values are decided.
 	var weights = null
 	if GameManager.data != null:
-		var key := "terrain_weights_" + Constants.LAYER_NAMES[layer].to_lower().replace(" ", "_")
+		var key: String = "terrain_weights_" + Constants.LAYER_NAMES[layer].to_lower().replace(" ", "_")
 		weights = GameManager.data.get(key, null)
 
 	for row in range(top_tile, bottom_tile):
@@ -66,7 +66,7 @@ func _pick_terrain_type(weights: Dictionary, rng: RandomNumberGenerator) -> Cons
 	for type_key in weights:
 		cumulative += float(weights[type_key])
 		if roll < cumulative:
-			return type_key as Constants.TerrainType
+			return type_key
 	# Fallback — should not be reached with valid weights.
 	return Constants.TerrainType.SOIL
 

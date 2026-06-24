@@ -21,12 +21,16 @@ static func load_json(file_name: String) -> Dictionary:
 	return parsed
 
 static func load_all() -> Dictionary:
-	return {
-		"drills": load_json("drill_stats.json"),
-		"weapons": load_json("weapon_stats.json"),
-		"armor": load_json("armor_stats.json"),
-		"loot": load_json("loot_tables.json"),
-		"spawn": load_json("spawn_rates.json"),
-		"storm": load_json("storm_timings.json"),
-		"terrain": load_json("terrain_stats.json"),
+	var result := {
+		"drills":      load_json("drill_stats.json"),
+		"weapons":     load_json("weapon_stats.json"),
+		"armor":       load_json("armor_stats.json"),
+		"loot_tables": load_json("loot_tables.json"),
+		"spawn_rates": load_json("spawn_rates.json"),
+		"storm":       load_json("storm_timings.json"),
+		"terrain":     load_json("terrain_stats.json"),
 	}
+	# Merge flat world/player config keys directly into the top level so code
+	# can do GameManager.data.get("world_width_tiles"), etc.
+	result.merge(load_json("world_config.json"))
+	return result

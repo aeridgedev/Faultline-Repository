@@ -5,7 +5,8 @@ class_name UpgradeTemplate
 extends Resource
 
 # Which rarity pool this template belongs to (matches the target item's current tier).
-@export var target_tier: Constants.Tier = Constants.Tier.COMMON
+# Stored as int to avoid @export type resolution issues with autoload enums.
+@export var target_tier: int = 0
 
 
 ## Try to upgrade the best candidate in the given inventory.
@@ -32,5 +33,5 @@ func _try_upgrade_item_data(item_data, inventory: InventoryManager, slot: int) -
 	if item_tier >= Constants.TIER_CEILING:
 		return false  # already legendary
 	# Raise tier in the dictionary — actual Resource upgrade happens on equipped items.
-	item_data["tier"] = (item_tier + 1) as Constants.Tier
+	item_data["tier"] = item_tier + 1
 	return true

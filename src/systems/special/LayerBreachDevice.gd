@@ -4,13 +4,13 @@
 class_name LayerBreachDevice
 extends Resource
 
-signal breach_triggered(from_layer: Constants.Layer)
+signal breach_triggered(from_layer: int)
 
 
 func use(stats: PlayerStats, terrain_manager: TerrainManager, player_position: Vector2) -> void:
 	if stats.is_dead:
 		return
-	var from_layer := stats.get_layer() as Constants.Layer
+	var from_layer: int = stats.get_layer()
 	if from_layer == Constants.Layer.CORE_HOLLOW:
 		return  # already in the final layer; no breach possible
 	# Destroy tiles in a small column below the player down to the layer boundary.

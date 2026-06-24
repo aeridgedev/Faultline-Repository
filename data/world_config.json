@@ -1,0 +1,25 @@
+{
+  "_meta": "DEV PLACEHOLDERS — all numbers provisional, pending balance pass. Do not treat as final.",
+
+  "world_width_tiles": 80,
+
+  "layer_height_crust":       50,
+  "layer_height_mantle":      60,
+  "layer_height_outer_core":  70,
+  "layer_height_inner_core":  80,
+  "layer_height_core_hollow": 40,
+
+  "player_max_health":    100.0,
+  "player_move_speed":    200.0,
+  "player_gravity":       800.0,
+  "player_jump_velocity": -400.0,
+
+  "sprint_speed_mult":          1.6,
+  "stamina_max":                100.0,
+  "stamina_sprint_cost_per_sec": 30.0,
+  "stamina_regen_rate":         20.0,
+  "stamina_regen_delay":        1.0,
+  "stamina_recovery_threshold": 20.0,
+
+  "pickup_radius": 48.0
+}

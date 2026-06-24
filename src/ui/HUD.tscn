@@ -1,0 +1,92 @@
+[gd_scene load_steps=6 format=3 uid="uid://flt_hud"]
+
+[ext_resource type="Script" path="res://src/ui/HUD.gd" id="1_hud"]
+[ext_resource type="PackedScene" path="res://src/ui/StormTimer.tscn" id="2_stormtimer"]
+[ext_resource type="PackedScene" path="res://src/ui/LayerIndicator.tscn" id="3_layerindicator"]
+[ext_resource type="PackedScene" path="res://src/ui/DeathScreen.tscn" id="4_deathscreen"]
+[ext_resource type="PackedScene" path="res://src/ui/SpectatorView.tscn" id="5_spectatorview"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="Control" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="LayerPanel" type="PanelContainer" parent="Control"]
+layout_mode = 1
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 120.0
+offset_bottom = 36.0
+
+[node name="LayerIndicator" parent="Control/LayerPanel" instance=ExtResource("3_layerindicator")]
+layout_mode = 2
+
+[node name="StormPanel" type="PanelContainer" parent="Control"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -210.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 68.0
+grow_horizontal = 0
+
+[node name="StormTimer" parent="Control/StormPanel" instance=ExtResource("2_stormtimer")]
+layout_mode = 2
+
+[node name="BottomHUD" type="HBoxContainer" parent="Control"]
+layout_mode = 1
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = -80.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_vertical = 0
+
+[node name="HealthSection" type="VBoxContainer" parent="Control/BottomHUD"]
+layout_mode = 2
+custom_minimum_size = Vector2(160, 0)
+
+[node name="HPLabel" type="Label" parent="Control/BottomHUD/HealthSection"]
+layout_mode = 2
+text = "HP"
+
+[node name="HealthBar" type="ProgressBar" parent="Control/BottomHUD/HealthSection"]
+layout_mode = 2
+custom_minimum_size = Vector2(150, 18)
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="ArmorLabel" type="Label" parent="Control/BottomHUD/HealthSection"]
+layout_mode = 2
+text = "ARMOR: —"
+
+[node name="HotbarSection" type="HBoxContainer" parent="Control/BottomHUD"]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="DeathScreen" parent="Control" instance=ExtResource("4_deathscreen")]
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="SpectatorView" parent="Control" instance=ExtResource("5_spectatorview")]
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0

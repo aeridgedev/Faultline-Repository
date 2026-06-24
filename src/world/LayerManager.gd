@@ -41,7 +41,7 @@ func get_layer_bottom_y(layer: Constants.Layer) -> Variant:
 func layer_at_y(world_y: float) -> Constants.Layer:
 	var accumulated_px := 0
 	for l in range(Constants.Layer.size()):
-		var layer := l as Constants.Layer
+		var layer: int = l
 		var h = _layer_heights.get(layer, null)
 		# Heights TBD: return CRUST to avoid null-dereference crashes in callers.
 		if h == null:

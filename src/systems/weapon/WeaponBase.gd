@@ -22,14 +22,11 @@ var is_broken: bool = false
 
 
 func init_from_data() -> void:
-	var class_key := Constants.WEAPON_CLASS_NAMES[weapon_class]
-	var base: Dictionary = (
-		GameManager.data
-		.get("weapons", {})
-		.get("classes", {})
-		.get(class_key, {})
-		.get("base", {})
-	)
+	var class_key: String = Constants.WEAPON_CLASS_NAMES[weapon_class]
+	var weapons  := GameManager.data.get("weapons", {}) as Dictionary
+	var classes  := weapons.get("classes", {}) as Dictionary
+	var cls_data := classes.get(class_key, {}) as Dictionary
+	var base     := cls_data.get("base", {}) as Dictionary
 	var scaling: Dictionary = Constants.WEAPON_TIER_SCALING[tier]
 
 	var base_dmg    = base.get("damage",      null)

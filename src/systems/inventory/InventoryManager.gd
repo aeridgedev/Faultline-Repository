@@ -9,11 +9,11 @@ extends Node
 
 signal slot_changed(slot_idx: int, item)   # item = Dictionary or null
 
-const HOTBAR_START  := 0
-const HOTBAR_END    := Constants.HOTBAR_SLOTS - 1          # 4
-const ARMOR_SLOT    := Constants.HOTBAR_SLOTS              # 5
-const BACKPACK_START := Constants.HOTBAR_SLOTS + 1         # 6
-const BACKPACK_END  := Constants.TOTAL_CARRY_SLOTS - 1     # 7
+const HOTBAR_START   := 0
+const HOTBAR_END     := 4   # HOTBAR_SLOTS - 1
+const ARMOR_SLOT     := 5   # HOTBAR_SLOTS
+const BACKPACK_START := 6   # HOTBAR_SLOTS + 1
+const BACKPACK_END   := 7   # TOTAL_CARRY_SLOTS - 1
 
 var _slots: Array = []   # size 8; each entry = Dictionary or null
 

@@ -21,5 +21,4 @@ func _on_player_died() -> void:
 
 
 func _enter_spectator_mode() -> void:
-	# TODO(step 8): wire up SpectatorView UI
 	print("[PlayerDeath] player %d entering spectator mode" % _controller.player_id)

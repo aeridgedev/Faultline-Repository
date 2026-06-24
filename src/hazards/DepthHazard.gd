@@ -25,7 +25,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _apply_tick() -> void:
-	var layer := _stats.get_layer() as Constants.Layer
+	var layer: int = _stats.get_layer()
 	var dps: Variant = _layer_dps(layer)
 	if dps == null:
 		return  # TBD: no values until balance pass
@@ -37,6 +37,7 @@ func _apply_tick() -> void:
 
 
 # Data key format: data["depth_hazard"]["crust_dps"], ["outer_core_dps"], etc.
-func _layer_dps(layer: Constants.Layer) -> Variant:
-	var layer_key := Constants.LAYER_NAMES[layer].to_lower().replace(" ", "_")
-	return GameManager.data.get("depth_hazard", {}).get(layer_key + "_dps", null)
+func _layer_dps(layer: int) -> Variant:
+	var layer_key: String = Constants.LAYER_NAMES[layer].to_lower().replace(" ", "_")
+	var hazard := GameManager.data.get("depth_hazard", {}) as Dictionary
+	return hazard.get(layer_key + "_dps", null)

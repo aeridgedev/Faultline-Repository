@@ -14,16 +14,13 @@ var is_broken: bool = false
 
 
 func init_from_data() -> void:
-	var class_name_key := Constants.DRILL_CLASS_NAMES[drill_class]
-	var tier_name_key := Constants.TIER_NAMES[tier]
-	var entry: Dictionary = (
-		GameManager.data
-		.get("drills", {})
-		.get("classes", {})
-		.get(class_name_key, {})
-		.get("tiers", {})
-		.get(tier_name_key, {})
-	)
+	var class_name_key: String = Constants.DRILL_CLASS_NAMES[drill_class]
+	var tier_name_key: String = Constants.TIER_NAMES[tier]
+	var drills   := GameManager.data.get("drills", {}) as Dictionary
+	var classes  := drills.get("classes", {}) as Dictionary
+	var cls_data := classes.get(class_name_key, {}) as Dictionary
+	var tiers    := cls_data.get("tiers", {}) as Dictionary
+	var entry    := tiers.get(tier_name_key, {}) as Dictionary
 	max_durability = entry.get("durability", null)  # TBD: balance pass
 	current_durability = float(max_durability) if max_durability != null else 0.0
 

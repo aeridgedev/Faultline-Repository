@@ -15,16 +15,17 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# Number keys 1–5 select hotbar slots 0–4.
-	for i in range(Constants.HOTBAR_SLOTS):
-		if event.is_action_just_pressed("hotbar_%d" % (i + 1)):
-			select_slot(i)
-			return
-	# Scroll wheel cycles through slots.
-	if event.is_action_pressed("hotbar_next"):
-		select_slot((_active_slot + 1) % Constants.HOTBAR_SLOTS)
-	elif event.is_action_pressed("hotbar_prev"):
-		select_slot((_active_slot - 1 + Constants.HOTBAR_SLOTS) % Constants.HOTBAR_SLOTS)
+	if event is InputEventKey:
+		for i in range(Constants.HOTBAR_SLOTS):
+			if event.is_action_just_pressed("hotbar_%d" % (i + 1)):
+				select_slot(i)
+				return
+	elif event is InputEventMouseButton and event.pressed:
+		match event.button_index:
+			MOUSE_BUTTON_WHEEL_DOWN:
+				select_slot((_active_slot + 1) % Constants.HOTBAR_SLOTS)
+			MOUSE_BUTTON_WHEEL_UP:
+				select_slot((_active_slot - 1 + Constants.HOTBAR_SLOTS) % Constants.HOTBAR_SLOTS)
 
 
 func select_slot(idx: int) -> void:

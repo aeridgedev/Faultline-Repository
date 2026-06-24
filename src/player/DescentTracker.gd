@@ -21,8 +21,9 @@ func _physics_process(_delta: float) -> void:
 	if _layer_manager == null or _stats.is_dead:
 		return
 
-	var y := get_parent().global_position.y
-	var new_layer := _layer_manager.layer_at_y(y)
+	var y: float = (get_parent() as Node2D).global_position.y
+	# Cast to int explicitly — layer_at_y returns a Constants.Layer enum value.
+	var new_layer: int = int(_layer_manager.layer_at_y(y))
 
 	if new_layer != _stats.get_layer():
 		_stats.set_layer(new_layer)

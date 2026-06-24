@@ -6,7 +6,7 @@ extends Resource
 signal scan_started(scanner_pos: Vector2, radius: float)
 signal scan_ended
 
-const DURATION := Constants.SCANNER_DURATION_SECONDS  # 8.0 (locked)
+const DURATION := 8.0  # SCANNER_DURATION_SECONDS (locked)
 
 var _active: bool = false
 var _time_remaining: float = 0.0

@@ -11,6 +11,6 @@ static func can_upgrade(weapon: WeaponBase) -> bool:
 static func apply(weapon: WeaponBase) -> void:
 	if not can_upgrade(weapon):
 		return
-	weapon.tier = (weapon.tier + 1) as Constants.Tier
+	weapon.tier = weapon.tier + 1
 	weapon.init_from_data()   # reload scaled stats for new tier
 	weapon.restore_durability()
