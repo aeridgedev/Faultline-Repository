@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "description": "Per-terrain-type properties. Dig time is modified by drill class effectiveness and tier. Terrain affects movement speed. Terrain does NOT affect chest spawns and has no terrain-specific loot. Bedrock is hardest and bounds the playfield.",
-    "status": "PLACEHOLDER — all numbers TBD pending balance pass",
+    "description": "Per-terrain-type properties. Dig time is modified by drill class effectiveness and tier. Terrain affects movement speed. Terrain does NOT affect chest spawns. Bedrock bounds the playfield and is not destructible.",
+    "status": "DEV PLACEHOLDERS — provisional numbers so digging has feel. NOT final; pending balance pass.",
     "fields": {
       "base_dig_time": "seconds for a Common drill of a neutral class to break one tile",
       "move_speed_mod": "movement multiplier when traversing/adjacent (1.0 = none)",
@@ -9,10 +9,10 @@
     }
   },
   "terrain": {
-    "Soil":       { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
-    "Rock":       { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
-    "Dense Rock": { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
-    "Crystal":    { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } },
-    "Bedrock":    { "base_dig_time": null, "move_speed_mod": null, "class_effectiveness": { "Precision": null, "Burst": null, "Thermal": null, "Resonance": null } }
+    "Soil":       { "base_dig_time": 0.4,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.0, "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 1.0 } },
+    "Rock":       { "base_dig_time": 0.8,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 0.9, "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 0.95 } },
+    "Dense Rock": { "base_dig_time": 1.4,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 1.1, "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 0.6 } },
+    "Crystal":    { "base_dig_time": 1.1,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.0, "Burst": 1.1,  "Thermal": 0.6,  "Resonance": 1.0 } },
+    "Bedrock":    { "base_dig_time": 999.0, "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.0, "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 1.0 } }
   }
 }

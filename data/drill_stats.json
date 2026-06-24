@@ -1,11 +1,11 @@
 {
   "_meta": {
     "description": "Drill Class x Tier matrix. Class and Tier are INDEPENDENT — any class can be any tier. Upgrade Templates raise tier and fully restore durability. Legendary is the ceiling. No movement weight penalty.",
-    "status": "PLACEHOLDER — all numbers TBD pending balance pass",
+    "status": "DEV PLACEHOLDERS — provisional numbers so drilling functions. NOT final; pending balance pass.",
     "fields": {
-      "dig_time_mult": "multiplier on base dig time (lower = faster). Per terrain effectiveness lives in terrain_stats.json",
-      "durability": "number of tile-breaks before the drill is consumed/needs upgrade",
-      "spawn_weight": "relative class spawn weight; CURRENT VALUES INCOMPLETE (sum != 100)"
+      "dig_time_mult": "multiplier on base terrain dig time (lower = faster). Per-terrain class strength lives in terrain_stats.json class_effectiveness.",
+      "durability": "number of tile-breaks before the drill is consumed/needs an Upgrade Template",
+      "spawn_weight": "relative class spawn weight; CURRENT VALUES INCOMPLETE (sum != 100), still TBD"
     }
   },
   "classes": {
@@ -13,40 +13,40 @@
       "role": "TBD — narrow/efficient digging",
       "spawn_weight": 30,
       "tiers": {
-        "Common":    { "dig_time_mult": null, "durability": null },
-        "Rare":      { "dig_time_mult": null, "durability": null },
-        "Epic":      { "dig_time_mult": null, "durability": null },
-        "Legendary": { "dig_time_mult": null, "durability": null }
+        "Common":    { "dig_time_mult": 1.0,  "durability": 50.0 },
+        "Rare":      { "dig_time_mult": 0.85, "durability": 80.0 },
+        "Epic":      { "dig_time_mult": 0.70, "durability": 120.0 },
+        "Legendary": { "dig_time_mult": 0.55, "durability": 200.0 }
       }
     },
     "Burst": {
       "role": "TBD — area/multi-tile digging",
       "spawn_weight": 20,
       "tiers": {
-        "Common":    { "dig_time_mult": null, "durability": null },
-        "Rare":      { "dig_time_mult": null, "durability": null },
-        "Epic":      { "dig_time_mult": null, "durability": null },
-        "Legendary": { "dig_time_mult": null, "durability": null }
+        "Common":    { "dig_time_mult": 1.05, "durability": 45.0 },
+        "Rare":      { "dig_time_mult": 0.90, "durability": 72.0 },
+        "Epic":      { "dig_time_mult": 0.74, "durability": 110.0 },
+        "Legendary": { "dig_time_mult": 0.58, "durability": 180.0 }
       }
     },
     "Thermal": {
-      "role": "TBD — heat-based, strong vs certain terrain",
+      "role": "TBD — heat-based, strong vs Crystal",
       "spawn_weight": 10,
       "tiers": {
-        "Common":    { "dig_time_mult": null, "durability": null },
-        "Rare":      { "dig_time_mult": null, "durability": null },
-        "Epic":      { "dig_time_mult": null, "durability": null },
-        "Legendary": { "dig_time_mult": null, "durability": null }
+        "Common":    { "dig_time_mult": 1.0,  "durability": 48.0 },
+        "Rare":      { "dig_time_mult": 0.85, "durability": 76.0 },
+        "Epic":      { "dig_time_mult": 0.70, "durability": 115.0 },
+        "Legendary": { "dig_time_mult": 0.55, "durability": 190.0 }
       }
     },
     "Resonance": {
-      "role": "TBD — vibration-based, strong vs dense terrain",
+      "role": "TBD — vibration-based, strong vs Dense Rock",
       "spawn_weight": 10,
       "tiers": {
-        "Common":    { "dig_time_mult": null, "durability": null },
-        "Rare":      { "dig_time_mult": null, "durability": null },
-        "Epic":      { "dig_time_mult": null, "durability": null },
-        "Legendary": { "dig_time_mult": null, "durability": null }
+        "Common":    { "dig_time_mult": 1.0,  "durability": 48.0 },
+        "Rare":      { "dig_time_mult": 0.85, "durability": 76.0 },
+        "Epic":      { "dig_time_mult": 0.70, "durability": 115.0 },
+        "Legendary": { "dig_time_mult": 0.55, "durability": 190.0 }
       }
     }
   }

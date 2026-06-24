@@ -30,6 +30,12 @@ var _held_sprite: Sprite2D = null   # the in-hand drill / sword visual
 var _drill_tex: Texture2D = null
 var _sword_tex: Texture2D = null
 
+# Hotbar: which of the 5 slots is active and what each holds. Each entry is a
+# Dictionary like {"kind": "drill"} / {"kind": "throwable", "type": ...}.
+var _active_slot: int = 0
+var _hotbar_items: Array = []
+var _relic_manager: RelicManager = null
+
 
 func _ready() -> void:
 	var d: Dictionary = GameManager.data
@@ -134,13 +140,19 @@ func _update_held_visual() -> void:
 	_held_pivot.rotation = aim.angle()
 	# Flip vertically when aiming left so the tool reads right-side up, not mirrored.
 	_held_sprite.scale.y = -1.0 if aim.x < 0.0 else 1.0
-	# Swap to the sword mid-swing, otherwise show the drill.
-	if is_attacking():
+	# Show the held tool that matches the active hotbar item (sword while swinging).
+	var item: Variant = _active_item()
+	var kind: String = String(item.get("kind", "")) if item != null else ""
+	if is_attacking() or kind == "weapon":
+		_held_sprite.visible = true
 		_held_sprite.texture = _sword_tex
 		_held_sprite.position.x = 11.0
-	else:
+	elif kind == "drill":
+		_held_sprite.visible = true
 		_held_sprite.texture = _drill_tex
 		_held_sprite.position.x = 9.0
+	else:
+		_held_sprite.visible = false  # throwable / consumable / relic: no tool in hand
 
 
 func _make_drill_tex() -> Texture2D:
@@ -203,6 +215,110 @@ func equip_starter_weapon() -> void:
 	_equipped_weapon.init_from_data()
 
 
+# Wires the 5 hotbar slots to actual usable items and follows slot selection.
+# Call AFTER the starter drill/weapon are equipped and AFTER the HUD is init'd
+# (so the HUD receives the inventory slot_changed signals for its labels).
+# The throwable/consumable/relic entries are DEV test items so every item-use
+# path is reachable offline; real loadouts will come from the loot system.
+func setup_hotbar() -> void:
+	_relic_manager = get_node_or_null("RelicManager")
+	var hotbar := get_node_or_null("Hotbar") as Hotbar
+	var inv := get_node_or_null("InventoryManager") as InventoryManager
+
+	_hotbar_items = [
+		{"kind": "drill"},
+		{"kind": "weapon"},
+		{"kind": "throwable", "type": Constants.Throwable.SMOKE_BOMB},
+		{"kind": "consumable", "obj": Medkit.new()},
+		{"kind": "relic", "type": Constants.Relic.SPEED},
+	]
+
+	if inv != null:
+		inv.add_item({"type": "drill",      "item_class": Constants.DrillClass.PRECISION, "tier": Constants.Tier.COMMON})
+		inv.add_item({"type": "weapon",     "item_class": Constants.WeaponClass.SWORDS,   "tier": Constants.Tier.COMMON})
+		inv.add_item({"type": "throwable",  "item_class": Constants.Throwable.SMOKE_BOMB, "tier": Constants.Tier.COMMON})
+		inv.add_item({"type": "consumable", "item_class": 0,                              "tier": Constants.Tier.COMMON})
+		inv.add_item({"type": "relic",      "item_class": Constants.Relic.SPEED,          "tier": Constants.Tier.COMMON})
+
+	if hotbar != null:
+		hotbar.active_slot_changed.connect(func(idx: int) -> void: _active_slot = idx)
+		_active_slot = hotbar.get_active_slot()
+
+
+func _active_item() -> Variant:
+	if _active_slot < 0 or _active_slot >= _hotbar_items.size():
+		return null
+	return _hotbar_items[_active_slot]
+
+
+# Left-click ("drill" action) uses the active hotbar item, context-sensitive by
+# kind. Right-click stays a quick weapon swing (see _handle_attack_input).
+func _handle_active_use(delta: float) -> void:
+	var item: Variant = _active_item()
+	# Drill is a continuous hold action with its own per-frame logic + highlight.
+	if item != null and item.get("kind") == "drill":
+		_handle_drill(delta)
+	else:
+		_reset_dig()  # keep the dig highlight hidden when the drill isn't active
+
+	if item == null:
+		return
+	match item.get("kind"):
+		"weapon":
+			if Input.is_action_just_pressed("drill") and _attack_timer <= 0.0:
+				_try_attack()
+		"throwable":
+			if Input.is_action_just_pressed("drill"):
+				_throw_active(item)
+		"consumable":
+			_handle_consume(delta, item)
+		"relic":
+			if Input.is_action_just_pressed("drill"):
+				_use_relic(item)
+
+
+func _throw_active(item: Dictionary) -> void:
+	var t := ThrowableBase.new()
+	# RigidBody2D only emits body_entered when contact monitoring is on, otherwise
+	# the throwable would never detonate on impact.
+	t.contact_monitor = true
+	t.max_contacts_reported = 4
+
+	var spr := Sprite2D.new()
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.85, 0.85, 0.40))
+	spr.texture = ImageTexture.create_from_image(img)
+	t.add_child(spr)
+
+	var col := CollisionShape2D.new()
+	var shape := CircleShape2D.new()
+	shape.radius = 4.0
+	col.shape = shape
+	t.add_child(col)
+
+	get_parent().add_child(t)
+	t.add_collision_exception_with(self)  # don't detonate on the thrower
+	t.setup(item.get("type"), player_id)
+	var dir := (get_global_mouse_position() - global_position).normalized()
+	t.throw(global_position + dir * 18.0, dir, 320.0)
+
+
+func _handle_consume(delta: float, item: Dictionary) -> void:
+	var c: ConsumableBase = item.get("obj")
+	if c == null:
+		return
+	if Input.is_action_pressed("drill"):
+		c.tick_use(delta, stats)
+	elif Input.is_action_just_released("drill"):
+		c.interrupt_use()
+
+
+func _use_relic(item: Dictionary) -> void:
+	if _relic_manager == null:
+		return
+	_relic_manager.activate_relic(item.get("type"))
+
+
 func _physics_process(delta: float) -> void:
 	if stats.is_dead:
 		velocity = Vector2.ZERO
@@ -212,7 +328,7 @@ func _physics_process(delta: float) -> void:
 	_apply_gravity(delta)
 	_handle_jump()
 	_handle_movement(delta)
-	_handle_drill(delta)
+	_handle_active_use(delta)
 	_handle_attack_input(delta)
 	_update_held_visual()
 	move_and_slide()
@@ -236,6 +352,9 @@ func _handle_movement(delta: float) -> void:
 	if direction != 0.0 and Input.is_action_pressed("sprint") and not stamina.is_depleted:
 		if stamina.drain(_sprint_cost * delta):
 			speed *= _sprint_mult
+	# Active Speed relic multiplies movement (1.0 when no relic / not active).
+	if _relic_manager != null:
+		speed *= _relic_manager.move_speed_mult()
 	velocity.x = direction * speed
 
 

@@ -26,10 +26,14 @@ func _ready() -> void:
 
 	var storm := _init_hazards(player.stats)
 	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
+	_spawn_test_dummy(player.global_position)
 
 	var hud: HUD = HUDScene.instantiate() as HUD
 	add_child(hud)
 	hud.init(player, storm)
+
+	# After the HUD is listening, populate the hotbar so its slot labels update.
+	player.setup_hotbar()
 
 	GameManager.start_match()
 
@@ -93,6 +97,15 @@ func _build_background(layer_manager: LayerManager) -> void:
 	bg.position = Vector2(-64.0, float(-atmosphere_px))
 	bg.scale = Vector2((width_px + 128.0) / tex.width, total_h / tex.height)
 	add_child(bg)
+
+
+# DEV-ONLY: drop a melee test target a few tiles to the player's right so combat
+# can be verified offline. Remove once networked players exist.
+func _spawn_test_dummy(near: Vector2) -> void:
+	var dummy := TestDummy.new()
+	dummy.name = "TestDummy"
+	add_child(dummy)
+	dummy.global_position = near + Vector2(Constants.TILE_SIZE * 2, -Constants.TILE_SIZE)
 
 
 func _spawn_position(layer_manager: LayerManager) -> Vector2:

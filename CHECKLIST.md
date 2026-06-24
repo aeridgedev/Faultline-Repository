@@ -51,6 +51,20 @@
 - **Loot drops are visible** as tier-colored gems and can be watched as AutoCollect grabs them
 - **Sprint wired**: hold Shift while moving to sprint, drains stamina, blocked while depleted
 
+## Playability pass — part 1 ✅ (dev-placeholder values, all flagged provisional)
+- **Combat now works**: filled weapon stats (`weapon_stats.json`) — also fixed a schema bug where `WeaponBase` read `classes.X.base.damage` but the JSON had `classes.X.base_damage`. Sword now deals real damage.
+- **Drilling has feel**: filled `drill_stats.json` (dig-time mult + durability per class/tier) and `terrain_stats.json` (base dig time, move mod, class effectiveness). Dig time now varies by terrain instead of a flat 1s.
+- **Hazards bite**: added flat `storm_dps`, `pressure_dps_base`, `depth_hazard.*_dps` keys so depth/pressure/storm damage you as you descend (crust surface is safe — 0 dps).
+- **Relic / scanner values** added (`relic_duration`, `relic_strength`, scanner ranges) — values exist, but these still aren't triggered by input yet.
+- **Test dummy** (`TestDummy.gd`): a damageable target spawned 2 tiles right of you with a health readout; respawns on death. DEV-ONLY, remove once networked players exist.
+
+## Playability pass — part 2 ✅
+- Fixed a real Godot 4 bug: `InputEvent.is_action_just_pressed()` doesn't exist (that's only on the `Input` singleton). `Hotbar._input` now uses `event.is_action_pressed()`.
+- **Hotbar slots 1-5 now swap the active item**; the in-hand visual follows (drill / sword / nothing).
+- **Left-click uses the active item, context-sensitive**: drill mines, sword swings, throwable throws, consumable channels, relic activates. Right-click stays a quick weapon swing.
+- Starter loadout populated into the inventory (so HUD labels show names) + DEV test items: slot 3 Smoke throwable, slot 4 Medkit, slot 5 Speed relic.
+- Throwables spawn a real arcing projectile (contact monitoring on) that detonates on impact; relic Speed boost wired into movement; Medkit channel-heals.
+
 ## Known gaps still open (not yet built)
 - Loot-on-death: dying doesn't drop your inventory into the world
 - Throwables / consumables / scanners / relics: logic exists but **not wired to input or the hotbar**

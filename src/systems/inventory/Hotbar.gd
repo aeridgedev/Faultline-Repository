@@ -16,8 +16,11 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey:
+		# NOTE: InputEvent has is_action_pressed(), NOT is_action_just_pressed()
+		# (that one only exists on the Input singleton). Inside _input(), a pressed
+		# key event firing the action already means "just pressed".
 		for i in range(Constants.HOTBAR_SLOTS):
-			if event.is_action_just_pressed("hotbar_%d" % (i + 1)):
+			if event.is_action_pressed("hotbar_%d" % (i + 1)):
 				select_slot(i)
 				return
 	elif event is InputEventMouseButton and event.pressed:

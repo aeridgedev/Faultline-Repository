@@ -1,22 +1,15 @@
 {
   "_meta": {
-    "description": "Weapon Class x Tier. 5 classes, 4 tiers (Mythic removed). Tier scaling multipliers are LOCKED and live in Constants.WEAPON_TIER_SCALING; only each class's Common BASE stats are tuned here.",
-    "status": "PLACEHOLDER — Common base stats TBD pending balance pass",
-    "tier_scaling_note": "Rare +20%dmg/+10%swing/+15%dur | Epic +35/+15/+25 +Minor Passive | Legendary +50/+20/+40 +Unique Passive",
-    "fields": {
-      "base_damage": "damage per hit at Common tier",
-      "base_swing_speed": "attacks per second at Common tier",
-      "base_durability": "hits before breaking at Common tier",
-      "range": "reach in pixels",
-      "minor_passive": "Epic-tier passive id (TBD)",
-      "unique_passive": "Legendary-tier passive id (TBD)"
-    }
+    "description": "Weapon Class x Tier. 5 classes, 4 tiers (Mythic removed). Tier scaling multipliers are LOCKED in Constants.WEAPON_TIER_SCALING; only each class's Common BASE stats are tuned here.",
+    "status": "DEV PLACEHOLDERS — provisional Common base stats so combat functions. NOT final; pending balance pass.",
+    "schema_note": "Each class has a 'base' object read by WeaponBase.init_from_data(): damage, swing_speed (attacks/sec), durability (hits before breaking), range (pixels).",
+    "tier_scaling_note": "Rare +20%dmg/+10%swing/+15%dur | Epic +35/+15/+25 +Minor Passive | Legendary +50/+20/+40 +Unique Passive"
   },
   "classes": {
-    "Daggers":  { "base_damage": null, "base_swing_speed": null, "base_durability": null, "range": null, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Swords":   { "base_damage": null, "base_swing_speed": null, "base_durability": null, "range": null, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Hammers":  { "base_damage": null, "base_swing_speed": null, "base_durability": null, "range": null, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Spears":   { "base_damage": null, "base_swing_speed": null, "base_durability": null, "range": null, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Axes":     { "base_damage": null, "base_swing_speed": null, "base_durability": null, "range": null, "minor_passive": "TBD", "unique_passive": "TBD" }
+    "Daggers":  { "base": { "damage": 8.0,  "swing_speed": 2.5, "durability": 60.0,  "range": 28.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
+    "Swords":   { "base": { "damage": 15.0, "swing_speed": 1.5, "durability": 80.0,  "range": 40.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
+    "Hammers":  { "base": { "damage": 30.0, "swing_speed": 0.7, "durability": 100.0, "range": 36.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
+    "Spears":   { "base": { "damage": 14.0, "swing_speed": 1.3, "durability": 70.0,  "range": 56.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
+    "Axes":     { "base": { "damage": 22.0, "swing_speed": 1.0, "durability": 90.0,  "range": 38.0 }, "minor_passive": "TBD", "unique_passive": "TBD" }
   }
 }

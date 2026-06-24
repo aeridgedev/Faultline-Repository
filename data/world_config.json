@@ -21,5 +21,33 @@
   "stamina_regen_delay":        1.0,
   "stamina_recovery_threshold": 20.0,
 
-  "pickup_radius": 48.0
+  "pickup_radius": 48.0,
+
+  "_hazards_meta": "DEV PLACEHOLDERS — provisional hazard/relic/scanner values so these systems do something. NOT final.",
+
+  "storm_dps": 6.0,
+  "pressure_dps_base": 2.0,
+  "depth_hazard": {
+    "crust_dps": 0.0,
+    "mantle_dps": 1.0,
+    "outer_core_dps": 2.5,
+    "inner_core_dps": 5.0,
+    "core_hollow_dps": 0.0
+  },
+
+  "relic_duration": { "haste": 3.5, "speed": 3.5, "strength": 3.5 },
+  "relic_strength": {
+    "haste_mult": 1.4,
+    "speed_mult": 1.5,
+    "strength_mult": 1.6,
+    "toughness_reduction": 0.3
+  },
+
+  "basic_scanner_range": 200.0,
+  "deep_radar_range": 400.0,
+
+  "consumables": {
+    "medkit_use_time": 2.0,
+    "medkit_heal_total": 50.0
+  }
 }

@@ -124,7 +124,10 @@ func _item_short_name(item, slot_idx: int) -> String:
 		return str(slot_idx + 1)
 	var item_class = item.get("item_class", -1)
 	match item.get("type", ""):
-		"drill":   return Constants.DRILL_CLASS_NAMES.get(item_class, "?").left(6)
-		"weapon":  return Constants.WEAPON_CLASS_NAMES.get(item_class, "?").left(6)
-		"armor":   return Constants.ARMOR_CLASS_NAMES.get(item_class, "?").left(6)
+		"drill":      return Constants.DRILL_CLASS_NAMES.get(item_class, "?").left(6)
+		"weapon":     return Constants.WEAPON_CLASS_NAMES.get(item_class, "?").left(6)
+		"armor":      return Constants.ARMOR_CLASS_NAMES.get(item_class, "?").left(6)
+		"throwable":  return Constants.THROWABLE_NAMES.get(item_class, "?").left(6)
+		"relic":      return Constants.RELIC_NAMES.get(item_class, "?").left(6)
+		"consumable": return "Medkit"
 	return "?"
