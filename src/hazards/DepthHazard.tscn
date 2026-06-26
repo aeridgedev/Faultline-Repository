@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://faultlinedepthhaz1"]
+
+[ext_resource type="Script" path="res://src/hazards/DepthHazard.gd" id="1_depthhaz"]
+
+[node name="DepthHazard" type="Node"]
+script = ExtResource("1_depthhaz")

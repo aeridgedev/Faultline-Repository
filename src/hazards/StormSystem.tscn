@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://faultlinestorm1"]
+
+[ext_resource type="Script" path="res://src/hazards/StormSystem.gd" id="1_storm"]
+
+[node name="StormSystem" type="Node"]
+script = ExtResource("1_storm")

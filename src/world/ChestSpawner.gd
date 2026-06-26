@@ -4,7 +4,7 @@
 class_name ChestSpawner
 extends RefCounted
 
-const LootDropScene := preload("res://src/systems/loot/LootDrop.gd")
+const LootDropScene := preload("res://src/systems/loot/LootDrop.tscn")
 
 ## Call after WorldGenerator.generate() has run.
 ## `drop_parent` is the Node2D that will own all LootDrop children (e.g. World).
@@ -38,7 +38,7 @@ static func _place_drop(
 		terrain_manager: TerrainManager,
 		drop_parent: Node2D
 ) -> void:
-	var drop := LootDrop.new()
+	var drop := LootDropScene.instantiate() as LootDrop
 	drop.source_layer = layer
 	drop.item_data = LootTable.roll(layer)
 	# Position the drop one tile above the surface tile (on top of it).

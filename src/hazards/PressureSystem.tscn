@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://faultlinepressure1"]
+
+[ext_resource type="Script" path="res://src/hazards/PressureSystem.gd" id="1_pressure"]
+
+[node name="PressureSystem" type="Node"]
+script = ExtResource("1_pressure")

@@ -16,7 +16,7 @@ var match_elapsed: float = 0.0     # seconds since match start
 func _ready() -> void:
 	data = DataLoader.load_all()
 	_set_state(MatchState.LOBBY)
-	print("[Faultline] GameManager ready. Data files loaded: %d" % data.size())
+	print("[Faultline] GameManager ready. Loaded %d balance keys." % data.size())
 
 func _process(delta: float) -> void:
 	if state == MatchState.IN_MATCH:

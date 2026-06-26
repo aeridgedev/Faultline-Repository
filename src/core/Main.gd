@@ -39,19 +39,13 @@ func _ready() -> void:
 
 
 func _init_hazards(stats: PlayerStats) -> StormSystem:
-	var depth := DepthHazard.new()
-	depth.name = "DepthHazard"
-	add_child(depth)
+	var depth := _world.get_node("DepthHazard") as DepthHazard
 	depth.init(stats)
 
-	var pressure := PressureSystem.new()
-	pressure.name = "PressureSystem"
-	add_child(pressure)
+	var pressure := _world.get_node("PressureSystem") as PressureSystem
 	pressure.init(stats)
 
-	var storm := StormSystem.new()
-	storm.name = "StormSystem"
-	add_child(storm)
+	var storm := _world.get_node("StormSystem") as StormSystem
 	storm.init(stats)
 	storm.start()
 	return storm
@@ -69,16 +63,18 @@ func _build_background(layer_manager: LayerManager) -> void:
 	var total_h := float(world_h) + atmosphere_px
 
 	var gradient := Gradient.new()
-	gradient.offsets = PackedFloat32Array([0.0, 0.05, 0.10, 0.32, 0.55, 0.74, 0.88, 1.0])
+	gradient.offsets = PackedFloat32Array([0.0, 0.04, 0.08, 0.14, 0.30, 0.46, 0.58, 0.72, 0.86, 1.0])
 	gradient.colors = PackedColorArray([
-		Color(0.30, 0.52, 0.74),  # atmosphere — sky blue
-		Color(0.52, 0.62, 0.70),  # hazy horizon
-		Color(0.28, 0.22, 0.17),  # crust top
-		Color(0.20, 0.15, 0.12),  # deep crust
-		Color(0.16, 0.12, 0.13),  # mantle
-		Color(0.22, 0.10, 0.09),  # outer core — warming
-		Color(0.40, 0.13, 0.06),  # inner core — molten
-		Color(0.05, 0.03, 0.04),  # core hollow — dark
+		Color(0.22, 0.42, 0.68),  # upper atmosphere — dusky sky
+		Color(0.36, 0.50, 0.62),  # lower atmosphere — haze
+		Color(0.24, 0.19, 0.14),  # crust entry
+		Color(0.30, 0.23, 0.15),  # upper crust — warm earth
+		Color(0.18, 0.14, 0.11),  # deep crust — compressed earth
+		Color(0.14, 0.11, 0.13),  # mantle — dark purple-gray
+		Color(0.20, 0.09, 0.09),  # outer core — heat rising
+		Color(0.36, 0.12, 0.05),  # inner core — molten red
+		Color(0.48, 0.16, 0.04),  # inner core deep — intense
+		Color(0.04, 0.03, 0.05),  # core hollow — void black
 	])
 
 	var tex := GradientTexture2D.new()

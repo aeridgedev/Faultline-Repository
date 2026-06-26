@@ -2,6 +2,9 @@
 
 [ext_resource type="Script" path="res://src/world/LayerManager.gd" id="1_layer"]
 [ext_resource type="Script" path="res://src/world/TerrainManager.gd" id="2_terrain"]
+[ext_resource type="Script" path="res://src/hazards/DepthHazard.gd" id="3_depthhaz"]
+[ext_resource type="Script" path="res://src/hazards/PressureSystem.gd" id="4_pressure"]
+[ext_resource type="Script" path="res://src/hazards/StormSystem.gd" id="5_storm"]
 
 [node name="World" type="Node2D"]
 
@@ -12,3 +15,12 @@ script = ExtResource("1_layer")
 script = ExtResource("2_terrain")
 
 [node name="TileMap" type="TileMap" parent="TerrainManager"]
+
+[node name="DepthHazard" type="Node" parent="."]
+script = ExtResource("3_depthhaz")
+
+[node name="PressureSystem" type="Node" parent="."]
+script = ExtResource("4_pressure")
+
+[node name="StormSystem" type="Node" parent="."]
+script = ExtResource("5_storm")

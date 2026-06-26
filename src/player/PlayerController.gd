@@ -2,6 +2,8 @@
 class_name PlayerController
 extends CharacterBody2D
 
+const ThrowableScene := preload("res://src/systems/throwables/ThrowableBase.tscn")
+
 @export var player_id: int = 0
 
 @onready var stats: PlayerStats = $PlayerStats
@@ -30,11 +32,17 @@ var _held_sprite: Sprite2D = null   # the in-hand drill / sword visual
 var _drill_tex: Texture2D = null
 var _sword_tex: Texture2D = null
 
-# Hotbar: which of the 5 slots is active and what each holds. Each entry is a
-# Dictionary like {"kind": "drill"} / {"kind": "throwable", "type": ...}.
+# Active in-hand tool: right-click toggles drill <-> sword and it PERSISTS;
+# left-click uses whichever is equipped. The held visual always shows this tool.
+const TOOL_DRILL := 0
+const TOOL_SWORD := 1
+var _active_tool: int = TOOL_DRILL
+
 var _active_slot: int = 0
-var _hotbar_items: Array = []
+var _consumable_cache: Dictionary = {}  # slot_index -> ConsumableBase instance
+var _hotbar: Hotbar = null
 var _relic_manager: RelicManager = null
+var _use_was_pressed: bool = false   # F-key edge detection (no input-map entry needed)
 
 
 func _ready() -> void:
@@ -50,32 +58,80 @@ func _ready() -> void:
 
 
 func _build_dev_sprite() -> void:
-	# Dev placeholder "driller": helmet + visor over a suit, with a dark outline so
-	# the figure reads clearly against terrain. Replaced by real art later.
-	var w := 14
-	var h := 28
-	var outline := Color(0.04, 0.05, 0.08)
-	var suit := Color(0.18, 0.45, 0.85)
-	var suit_dark := Color(0.12, 0.32, 0.62)
-	var helmet := Color(0.75, 0.80, 0.88)
-	var visor := Color(0.35, 0.85, 0.95)
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	for y in range(h):
-		for x in range(w):
-			var c: Color
-			if x == 0 or y == 0 or x == w - 1 or y == h - 1:
-				c = outline
-			elif y < 10:
-				c = helmet            # head/helmet
-			elif y < 20:
-				c = suit              # torso
+	const W := 14; const H := 28
+	var K  := Color(0.04, 0.05, 0.08)   # outline
+	var HM := Color(0.28, 0.34, 0.46)   # helmet base
+	var HL := Color(0.40, 0.48, 0.62)   # helmet lit (dome top)
+	var VB := Color(0.08, 0.90, 0.97)   # visor bright
+	var VD := Color(0.04, 0.52, 0.68)   # visor dim
+	var SA := Color(0.16, 0.28, 0.48)   # suit armor
+	var SL := Color(0.24, 0.40, 0.63)   # suit light (chest plate)
+	var SD := Color(0.10, 0.18, 0.34)   # suit dark (arms / legs)
+	var BT := Color(0.15, 0.16, 0.22)   # boot dark
+	var BH := Color(0.22, 0.24, 0.30)   # boot highlight
+	var AC := Color(0.95, 0.62, 0.14)   # amber core-device
+	var NK := Color(0.12, 0.14, 0.18)   # neck
+
+	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+
+	# Helmet dome (y 0-8): narrowed at top, widens by y=3
+	for y in range(9):
+		var mx := 3 if y < 2 else (2 if y == 2 else 1)
+		for x in range(mx, W - mx):
+			if x == mx or x == W - 1 - mx or y == 0 or y == 8:
+				img.set_pixel(x, y, K)
+			elif y <= 2:
+				img.set_pixel(x, y, HL)
 			else:
-				c = suit_dark         # legs
-			img.set_pixel(x, y, c)
-	# Visor band across the helmet.
-	for x in range(3, w - 3):
-		img.set_pixel(x, 5, visor)
-		img.set_pixel(x, 6, visor)
+				img.set_pixel(x, y, HM)
+
+	# Visor strip (y 4-5) — overrides helmet interior
+	for y in range(4, 6):
+		for x in range(2, W - 2):
+			if x == 2 or x == W - 3:
+				img.set_pixel(x, y, K)
+			elif y == 4:
+				img.set_pixel(x, y, VB)
+			else:
+				img.set_pixel(x, y, VD)
+
+	# Neck (y 9)
+	for x in range(5, 9):
+		img.set_pixel(x, 9, K if (x == 5 or x == 8) else NK)
+
+	# Torso (y 10-19)
+	for y in range(10, 20):
+		for x in range(W):
+			if x == 0 or x == W - 1 or y == 10 or y == 19:
+				img.set_pixel(x, y, K)
+			elif x <= 2 or x >= W - 3:
+				img.set_pixel(x, y, SD)
+			elif y == 15:
+				img.set_pixel(x, y, K)    # chest plate divider
+			elif y <= 14:
+				img.set_pixel(x, y, SL)
+			else:
+				img.set_pixel(x, y, SA)
+
+	# Amber core device (2×2, upper chest)
+	img.set_pixel(6, 12, AC); img.set_pixel(7, 12, AC)
+	img.set_pixel(6, 13, AC); img.set_pixel(7, 13, AC)
+
+	# Legs (y 20-27): left leg x=1-5, right leg x=8-12, gap x=6-7
+	for pair in [[1, 5], [8, 12]]:
+		var lx: int = pair[0]; var rx: int = pair[1]
+		for y in range(20, 28):
+			for x in range(lx, rx + 1):
+				if x == lx or x == rx or y == 20 or y == 27:
+					img.set_pixel(x, y, K)
+				elif y >= 24:
+					img.set_pixel(x, y, BH if x == lx + 1 else BT)
+				elif x == lx + 1 and y < 23:
+					img.set_pixel(x, y, SL)
+				else:
+					img.set_pixel(x, y, SD)
+
 	$Sprite2D.texture = ImageTexture.create_from_image(img)
 
 
@@ -84,28 +140,40 @@ func _build_dev_sprite() -> void:
 func _build_dig_highlight() -> void:
 	var size := Constants.TILE_SIZE
 	_dig_highlight = Node2D.new()
-	_dig_highlight.top_level = true   # ignore the player's transform; positioned in world space
+	_dig_highlight.top_level = true
 	_dig_highlight.z_index = 50
 	_dig_highlight.visible = false
 	add_child(_dig_highlight)
 
+	# Outer border: 2px teal frame with corner accents
 	var border := Sprite2D.new()
-	border.texture = ImageTexture.create_from_image(_make_outline_image(size, Color(1.0, 0.85, 0.3)))
+	border.texture = ImageTexture.create_from_image(_make_drill_indicator_border(size))
 	_dig_highlight.add_child(border)
 
+	# Inner fill: teal overlay that grows with dig progress
 	_dig_fill = Sprite2D.new()
-	_dig_fill.texture = ImageTexture.create_from_image(_make_solid_image(size, Color(1.0, 0.85, 0.3, 0.45)))
+	_dig_fill.texture = ImageTexture.create_from_image(_make_solid_image(size - 4, Color(0.08, 0.88, 0.95, 0.28)))
 	_dig_highlight.add_child(_dig_fill)
 
 
-func _make_outline_image(size: int, color: Color) -> Image:
+func _make_drill_indicator_border(size: int) -> Image:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
+	var rim  := Color(0.10, 0.90, 0.96, 0.90)
+	var dim  := Color(0.06, 0.60, 0.72, 0.70)
+	var corn := Color(0.80, 0.98, 1.00, 1.00)
 	for i in range(size):
-		img.set_pixel(i, 0, color)
-		img.set_pixel(i, size - 1, color)
-		img.set_pixel(0, i, color)
-		img.set_pixel(size - 1, i, color)
+		var on_edge := (i == 0 or i == size - 1)
+		# Top / bottom rows
+		img.set_pixel(i, 0,      corn if on_edge else rim)
+		img.set_pixel(i, 1,      dim  if (not on_edge) else Color(0,0,0,0))
+		img.set_pixel(i, size-1, corn if on_edge else rim)
+		img.set_pixel(i, size-2, dim  if (not on_edge) else Color(0,0,0,0))
+		# Left / right columns
+		img.set_pixel(0,      i, corn if on_edge else rim)
+		img.set_pixel(1,      i, dim  if (not on_edge) else Color(0,0,0,0))
+		img.set_pixel(size-1, i, corn if on_edge else rim)
+		img.set_pixel(size-2, i, dim  if (not on_edge) else Color(0,0,0,0))
 	return img
 
 
@@ -140,60 +208,92 @@ func _update_held_visual() -> void:
 	_held_pivot.rotation = aim.angle()
 	# Flip vertically when aiming left so the tool reads right-side up, not mirrored.
 	_held_sprite.scale.y = -1.0 if aim.x < 0.0 else 1.0
-	# Show the held tool that matches the active hotbar item (sword while swinging).
-	var item: Variant = _active_item()
-	var kind: String = String(item.get("kind", "")) if item != null else ""
-	if is_attacking() or kind == "weapon":
-		_held_sprite.visible = true
+	# Show whichever tool is equipped; it stays until the player toggles (right-click).
+	_held_sprite.visible = true
+	if _active_tool == TOOL_SWORD:
 		_held_sprite.texture = _sword_tex
 		_held_sprite.position.x = 11.0
-	elif kind == "drill":
-		_held_sprite.visible = true
+	else:
 		_held_sprite.texture = _drill_tex
 		_held_sprite.position.x = 9.0
-	else:
-		_held_sprite.visible = false  # throwable / consumable / relic: no tool in hand
 
 
 func _make_drill_tex() -> Texture2D:
-	# 14×8: brown handle, steel body, tapered orange bit at the tip.
-	var w := 14
-	var h := 8
-	var outline := Color(0.04, 0.05, 0.08)
-	var handle := Color(0.35, 0.22, 0.12)
-	var steel := Color(0.60, 0.62, 0.66)
-	var bit := Color(0.95, 0.60, 0.15)
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	# 14×8: ribbed rubber grip | cyan power ring | steel body | tapered hot bit
+	const W := 14; const H := 8
+	var K  := Color(0.04, 0.05, 0.08)   # outline
+	var G1 := Color(0.28, 0.18, 0.10)   # grip dark
+	var G2 := Color(0.42, 0.28, 0.16)   # grip ribbed highlight
+	var PR := Color(0.08, 0.88, 0.96)   # power ring (cyan)
+	var S1 := Color(0.52, 0.54, 0.58)   # steel base
+	var S2 := Color(0.70, 0.72, 0.76)   # steel top highlight
+	var S3 := Color(0.36, 0.37, 0.40)   # steel bottom shadow
+	var B1 := Color(0.92, 0.54, 0.10)   # bit base
+	var B2 := Color(1.00, 0.80, 0.28)   # bit hot tip
+	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	for x in range(w):
-		var col := handle if x < 4 else (steel if x < 9 else bit)
-		var taper := (x - 9) if x >= 9 else 0   # shrink toward the bit tip
-		for y in range(h):
-			if y < taper or y > h - 1 - taper:
-				continue
-			var edge: bool = y == taper or y == h - 1 - taper or x == 0
-			img.set_pixel(x, y, outline if edge else col)
+	for x in range(W):
+		var taper := clampi(x - 9, 0, H / 2 - 1)
+		var y_min := taper; var y_max := H - 1 - taper
+		if y_max < y_min:
+			continue
+		for y in range(y_min, y_max + 1):
+			var on_edge := (x == 0 or y == y_min or y == y_max)
+			if on_edge:
+				img.set_pixel(x, y, K)
+			elif x < 4:
+				img.set_pixel(x, y, G1 if x % 2 == 0 else G2)
+			elif x == 4:
+				img.set_pixel(x, y, PR)
+			elif x < 10:
+				if y <= y_min + 1:
+					img.set_pixel(x, y, S2)
+				elif y >= y_max - 1:
+					img.set_pixel(x, y, S3)
+				else:
+					img.set_pixel(x, y, S1)
+			else:
+				var heat := float(x - 10) / float(W - 10)
+				img.set_pixel(x, y, B1.lerp(B2, heat))
 	return ImageTexture.create_from_image(img)
 
 
 func _make_sword_tex() -> Texture2D:
-	# 18×6: brown hilt, brass guard, tapered steel blade.
-	var w := 18
-	var h := 6
-	var outline := Color(0.04, 0.05, 0.08)
-	var hilt := Color(0.35, 0.22, 0.12)
-	var guard := Color(0.55, 0.42, 0.18)
-	var blade := Color(0.82, 0.85, 0.90)
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	# 18×6: wrapped hilt | brass cross-guard | tapered blade with fuller + edge
+	const W := 18; const H := 6
+	var K  := Color(0.04, 0.05, 0.08)
+	var H1 := Color(0.30, 0.19, 0.09)   # hilt dark
+	var H2 := Color(0.44, 0.30, 0.15)   # hilt wrap highlight
+	var G1 := Color(0.44, 0.35, 0.13)   # guard
+	var G2 := Color(0.62, 0.52, 0.22)   # guard lit
+	var BE := Color(0.86, 0.90, 0.96)   # blade edge (bright)
+	var BM := Color(0.68, 0.72, 0.78)   # blade mid
+	var BF := Color(0.58, 0.65, 0.82)   # fuller (blue sheen)
+	var BS := Color(0.48, 0.50, 0.55)   # blade shadow side
+	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	for x in range(w):
-		var col := hilt if x < 3 else (guard if x < 5 else blade)
-		var taper := (x - (w - 4) + 1) if x >= w - 4 else 0   # point at the tip
-		for y in range(h):
-			if y < taper or y > h - 1 - taper:
-				continue
-			var edge: bool = y == taper or y == h - 1 - taper or x == 0
-			img.set_pixel(x, y, outline if edge else col)
+	for x in range(W):
+		var taper := clampi(x - (W - 5), 0, H / 2 - 1)
+		var y_min := taper; var y_max := H - 1 - taper
+		if y_max < y_min:
+			continue
+		for y in range(y_min, y_max + 1):
+			var on_edge := (x == 0 or y == y_min or y == y_max)
+			if on_edge:
+				img.set_pixel(x, y, K)
+			elif x < 3:
+				img.set_pixel(x, y, H2 if (x + y) % 2 == 0 else H1)
+			elif x < 5:
+				img.set_pixel(x, y, G2 if y <= H / 2 - 1 else G1)
+			else:
+				if y == y_min + 1:
+					img.set_pixel(x, y, BE)                   # bright edge
+				elif y == (y_min + y_max) / 2:
+					img.set_pixel(x, y, BF)                   # fuller groove
+				elif y == y_max - 1:
+					img.set_pixel(x, y, BS)                   # shadow edge
+				else:
+					img.set_pixel(x, y, BM)
 	return ImageTexture.create_from_image(img)
 
 
@@ -222,16 +322,8 @@ func equip_starter_weapon() -> void:
 # path is reachable offline; real loadouts will come from the loot system.
 func setup_hotbar() -> void:
 	_relic_manager = get_node_or_null("RelicManager")
-	var hotbar := get_node_or_null("Hotbar") as Hotbar
+	_hotbar = get_node_or_null("Hotbar") as Hotbar
 	var inv := get_node_or_null("InventoryManager") as InventoryManager
-
-	_hotbar_items = [
-		{"kind": "drill"},
-		{"kind": "weapon"},
-		{"kind": "throwable", "type": Constants.Throwable.SMOKE_BOMB},
-		{"kind": "consumable", "obj": Medkit.new()},
-		{"kind": "relic", "type": Constants.Relic.SPEED},
-	]
 
 	if inv != null:
 		inv.add_item({"type": "drill",      "item_class": Constants.DrillClass.PRECISION, "tier": Constants.Tier.COMMON})
@@ -239,84 +331,84 @@ func setup_hotbar() -> void:
 		inv.add_item({"type": "throwable",  "item_class": Constants.Throwable.SMOKE_BOMB, "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "consumable", "item_class": 0,                              "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "relic",      "item_class": Constants.Relic.SPEED,          "tier": Constants.Tier.COMMON})
+		inv.slot_changed.connect(func(slot: int, _item: Variant) -> void:
+			_consumable_cache.erase(slot))
 
-	if hotbar != null:
-		hotbar.active_slot_changed.connect(func(idx: int) -> void: _active_slot = idx)
-		_active_slot = hotbar.get_active_slot()
+	if _hotbar != null:
+		_hotbar.active_slot_changed.connect(func(idx: int) -> void: _active_slot = idx)
+		_active_slot = _hotbar.get_active_slot()
 
 
 func _active_item() -> Variant:
-	if _active_slot < 0 or _active_slot >= _hotbar_items.size():
+	if _hotbar == null:
 		return null
-	return _hotbar_items[_active_slot]
+	return _hotbar.get_active_item()
 
 
-# Left-click ("drill" action) uses the active hotbar item, context-sensitive by
-# kind. Right-click stays a quick weapon swing (see _handle_attack_input).
-func _handle_active_use(delta: float) -> void:
+# Drill (left-click) and sword (right-click) are always available on the mouse.
+# The F key uses whatever non-weapon item is selected in the hotbar. We poll the
+# physical key directly (with manual edge detection) so no input-map entry is
+# required — Godot tends to overwrite manual project.godot edits while it's open.
+func _handle_item_use(delta: float) -> void:
+	var use_held := Input.is_physical_key_pressed(KEY_F)
+	var use_just := use_held and not _use_was_pressed
+	var use_released := (not use_held) and _use_was_pressed
+	_use_was_pressed = use_held
+
 	var item: Variant = _active_item()
-	# Drill is a continuous hold action with its own per-frame logic + highlight.
-	if item != null and item.get("kind") == "drill":
-		_handle_drill(delta)
-	else:
-		_reset_dig()  # keep the dig highlight hidden when the drill isn't active
-
 	if item == null:
 		return
-	match item.get("kind"):
-		"weapon":
-			if Input.is_action_just_pressed("drill") and _attack_timer <= 0.0:
-				_try_attack()
+	match item.get("type"):
 		"throwable":
-			if Input.is_action_just_pressed("drill"):
+			if use_just:
 				_throw_active(item)
 		"consumable":
-			_handle_consume(delta, item)
+			var c: ConsumableBase = _get_or_create_consumable(_active_slot, item.get("item_class", 0))
+			if c != null:
+				if use_just:
+					print("[Item] Using consumable — hold F to channel.")
+				if use_held:
+					c.tick_use(delta, stats)
+				elif use_released:
+					c.interrupt_use()
 		"relic":
-			if Input.is_action_just_pressed("drill"):
+			if use_just:
 				_use_relic(item)
+		_:
+			# drill / weapon slots are mouse-controlled; F has nothing to use here.
+			if use_just:
+				print("[Item] Slot %d is the %s (mouse-controlled). Select slot 3, 4 or 5 (throwable / medkit / relic), then press F." % [_active_slot + 1, str(item.get("type", "?"))])
 
 
 func _throw_active(item: Dictionary) -> void:
-	var t := ThrowableBase.new()
-	# RigidBody2D only emits body_entered when contact monitoring is on, otherwise
-	# the throwable would never detonate on impact.
-	t.contact_monitor = true
-	t.max_contacts_reported = 4
-
-	var spr := Sprite2D.new()
-	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0.85, 0.85, 0.40))
-	spr.texture = ImageTexture.create_from_image(img)
-	t.add_child(spr)
-
-	var col := CollisionShape2D.new()
-	var shape := CircleShape2D.new()
-	shape.radius = 4.0
-	col.shape = shape
-	t.add_child(col)
-
+	var t := ThrowableScene.instantiate() as ThrowableBase
 	get_parent().add_child(t)
 	t.add_collision_exception_with(self)  # don't detonate on the thrower
-	t.setup(item.get("type"), player_id)
+	t.setup(item.get("item_class"), player_id)
 	var dir := (get_global_mouse_position() - global_position).normalized()
 	t.throw(global_position + dir * 18.0, dir, 320.0)
-
-
-func _handle_consume(delta: float, item: Dictionary) -> void:
-	var c: ConsumableBase = item.get("obj")
-	if c == null:
-		return
-	if Input.is_action_pressed("drill"):
-		c.tick_use(delta, stats)
-	elif Input.is_action_just_released("drill"):
-		c.interrupt_use()
 
 
 func _use_relic(item: Dictionary) -> void:
 	if _relic_manager == null:
 		return
-	_relic_manager.activate_relic(item.get("type"))
+	_relic_manager.activate_relic(item.get("item_class"))
+	print("[Item] Activated relic: ", Constants.RELIC_NAMES.get(item.get("item_class"), "?"))
+
+
+func _get_or_create_consumable(slot: int, item_class: int) -> ConsumableBase:
+	if not _consumable_cache.has(slot):
+		var c := _make_consumable(item_class)
+		if c == null:
+			return null
+		_consumable_cache[slot] = c
+	return _consumable_cache[slot]
+
+
+func _make_consumable(item_class: int) -> ConsumableBase:
+	match item_class:
+		0: return Medkit.new()
+		_: return null  # TBD: Lytes / ThermalCapsule / Bloodstim / FaultBeacon (step 6)
 
 
 func _physics_process(delta: float) -> void:
@@ -328,8 +420,9 @@ func _physics_process(delta: float) -> void:
 	_apply_gravity(delta)
 	_handle_jump()
 	_handle_movement(delta)
-	_handle_active_use(delta)
-	_handle_attack_input(delta)
+	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
+	_handle_tool_use(delta)     # left-click uses the equipped tool
+	_handle_item_use(delta)     # F-key uses the active throwable / consumable / relic
 	_update_held_visual()
 	move_and_slide()
 
@@ -424,11 +517,28 @@ func _calc_dig_duration(cell: Vector2i) -> float:
 	return duration
 
 
-func _handle_attack_input(delta: float) -> void:
+# Right-click toggles which tool is in hand. It stays toggled until pressed again,
+# so the sword no longer snaps back to the drill on its own.
+func _handle_tool_toggle() -> void:
+	if Input.is_action_just_pressed("attack"):
+		_active_tool = TOOL_SWORD if _active_tool == TOOL_DRILL else TOOL_DRILL
+		_reset_dig()  # drop any in-progress dig when switching tools
+
+
+# Left-click uses the equipped tool: the drill mines, the sword swings.
+func _handle_tool_use(delta: float) -> void:
+	if _active_tool == TOOL_SWORD:
+		_reset_dig()
+		_handle_sword(delta)
+	else:
+		_handle_drill(delta)
+
+
+func _handle_sword(delta: float) -> void:
 	if _attack_timer > 0.0:
 		_attack_timer -= delta
 		return
-	if Input.is_action_just_pressed("attack"):
+	if Input.is_action_just_pressed("drill"):  # left-click swings the equipped sword
 		_try_attack()
 
 
@@ -449,7 +559,7 @@ func _try_attack() -> void:
 			global_position,
 			global_position + attack_dir * reach_px,
 			0xFFFFFFFF,
-			[self]
+			[get_rid()]
 	)
 	var result := space.intersect_ray(query)
 	if result.is_empty():

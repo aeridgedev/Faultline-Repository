@@ -21,8 +21,40 @@ func throw(origin: Vector2, direction: Vector2, speed: float) -> void:
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
-	# Self-destruct after 10s if it never hits anything (TBD: per-type fuse durations).
 	get_tree().create_timer(10.0).timeout.connect(queue_free)
+	_build_dev_sprite()
+
+
+func _build_dev_sprite() -> void:
+	var spr := get_node_or_null("Sprite2D") as Sprite2D
+	if spr == null:
+		return
+	# 8×8 grenade silhouette: dark oval body, bright band, pin pixel
+	const S := 8
+	var K  := Color(0.06, 0.06, 0.07)   # body
+	var B  := Color(0.22, 0.22, 0.24)   # body lit
+	var BD := Color(0.12, 0.12, 0.14)   # body shadow
+	var BN := Color(0.72, 0.68, 0.22)   # safety band
+	var PN := Color(0.60, 0.62, 0.65)   # pin metal
+	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	# Oval body: fill pixels where (dx/3)^2 + (dy/3)^2 < 1 roughly
+	for y in S:
+		for x in S:
+			var cx := float(x) - 3.5; var cy := float(y) - 4.0
+			if (cx * cx / 9.0 + cy * cy / 12.0) < 1.0:
+				if y == 2:
+					img.set_pixel(x, y, BN)   # safety band
+				elif x <= 2 and y <= 3:
+					img.set_pixel(x, y, B)    # lit upper-left
+				elif x >= 5 or y >= 6:
+					img.set_pixel(x, y, BD)   # shadow
+				else:
+					img.set_pixel(x, y, K)
+	# Pin — single pixel above body
+	img.set_pixel(4, 0, PN)
+	img.set_pixel(5, 0, PN)
+	spr.texture = ImageTexture.create_from_image(img)
 
 
 func _on_body_entered(body: Node) -> void:

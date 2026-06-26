@@ -5,7 +5,7 @@ extends RefCounted
 
 var relic_type: Constants.Relic = Constants.Relic.HASTE
 var is_active: bool = false
-var _expires_at: float = 0.0   # Engine.get_ticks_msec() / 1000.0
+var _expires_at: float = 0.0   # in seconds, on the Time.get_ticks_msec() / 1000.0 clock
 
 
 func activate(current_time: float) -> void:

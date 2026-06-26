@@ -22,14 +22,33 @@ func _ready() -> void:
 
 func _build_dev_marker() -> void:
 	var tier: int = item_data.get("tier", Constants.Tier.COMMON)
-	var color: Color = Constants.TIER_COLORS.get(tier, Color(0.7, 0.7, 0.7))
-	var size := 10
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var outline := Color(0.04, 0.05, 0.08)
-	for y in range(size):
-		for x in range(size):
-			var edge: bool = x == 0 or y == 0 or x == size - 1 or y == size - 1
-			img.set_pixel(x, y, outline if edge else color)
+	var base: Color = Constants.TIER_COLORS.get(tier, Color(0.7, 0.7, 0.7))
+	# Diamond gem shape (12×12, rotated square). Tier-colored with inner shading.
+	const S := 12; const MID := S / 2 - 1
+	var K  := Color(0.04, 0.05, 0.08)
+	var lit := base.lightened(0.28)
+	var shd := base.darkened(0.32)
+	var wh  := Color(0.94, 0.98, 1.00)     # specular
+	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for y in S:
+		for x in S:
+			# Diamond mask: |x - MID| + |y - MID| <= MID
+			var dx := abs(x - MID); var dy := abs(y - MID)
+			if dx + dy > MID:
+				continue
+			var on_edge := (dx + dy == MID)
+			if on_edge:
+				img.set_pixel(x, y, K)
+			elif dx + dy <= 1:
+				img.set_pixel(x, y, lit)    # bright inner center
+			elif y < MID:
+				img.set_pixel(x, y, lit if x <= MID else base)
+			else:
+				img.set_pixel(x, y, shd)
+	# Specular highlight — top-left corner of gem
+	img.set_pixel(MID, 1, wh)
+	img.set_pixel(MID - 1, 2, lit)
 	var sprite := Sprite2D.new()
 	sprite.texture = ImageTexture.create_from_image(img)
 	add_child(sprite)

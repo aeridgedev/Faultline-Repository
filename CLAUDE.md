@@ -101,11 +101,12 @@ the relevant rarity pool** (not a flat per-chest roll). Use
 
 **Terrain:** tile-based, fully destructible, persistent per match, procedural
 (different every match). Affects movement speed (TBD) and drill dig time (by
-class + tier). Does **not** affect chest spawns. Bedrock = hardest, bounds the
-playfield. Types: Soil / Rock / Dense Rock / Crystal / Bedrock.
+class + tier). Does **not** affect chest spawns. No terrain-specific loot pools
+(loot pool decided separately). Bedrock = hardest, bounds the playfield.
+**10+ terrain types spread across layers** (distribution per layer TBD).
 
-**Relics — exactly 4:** Haste / Speed / Strength / Toughness. Can be dropped
-after pickup. Toughness is permanent; the rest last ~3–4s.
+**Relics — exactly 4:** Haste / Speed / Strength / Toughness. **Cannot be
+dropped after pickup.** Toughness is permanent; the rest last ~3–4s.
 
 **Throwables — exactly 7:** Smoke / Paralysis / Weakness Bomb · Heat Charge ·
 Dust Capsule · Echo Charge · Seismic Charge. No friendly fire (FFA).

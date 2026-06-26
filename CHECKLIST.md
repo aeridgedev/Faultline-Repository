@@ -60,10 +60,18 @@
 
 ## Playability pass — part 2 ✅
 - Fixed a real Godot 4 bug: `InputEvent.is_action_just_pressed()` doesn't exist (that's only on the `Input` singleton). `Hotbar._input` now uses `event.is_action_pressed()`.
-- **Hotbar slots 1-5 now swap the active item**; the in-hand visual follows (drill / sword / nothing).
-- **Left-click uses the active item, context-sensitive**: drill mines, sword swings, throwable throws, consumable channels, relic activates. Right-click stays a quick weapon swing.
+- **Controls**: **Right-click toggles** the equipped tool drill <-> sword (it persists — the sword no longer snaps back to the drill); **Left-click uses** the equipped tool (drill mines / sword swings). Hotbar 1-5 / scroll selects the active item; **F uses** the selected throwable / consumable / relic (F is polled directly in code; F on a drill/weapon slot now prints a hint instead of silently doing nothing).
 - Starter loadout populated into the inventory (so HUD labels show names) + DEV test items: slot 3 Smoke throwable, slot 4 Medkit, slot 5 Speed relic.
 - Throwables spawn a real arcing projectile (contact monitoring on) that detonates on impact; relic Speed boost wired into movement; Medkit channel-heals.
+
+## Full-codebase refinement pass ✅ (read every script/scene/data file)
+Found & fixed real bugs where authored data was silently ignored:
+- **Terrain dig-times were dead.** `terrain_stats.json` nests types under a `"terrain"` key, but `TerrainTypes` read one level too shallow → every tile used the 1.0s fallback. Now reads `data["terrain"]["terrain"][Type]`; dig time finally varies by terrain (Soil 0.4s … Dense Rock 1.4s) and by drill class/tier.
+- **Loot tables were dead.** `LootTable` looked up `loot_tables[lowercased_layer]`, but the file nests under `"layers"` with display-name keys (`"Crust"`, `"Outer Core"`). Now matches the file; also reads `"Common"/"Rare"/…` rarity keys (was lowercase) and is null-safe so tuned weights won't crash the roll.
+- **`world_to_cell` mis-rounded negatives** (truncate-toward-zero → floor), so digging/aiming near the left edge or up into the atmosphere now targets the correct cell.
+- **`WeaponClass.passive_description`** read a `"passives"` dict the JSON never had; now reads `minor_passive`/`unique_passive` (Epic/Legendary).
+- Minor: GameManager boot log no longer mislabels balance keys as "files"; fixed a stale `Engine.get_ticks_msec` comment.
+Verified: all 8 scenes' node paths match their scripts; drill/weapon/armor data paths were already correct; hazard `*_dps` keys match; no `as Constants.*` / const-enum parse pitfalls remain.
 
 ## Known gaps still open (not yet built)
 - Loot-on-death: dying doesn't drop your inventory into the world
