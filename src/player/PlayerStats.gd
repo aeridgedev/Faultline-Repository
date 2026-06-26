@@ -20,7 +20,7 @@ var equipped_armor: Node = null
 
 func _ready() -> void:
 	var data_hp = GameManager.data.get("player_max_health", null) if GameManager.data else null
-	max_health = float(data_hp) if data_hp != null else 0.0  # TBD: 0.0 sentinel until balance pass sets this
+	max_health = float(data_hp) if data_hp != null else 100.0  # TBD: 100.0 dev fallback until balance pass
 	current_health = max_health
 
 

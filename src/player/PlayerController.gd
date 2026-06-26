@@ -11,7 +11,6 @@ const ThrowableScene := preload("res://src/systems/throwables/ThrowableBase.tscn
 
 var _move_speed: float = 0.0    # TBD: loaded from GameManager.data["player_move_speed"]
 var _gravity: float = 0.0       # TBD: loaded from GameManager.data["player_gravity"]
-var _jump_velocity: float = 0.0 # TBD: loaded from GameManager.data["player_jump_velocity"]
 var _sprint_mult: float = 1.0   # TBD: loaded from GameManager.data["sprint_speed_mult"]
 var _sprint_cost: float = 0.0   # TBD: stamina/sec while sprinting
 
@@ -49,7 +48,6 @@ func _ready() -> void:
 	var d: Dictionary = GameManager.data
 	_move_speed = float(d.get("player_move_speed", 0.0))       # TBD: balance pass
 	_gravity = float(d.get("player_gravity", 0.0))             # TBD: balance pass
-	_jump_velocity = float(d.get("player_jump_velocity", 0.0)) # TBD: balance pass
 	_sprint_mult = float(d.get("sprint_speed_mult", 1.0))      # TBD: balance pass
 	_sprint_cost = float(d.get("stamina_sprint_cost_per_sec", 0.0))  # TBD: balance pass
 	_build_dev_sprite()
@@ -418,7 +416,6 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_apply_gravity(delta)
-	_handle_jump()
 	_handle_movement(delta)
 	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
 	_handle_tool_use(delta)     # left-click uses the equipped tool
@@ -430,11 +427,6 @@ func _physics_process(delta: float) -> void:
 func _apply_gravity(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += _gravity * delta
-
-
-func _handle_jump() -> void:
-	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = _jump_velocity
 
 
 func _handle_movement(delta: float) -> void:

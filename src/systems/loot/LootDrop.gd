@@ -34,10 +34,10 @@ func _build_dev_marker() -> void:
 	for y in S:
 		for x in S:
 			# Diamond mask: |x - MID| + |y - MID| <= MID
-			var dx := abs(x - MID); var dy := abs(y - MID)
+			var dx: int = abs(x - MID); var dy: int = abs(y - MID)
 			if dx + dy > MID:
 				continue
-			var on_edge := (dx + dy == MID)
+			var on_edge: bool = (dx + dy == MID)
 			if on_edge:
 				img.set_pixel(x, y, K)
 			elif dx + dy <= 1:

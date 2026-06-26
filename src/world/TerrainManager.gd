@@ -162,7 +162,7 @@ func _tile_crystal() -> Image:
 	# Inner facet shape — diamond of brighter pixels
 	for y in range(4, 12):
 		for x in range(4, 12):
-			var dx := abs(x - 7) + abs(y - 7)
+			var dx: int = abs(x - 7) + abs(y - 7)
 			if dx < 4:
 				var cur := img.get_pixel(x, y)
 				img.set_pixel(x, y, cur.lightened(0.15))

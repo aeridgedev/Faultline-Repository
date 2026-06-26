@@ -41,8 +41,8 @@ static func _place_drop(
 	var drop := LootDropScene.instantiate() as LootDrop
 	drop.source_layer = layer
 	drop.item_data = LootTable.roll(layer)
-	# Position the drop one tile above the surface tile (on top of it).
-	var world_pos: Vector2 = terrain_manager.cell_to_world(cell)
-	world_pos.y -= Constants.TILE_SIZE
-	drop.global_position = world_pos
+	# Add to tree first so global_position resolves correctly against drop_parent's transform.
 	drop_parent.add_child(drop)
+	# Center the drop in the empty tile directly above the surface tile.
+	var half: float = Constants.TILE_SIZE / 2.0
+	drop.global_position = terrain_manager.cell_to_world(cell) + Vector2(half, -half)
