@@ -12,6 +12,15 @@ var item_data: Dictionary = {}
 ## Set by ChestSpawner after instantiation.
 var source_layer: Constants.Layer = Constants.Layer.CRUST
 
+## Seconds remaining before AutoCollect may pick this drop up.
+## Set to > 0 when spawning a discarded item so it is not immediately re-collected.
+var pickup_delay: float = 0.0
+
+
+func _process(delta: float) -> void:
+	if pickup_delay > 0.0:
+		pickup_delay = maxf(pickup_delay - delta, 0.0)
+
 
 func _ready() -> void:
 	# TBD(art): replace with a real tier-colored chest/icon once assets exist.

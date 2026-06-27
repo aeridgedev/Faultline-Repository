@@ -43,6 +43,9 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 	_build_armor_slot()
 	_style_health_bar()
 	_style_panels()
+	var hp_lbl := get_node_or_null("Control/BottomHUD/HealthSection/HPLabel") as Label
+	if hp_lbl != null:
+		hp_lbl.add_theme_font_size_override("font_size", 8)
 
 	stats.health_changed.connect(_on_health_changed)
 	stats.player_died.connect(_on_player_died)
@@ -98,7 +101,7 @@ func _style_panels() -> void:
 func _build_hotbar_slots() -> void:
 	for i in Constants.HOTBAR_SLOTS:
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(60, 60)
+		panel.custom_minimum_size = Vector2(40, 40)
 
 		# Outer column: inner content expands to fill, bar sits at the very bottom.
 		var col := VBoxContainer.new()
@@ -111,16 +114,16 @@ func _build_hotbar_slots() -> void:
 		var num := Label.new()
 		num.text = str(i + 1)
 		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		num.add_theme_font_size_override("font_size", 9)
+		num.add_theme_font_size_override("font_size", 7)
 		num.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
 
 		var label := Label.new()
 		label.text = ""
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 10)
+		label.add_theme_font_size_override("font_size", 8)
 		label.add_theme_color_override("font_color", Color(0.82, 0.86, 0.92))
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.custom_minimum_size = Vector2(54, 0)
+		label.custom_minimum_size = Vector2(36, 0)
 
 		inner.add_child(num)
 		inner.add_child(label)
@@ -128,7 +131,7 @@ func _build_hotbar_slots() -> void:
 		# Durability bar: 3px strip pinned to the slot bottom; hidden until a
 		# drill or weapon occupies the slot.
 		var dur_bar := ProgressBar.new()
-		dur_bar.custom_minimum_size = Vector2(0, 3)
+		dur_bar.custom_minimum_size = Vector2(0, 2)
 		dur_bar.max_value = 1.0
 		dur_bar.value = 1.0
 		dur_bar.show_percentage = false
@@ -160,7 +163,7 @@ func _build_armor_slot() -> void:
 	_armor_label.visible = false   # hide the tscn label; panel replaces it
 
 	_armor_panel = PanelContainer.new()
-	_armor_panel.custom_minimum_size = Vector2(72, 60)
+	_armor_panel.custom_minimum_size = Vector2(48, 40)
 
 	var col := VBoxContainer.new()
 
@@ -171,16 +174,16 @@ func _build_armor_slot() -> void:
 	var hdr := Label.new()
 	hdr.text = "ARM"
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hdr.add_theme_font_size_override("font_size", 9)
+	hdr.add_theme_font_size_override("font_size", 7)
 	hdr.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
 
 	_armor_cls_label = Label.new()
 	_armor_cls_label.text = "—"
 	_armor_cls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_armor_cls_label.add_theme_font_size_override("font_size", 10)
+	_armor_cls_label.add_theme_font_size_override("font_size", 8)
 	_armor_cls_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
 	_armor_cls_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_armor_cls_label.custom_minimum_size = Vector2(66, 0)
+	_armor_cls_label.custom_minimum_size = Vector2(44, 0)
 
 	inner.add_child(hdr)
 	inner.add_child(_armor_cls_label)

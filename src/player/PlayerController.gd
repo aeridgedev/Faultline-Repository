@@ -44,7 +44,8 @@ var _active_slot: int = 0
 var _consumable_cache: Dictionary = {}  # slot_index -> ConsumableBase instance
 var _hotbar: Hotbar = null
 var _relic_manager: RelicManager = null
-var _use_was_pressed: bool = false   # F-key edge detection (no input-map entry needed)
+var _use_was_pressed: bool = false   # G-key edge detection (no input-map entry needed)
+var _inv_open: bool = false          # true while InventoryManager panel is visible
 
 # Floating status label — shows transient messages (drill broken, etc.) above the player.
 var _notify_label: Label = null
@@ -403,6 +404,12 @@ func setup_hotbar() -> void:
 		inv.add_item({"type": "relic",      "item_class": Constants.Relic.SPEED,          "tier": Constants.Tier.COMMON})
 		inv.slot_changed.connect(func(slot: int, _item: Variant) -> void:
 			_consumable_cache.erase(slot))
+		inv.inventory_opened.connect(func() -> void:
+			_inv_open = true
+			_reset_dig()
+			_use_was_pressed = false)
+		inv.inventory_closed.connect(func() -> void:
+			_inv_open = false)
 
 	if _hotbar != null:
 		_hotbar.active_slot_changed.connect(func(idx: int) -> void: _active_slot = idx)
@@ -420,7 +427,7 @@ func _active_item() -> Variant:
 # physical key directly (with manual edge detection) so no input-map entry is
 # required — Godot tends to overwrite manual project.godot edits while it's open.
 func _handle_item_use(delta: float) -> void:
-	var use_held := Input.is_physical_key_pressed(KEY_F)
+	var use_held := Input.is_physical_key_pressed(KEY_G)
 	var use_just := use_held and not _use_was_pressed
 	var use_released := (not use_held) and _use_was_pressed
 	_use_was_pressed = use_held
@@ -447,7 +454,7 @@ func _handle_item_use(delta: float) -> void:
 		_:
 			# drill / weapon slots are mouse-controlled; F has nothing to use here.
 			if use_just:
-				print("[Item] Slot %d is the %s (mouse-controlled). Select slot 3, 4 or 5 (throwable / medkit / relic), then press F." % [_active_slot + 1, str(item.get("type", "?"))])
+				print("[Item] Slot %d is the %s (mouse-controlled). Select slot 3, 4 or 5 (throwable / medkit / relic), then press G." % [_active_slot + 1, str(item.get("type", "?"))])
 
 
 func _throw_active(item: Dictionary) -> void:
@@ -495,10 +502,16 @@ func _physics_process(delta: float) -> void:
 			_notify_label.visible = false
 
 	_apply_gravity(delta)
+
+	if _inv_open:
+		velocity.x = 0.0
+		move_and_slide()
+		return
+
 	_handle_movement(delta)
 	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
 	_handle_tool_use(delta)     # left-click uses the equipped tool
-	_handle_item_use(delta)     # F-key uses the active throwable / consumable / relic
+	_handle_item_use(delta)     # G-key uses the active throwable / consumable / relic
 	_update_held_visual()
 	move_and_slide()
 

@@ -44,7 +44,7 @@ func _scan_for_drops() -> void:
 func _collect_nearby(node: Node, my_pos: Vector2) -> void:
 	if node is LootDrop:
 		var drop := node as LootDrop
-		if my_pos.distance_to(drop.global_position) <= _pickup_radius:
+		if drop.pickup_delay <= 0.0 and my_pos.distance_to(drop.global_position) <= _pickup_radius:
 			if _inventory.can_add(drop.item_data):
 				var accepted := _inventory.add_item(drop.item_data)
 				if accepted >= 0:
