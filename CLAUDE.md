@@ -156,8 +156,8 @@ Build systems in this exact sequence. **Do not start any system without asking
 the user first.** The user works in **separate sessions per aspect**, so confirm
 which item this session targets before writing code.
 
-1. **Player movement + terrain**  ← current frontier
-2. Drill system
+1. **Player movement + terrain**  ✓ complete
+2. **Drill system**  ← current frontier
 3. Layer/depth system + hazards
 4. Inventory + loot
 5. Weapons + combat
