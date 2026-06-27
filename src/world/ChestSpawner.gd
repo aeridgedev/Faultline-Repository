@@ -44,9 +44,12 @@ static func spawn(
 			slots[slot_key] = []
 		slots[slot_key].append({"cell": cell, "layer": layer})
 
+	print("[ChestSpawner] registry=%d tiles, slots=%d" % [registry.size(), slots.size()])
+
 	# One roll per slot — pick a random candidate from the slot, then apply
 	# the layer spawn-chance formula. This distributes chests evenly without
 	# flooding every tunnel floor.
+	var placed := 0
 	for slot_key in slots:
 		var candidates: Array = slots[slot_key]
 		if candidates.is_empty():
@@ -59,6 +62,8 @@ static func spawn(
 		if randf() > chance:
 			continue
 		_place_chest(pick["cell"], layer, terrain_manager, chest_parent)
+		placed += 1
+	print("[ChestSpawner] placed %d chests" % placed)
 
 
 static func _place_chest(
@@ -68,6 +73,9 @@ static func _place_chest(
 		chest_parent: Node2D
 ) -> void:
 	var chest := ChestScene.instantiate() as Chest
+	if chest == null:
+		push_error("[ChestSpawner] Chest.tscn failed to instantiate as Chest at %s — check Chest.gd for parse errors" % str(cell))
+		return
 	# Populate before add_child so Chest._ready() reads the correct item_data.
 	chest.source_layer = layer
 	chest.item_data = LootTable.roll(layer)

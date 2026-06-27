@@ -17,13 +17,14 @@ var _slot_panels: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
 var _inventory: InventoryManager = null
 
-const _COLOR_SLOT_NORMAL := Color(0.08, 0.09, 0.12, 0.88)
+const _COLOR_SLOT_NORMAL := Color(0.10, 0.12, 0.17, 0.92)
 const _COLOR_SLOT_ACTIVE := Color(0.08, 0.88, 0.96, 0.95)   # teal active frame
-const _COLOR_SLOT_BORDER_NORMAL := Color(0.22, 0.24, 0.30, 0.60)
+const _COLOR_SLOT_BORDER_NORMAL := Color(0.55, 0.58, 0.65, 0.90)
 const _COLOR_SLOT_BORDER_ACTIVE := Color(0.08, 0.88, 0.96, 1.00)
 
 
 func init(player: PlayerController, storm: StormSystem) -> void:
+	print("[HUD] init started")
 	var stats: PlayerStats = player.get_node("PlayerStats")
 	var hotbar: Hotbar = player.get_node("Hotbar")
 	_inventory = player.get_node("InventoryManager")
@@ -67,16 +68,15 @@ func _style_health_bar() -> void:
 
 func _style_panels() -> void:
 	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.06, 0.07, 0.10, 0.82)
+	s.bg_color = Color(0.06, 0.07, 0.10, 0.88)
 	s.set_corner_radius_all(4)
 	s.set_border_width_all(1)
-	s.border_color = Color(0.22, 0.24, 0.32, 0.55)
-	# Apply to named containers found via the Control root
+	s.border_color = Color(0.55, 0.58, 0.65, 0.80)
 	var ctrl := get_node_or_null("Control")
 	if ctrl == null:
 		return
-	for name in ["LayerPanel", "StormPanel"]:
-		var panel := ctrl.get_node_or_null(name)
+	for panel_name in ["LayerPanel", "StormPanel"]:
+		var panel := ctrl.get_node_or_null(panel_name)
 		if panel != null:
 			panel.add_theme_stylebox_override("panel", s.duplicate())
 
@@ -168,7 +168,7 @@ func _highlight_slot(active: int) -> void:
 		var style := StyleBoxFlat.new()
 		style.bg_color = _COLOR_SLOT_ACTIVE.darkened(0.72) if is_active else _COLOR_SLOT_NORMAL
 		style.set_corner_radius_all(4)
-		style.set_border_width_all(1 if not is_active else 2)
+		style.set_border_width_all(2 if not is_active else 3)
 		style.border_color = _COLOR_SLOT_BORDER_ACTIVE if is_active else _COLOR_SLOT_BORDER_NORMAL
 		_slot_panels[i].add_theme_stylebox_override("panel", style)
 		# Label color: bright teal on active slot, muted on inactive

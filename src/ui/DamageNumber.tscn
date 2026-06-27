@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://dmgnumber001"]
+
+[ext_resource type="Script" path="res://src/ui/DamageNumber.gd" id="1_script"]
+
+[node name="DamageNumber" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="Label" type="Label" parent="."]

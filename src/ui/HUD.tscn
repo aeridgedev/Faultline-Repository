@@ -46,6 +46,15 @@ grow_horizontal = 0
 [node name="StormTimer" parent="Control/StormPanel" instance=ExtResource("2_stormtimer")]
 layout_mode = 2
 
+[node name="BottomBG" type="ColorRect" parent="Control"]
+layout_mode = 1
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -88.0
+color = Color(0.04, 0.05, 0.08, 0.78)
+
 [node name="BottomHUD" type="HBoxContainer" parent="Control"]
 layout_mode = 1
 anchor_left = 0.0

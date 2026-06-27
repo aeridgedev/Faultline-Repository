@@ -2,6 +2,8 @@
 class_name PlayerStats
 extends Node
 
+const _DamageNumberScene := preload("res://src/ui/DamageNumber.tscn")
+
 signal health_changed(new_hp: float, max_hp: float)
 signal player_died
 signal layer_changed(new_layer: int)
@@ -32,10 +34,20 @@ func take_damage(amount: float) -> void:
 	if current_health == 0.0 and life_capsule_active:
 		life_capsule_active = false
 		current_health = 1.0
+	if effective > 0.0:
+		_spawn_damage_number(effective)
 	health_changed.emit(current_health, max_health)
 	if current_health == 0.0:
 		is_dead = true
 		player_died.emit()
+
+
+func _spawn_damage_number(amount: float) -> void:
+	var player := get_parent()
+	var dn: DamageNumber = _DamageNumberScene.instantiate()
+	player.add_child(dn)
+	dn.global_position = player.global_position + Vector2(0.0, -Constants.TILE_SIZE * 1.5)
+	dn.setup(amount)
 
 
 func heal(amount: float) -> void:
