@@ -13,40 +13,40 @@
       "role": "TBD — narrow/efficient digging",
       "spawn_weight": 30,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.0,  "durability": 50.0 },
-        "Rare":      { "dig_time_mult": 0.85, "durability": 80.0 },
-        "Epic":      { "dig_time_mult": 0.70, "durability": 120.0 },
-        "Legendary": { "dig_time_mult": 0.55, "durability": 200.0 }
+        "Common":    { "dig_time_mult": 1.0,  "durability": 200.0 },
+        "Rare":      { "dig_time_mult": 0.85, "durability": 320.0 },
+        "Epic":      { "dig_time_mult": 0.70, "durability": 480.0 },
+        "Legendary": { "dig_time_mult": 0.55, "durability": 800.0 }
       }
     },
     "Burst": {
       "role": "TBD — area/multi-tile digging",
       "spawn_weight": 20,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.05, "durability": 45.0 },
-        "Rare":      { "dig_time_mult": 0.90, "durability": 72.0 },
-        "Epic":      { "dig_time_mult": 0.74, "durability": 110.0 },
-        "Legendary": { "dig_time_mult": 0.58, "durability": 180.0 }
+        "Common":    { "dig_time_mult": 1.05, "durability": 200.0 },
+        "Rare":      { "dig_time_mult": 0.90, "durability": 310.0 },
+        "Epic":      { "dig_time_mult": 0.74, "durability": 460.0 },
+        "Legendary": { "dig_time_mult": 0.58, "durability": 760.0 }
       }
     },
     "Thermal": {
       "role": "TBD — heat-based, strong vs Crystal",
       "spawn_weight": 10,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.0,  "durability": 48.0 },
-        "Rare":      { "dig_time_mult": 0.85, "durability": 76.0 },
-        "Epic":      { "dig_time_mult": 0.70, "durability": 115.0 },
-        "Legendary": { "dig_time_mult": 0.55, "durability": 190.0 }
+        "Common":    { "dig_time_mult": 1.0,  "durability": 200.0 },
+        "Rare":      { "dig_time_mult": 0.85, "durability": 315.0 },
+        "Epic":      { "dig_time_mult": 0.70, "durability": 470.0 },
+        "Legendary": { "dig_time_mult": 0.55, "durability": 780.0 }
       }
     },
     "Resonance": {
       "role": "TBD — vibration-based, strong vs Dense Rock",
       "spawn_weight": 10,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.0,  "durability": 48.0 },
-        "Rare":      { "dig_time_mult": 0.85, "durability": 76.0 },
-        "Epic":      { "dig_time_mult": 0.70, "durability": 115.0 },
-        "Legendary": { "dig_time_mult": 0.55, "durability": 190.0 }
+        "Common":    { "dig_time_mult": 1.0,  "durability": 200.0 },
+        "Rare":      { "dig_time_mult": 0.85, "durability": 315.0 },
+        "Epic":      { "dig_time_mult": 0.70, "durability": 470.0 },
+        "Legendary": { "dig_time_mult": 0.55, "durability": 780.0 }
       }
     }
   }

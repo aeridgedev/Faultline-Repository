@@ -43,6 +43,10 @@ var _hotbar: Hotbar = null
 var _relic_manager: RelicManager = null
 var _use_was_pressed: bool = false   # F-key edge detection (no input-map entry needed)
 
+# Floating status label — shows transient messages (drill broken, etc.) above the player.
+var _notify_label: Label = null
+var _notify_timer: float = 0.0
+
 
 func _ready() -> void:
 	var d: Dictionary = GameManager.data
@@ -53,6 +57,7 @@ func _ready() -> void:
 	_build_dev_sprite()
 	_build_dig_highlight()
 	_build_held_visual()
+	_build_notify_label()
 
 
 func _build_dev_sprite() -> void:
@@ -295,6 +300,25 @@ func _make_sword_tex() -> Texture2D:
 	return ImageTexture.create_from_image(img)
 
 
+func _build_notify_label() -> void:
+	_notify_label = Label.new()
+	_notify_label.z_index = 10
+	_notify_label.add_theme_font_size_override("font_size", 7)
+	_notify_label.add_theme_color_override("font_color", Color(1.0, 0.40, 0.15))
+	_notify_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_notify_label.visible = false
+	add_child(_notify_label)
+
+
+func _show_notify(text: String, duration: float = 3.5) -> void:
+	_notify_label.text = text
+	# Centre horizontally above the sprite (sprite top is at y≈-14).
+	_notify_label.position = Vector2(-40.0, -34.0)
+	_notify_label.custom_minimum_size = Vector2(80, 0)
+	_notify_label.visible = true
+	_notify_timer = duration
+
+
 func init_world(tm: TerrainManager) -> void:
 	_terrain_manager = tm
 
@@ -304,6 +328,12 @@ func equip_starter_drill() -> void:
 	_equipped_drill.drill_class = Constants.DrillClass.PRECISION
 	_equipped_drill.tier = Constants.Tier.COMMON
 	_equipped_drill.init_from_data()
+	_equipped_drill.drill_broken.connect(_on_drill_broken)
+
+
+func _on_drill_broken() -> void:
+	_show_notify("DRILL BROKEN\nNeeds Upgrade Template")
+	print("[Drill] Broken — all %d blocks used." % int(_equipped_drill.max_durability if _equipped_drill.max_durability != null else 0))
 
 
 func equip_starter_weapon() -> void:
@@ -416,6 +446,12 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
+	# Tick the floating notification label.
+	if _notify_timer > 0.0:
+		_notify_timer -= delta
+		if _notify_timer <= 0.0:
+			_notify_label.visible = false
+
 	_apply_gravity(delta)
 	_handle_movement(delta)
 	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
@@ -448,7 +484,13 @@ func _handle_drill(delta: float) -> void:
 	if not Input.is_action_pressed("drill"):
 		_reset_dig()
 		return
-	if _equipped_drill == null or _equipped_drill.is_broken or _terrain_manager == null:
+	if _equipped_drill == null or _terrain_manager == null:
+		return
+	if _equipped_drill.is_broken:
+		_reset_dig()  # ensure indicator is always hidden while broken
+		# Re-show the "broken" message each time the player clicks so they know why.
+		if Input.is_action_just_pressed("drill"):
+			_show_notify("DRILL BROKEN\nNeeds Upgrade Template")
 		return
 
 	var target := _get_dig_target()

@@ -1,28 +1,28 @@
 {
   "_meta": {
-    "description": "Per-layer chest loot pools. Chest SPAWN chance is computed by Constants.chest_spawn_chance(); this file controls WHAT a spawned chest contains. Upgrade Template = 10% weight within the relevant rarity pool (not a flat per-chest roll). Loot pools are NOT terrain-specific.",
-    "status": "PLACEHOLDER — weights structural, tuning TBD",
-    "categories": ["drill", "weapon", "armor", "relic", "throwable", "consumable", "special", "upgrade_template"]
+    "description": "Per-layer chest loot pools. Chest SPAWN chance is computed by Constants.chest_spawn_chance(); this file controls WHAT a spawned chest contains. Upgrade Template = 10% weight within the relevant rarity pool. Loot pools are NOT terrain-specific.",
+    "status": "PLACEHOLDER weights — tuned for feel, not final balance. Rarity skews Common-heavy in Crust, Legendary-available by Inner Core.",
+    "categories": ["drill", "weapon", "armor", "relic", "throwable", "consumable", "special"]
   },
   "layers": {
     "Crust": {
-      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
-      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "rarity_weights":   { "Common": 65, "Rare": 28, "Epic": 6,  "Legendary": 1  },
+      "category_weights": { "drill": 25,  "weapon": 25, "armor": 10, "relic": 2, "throwable": 8,  "consumable": 30, "special": 0 },
       "upgrade_template_weight": 10
     },
     "Mantle": {
-      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
-      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "rarity_weights":   { "Common": 45, "Rare": 38, "Epic": 14, "Legendary": 3  },
+      "category_weights": { "drill": 22,  "weapon": 22, "armor": 14, "relic": 4, "throwable": 10, "consumable": 26, "special": 2 },
       "upgrade_template_weight": 10
     },
     "Outer Core": {
-      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
-      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "rarity_weights":   { "Common": 20, "Rare": 42, "Epic": 28, "Legendary": 10 },
+      "category_weights": { "drill": 20,  "weapon": 20, "armor": 17, "relic": 7, "throwable": 12, "consumable": 20, "special": 4 },
       "upgrade_template_weight": 10
     },
     "Inner Core": {
-      "rarity_weights": { "Common": null, "Rare": null, "Epic": null, "Legendary": null },
-      "category_weights": { "drill": null, "weapon": null, "armor": null, "relic": null, "throwable": null, "consumable": null, "special": null },
+      "rarity_weights":   { "Common": 5,  "Rare": 28, "Epic": 44, "Legendary": 23 },
+      "category_weights": { "drill": 17,  "weapon": 17, "armor": 20, "relic": 12, "throwable": 13, "consumable": 15, "special": 6 },
       "upgrade_template_weight": 10
     }
   }
