@@ -64,7 +64,7 @@ anchor_left = 0.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -88.0
+offset_top = -58.0
 color = Color(0.04, 0.05, 0.08, 0.78)
 
 [node name="BottomHUD" type="HBoxContainer" parent="Control"]
@@ -74,14 +74,14 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
-offset_top = -80.0
+offset_top = -52.0
 offset_right = -8.0
 offset_bottom = -8.0
 grow_vertical = 0
 
 [node name="HealthSection" type="VBoxContainer" parent="Control/BottomHUD"]
 layout_mode = 2
-custom_minimum_size = Vector2(160, 0)
+custom_minimum_size = Vector2(110, 0)
 
 [node name="HPLabel" type="Label" parent="Control/BottomHUD/HealthSection"]
 layout_mode = 2
@@ -89,7 +89,7 @@ text = "HP"
 
 [node name="HealthBar" type="ProgressBar" parent="Control/BottomHUD/HealthSection"]
 layout_mode = 2
-custom_minimum_size = Vector2(150, 18)
+custom_minimum_size = Vector2(100, 10)
 max_value = 100.0
 value = 100.0
 show_percentage = false

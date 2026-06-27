@@ -8,6 +8,8 @@ class_name InventoryManager
 extends Node
 
 signal slot_changed(slot_idx: int, item)   # item = Dictionary or null
+signal inventory_opened
+signal inventory_closed
 
 const HOTBAR_START   := 0
 const HOTBAR_END     := 4   # HOTBAR_SLOTS - 1
@@ -16,13 +18,225 @@ const BACKPACK_START := 6   # HOTBAR_SLOTS + 1
 const BACKPACK_END   := 7   # TOTAL_CARRY_SLOTS - 1
 
 var _slots: Array = []   # size 8; each entry = Dictionary or null
+var is_open: bool = false
+
+var _panel_layer: CanvasLayer = null
+var _slot_rows: Array = []   # [{lbl: Label, btn: Button, idx: int}, ...]
 
 
 func _ready() -> void:
 	_slots.resize(Constants.TOTAL_CARRY_SLOTS)
 	for i in _slots.size():
 		_slots[i] = null
+	_build_panel()
+	# Auto-refresh the open panel whenever any slot changes.
+	slot_changed.connect(func(_idx: int, _item: Variant) -> void:
+		if is_open:
+			_refresh_panel())
 
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	if event.physical_keycode == KEY_F:
+		if is_open:
+			close_panel()
+		else:
+			open_panel()
+		get_viewport().set_input_as_handled()
+
+
+# --- Panel open / close ---
+
+func open_panel() -> void:
+	if is_open:
+		return
+	is_open = true
+	_refresh_panel()
+	_panel_layer.visible = true
+	inventory_opened.emit()
+
+
+func close_panel() -> void:
+	if not is_open:
+		return
+	is_open = false
+	_panel_layer.visible = false
+	inventory_closed.emit()
+
+
+# --- Panel construction (built once in _ready, shown/hidden on demand) ---
+
+func _build_panel() -> void:
+	_panel_layer = CanvasLayer.new()
+	_panel_layer.layer = 20
+	_panel_layer.visible = false
+	add_child(_panel_layer)
+
+	# Dim backdrop — blocks mouse input to the world while panel is open.
+	var backdrop := ColorRect.new()
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = Color(0, 0, 0, 0.55)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	_panel_layer.add_child(backdrop)
+
+	# Centered panel — 220×270.
+	var panel := Panel.new()
+	panel.anchor_left   = 0.5
+	panel.anchor_right  = 0.5
+	panel.anchor_top    = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left   = -110.0
+	panel.offset_right  =  110.0
+	panel.offset_top    = -135.0
+	panel.offset_bottom =  135.0
+
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.06, 0.07, 0.10, 0.97)
+	ps.set_border_width_all(1)
+	ps.border_color = Color(0.35, 0.40, 0.50)
+	ps.set_corner_radius_all(4)
+	panel.add_theme_stylebox_override("panel", ps)
+	_panel_layer.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left",   10)
+	margin.add_theme_constant_override("margin_right",  10)
+	margin.add_theme_constant_override("margin_top",    10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 3)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "INVENTORY   [F to close]"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 8)
+	title.add_theme_color_override("font_color", Color(0.90, 0.72, 0.30))
+	vbox.add_child(title)
+
+	_add_section(vbox, "HOTBAR", [0, 1, 2, 3, 4])
+	_add_section(vbox, "ARMOR", [ARMOR_SLOT])
+	_add_section(vbox, "BACKPACK", [BACKPACK_START, BACKPACK_END])
+
+
+func _add_section(vbox: VBoxContainer, header: String, indices: Array) -> void:
+	var sep := HSeparator.new()
+	vbox.add_child(sep)
+
+	var hdr := Label.new()
+	hdr.text = header
+	hdr.add_theme_font_size_override("font_size", 6)
+	hdr.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+	vbox.add_child(hdr)
+
+	for idx in indices:
+		vbox.add_child(_build_slot_row(idx))
+
+
+func _build_slot_row(slot_idx: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	# Fixed-width slot identifier.
+	var lbl_key := Label.new()
+	lbl_key.text = _slot_key_name(slot_idx)
+	lbl_key.custom_minimum_size = Vector2(22, 0)
+	lbl_key.add_theme_font_size_override("font_size", 7)
+	lbl_key.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+	row.add_child(lbl_key)
+
+	# Expanding item name — colored by tier when occupied.
+	var lbl_item := Label.new()
+	lbl_item.text = "—"
+	lbl_item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl_item.add_theme_font_size_override("font_size", 8)
+	lbl_item.add_theme_color_override("font_color", Color(0.30, 0.32, 0.38))
+	row.add_child(lbl_item)
+
+	var btn := Button.new()
+	btn.text = "Drop"
+	btn.custom_minimum_size = Vector2(38, 16)
+	btn.add_theme_font_size_override("font_size", 7)
+	btn.disabled = true
+	btn.pressed.connect(_on_discard_pressed.bind(slot_idx))
+	row.add_child(btn)
+
+	_slot_rows.append({"lbl": lbl_item, "btn": btn, "idx": slot_idx})
+	return row
+
+
+func _refresh_panel() -> void:
+	for entry in _slot_rows:
+		var idx: int    = entry.idx
+		var item        = _slots[idx]
+		var lbl: Label  = entry.lbl
+		var btn: Button = entry.btn
+		if item == null:
+			lbl.text = "—"
+			lbl.add_theme_color_override("font_color", Color(0.30, 0.32, 0.38))
+			btn.disabled = true
+		else:
+			var tier: int          = item.get("tier", Constants.Tier.COMMON)
+			var tier_col: Color    = Constants.TIER_COLORS.get(tier, Color(0.82, 0.86, 0.92))
+			var tier_name: String  = Constants.TIER_NAMES.get(tier, "Common")
+			var type_str: String   = item.get("type", "")
+			var cls_id: int        = item.get("item_class", -1)
+			lbl.text = "%s %s" % [tier_name, _item_display_name(type_str, cls_id)]
+			lbl.add_theme_color_override("font_color", tier_col)
+			btn.disabled = false
+
+
+func _slot_key_name(slot_idx: int) -> String:
+	match slot_idx:
+		0: return "H1"
+		1: return "H2"
+		2: return "H3"
+		3: return "H4"
+		4: return "H5"
+		ARMOR_SLOT:     return "ARM"
+		BACKPACK_START: return "BP1"
+		BACKPACK_END:   return "BP2"
+	return "?"
+
+
+func _item_display_name(type_str: String, cls_id: int) -> String:
+	match type_str:
+		"drill":      return Constants.DRILL_CLASS_NAMES.get(cls_id, "?")
+		"weapon":     return Constants.WEAPON_CLASS_NAMES.get(cls_id, "?")
+		"armor":      return Constants.ARMOR_CLASS_NAMES.get(cls_id, "?")
+		"relic":      return Constants.RELIC_NAMES.get(cls_id, "?")
+		"throwable":  return Constants.THROWABLE_NAMES.get(cls_id, "?")
+		"consumable": return "Consumable"
+	return type_str.capitalize()
+
+
+func _on_discard_pressed(slot_idx: int) -> void:
+	var item = _slots[slot_idx]
+	if item == null:
+		return
+	_spawn_loot_drop(item)
+	remove_item(slot_idx)   # emits slot_changed → _refresh_panel() via connected lambda
+
+
+func _spawn_loot_drop(item_data_dict: Dictionary) -> void:
+	var player := get_parent() as Node2D
+	if player == null:
+		return
+	var world := player.get_parent()
+	if world == null:
+		return
+	var drop := LootDrop.new()
+	drop.item_data = item_data_dict
+	drop.pickup_delay = 0.8   # prevents AutoCollect from instantly re-collecting at player position
+	world.add_child(drop)
+	drop.global_position = player.global_position
+
+
+# --- Slot operations ---
 
 ## Attempt to add item_data (Dictionary from LootTable) to the first available slot.
 ## Returns the slot index used, or -1 if no space.

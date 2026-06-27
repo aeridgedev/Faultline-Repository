@@ -27,6 +27,7 @@ func _ready() -> void:
 	var stamina := player.get_node("Stamina") as Stamina
 	var storm := _init_hazards(player.stats, stamina, layer_manager)
 	player.init_storm(storm)
+	(_world.get_node("PressureSystem") as PressureSystem).zero_gravity_changed.connect(player.set_zero_gravity)
 	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
 	_spawn_test_dummy(player.global_position)
 

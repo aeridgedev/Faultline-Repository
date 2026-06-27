@@ -15,6 +15,8 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if _inventory != null and _inventory.is_open:
+		return
 	if event is InputEventKey:
 		# NOTE: InputEvent has is_action_pressed(), NOT is_action_just_pressed()
 		# (that one only exists on the Input singleton). Inside _input(), a pressed

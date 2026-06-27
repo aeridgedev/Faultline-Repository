@@ -33,8 +33,6 @@ func _update_zero_gravity() -> void:
 	if in_hollow != _zero_gravity_active:
 		_zero_gravity_active = in_hollow
 		zero_gravity_changed.emit(_zero_gravity_active)
-		# TODO(step 1 ext): PlayerController should connect zero_gravity_changed
-		# and set its _gravity field to 0.0 / restore original when toggled.
 
 
 func _apply_tick() -> void:

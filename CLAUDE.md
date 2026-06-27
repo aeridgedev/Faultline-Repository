@@ -157,13 +157,13 @@ the user first.** The user works in **separate sessions per aspect**, so confirm
 which item this session targets before writing code.
 
 1. **Player movement + terrain**  ✓ complete
-2. **Drill system**  ← current frontier
-3. Layer/depth system + hazards
-4. Inventory + loot
+2. **Drill system**  ✓ complete
+3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker, zero-gravity Core Hollow)
+4. **Inventory + loot**  ✓ complete (InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest interactive UI, discard-to-world-drop)
 5. Weapons + combat
 6. Relics + throwables + consumables
 7. Storm system
-8. UI
+8. UI (HUD partially done; DeathScreen, SpectatorView, StormTimer stubs exist)
 9. **Network (last)** — retrofit authoritative server onto proven offline systems
 
 ## Working conventions
