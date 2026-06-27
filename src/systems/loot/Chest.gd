@@ -1,10 +1,9 @@
 ## Faultline — physical chest placed by ChestSpawner.
-## Player walks into range and presses E to open. Spawns a LootDrop in the world
-## and shows a popup with the item name, then switches to an open visual. One-time open.
+## Player walks into range and presses E to open an interactive popup.
+## The item inside is shown as a clickable button that transfers it directly
+## to the player's inventory. Popup closes on E or click outside.
 class_name Chest
 extends Node2D
-
-const LootDropScene := preload("res://src/systems/loot/LootDrop.tscn")
 
 signal chest_opened(chest: Chest)
 
@@ -13,8 +12,10 @@ var item_data: Dictionary = {}
 var source_layer: Constants.Layer = Constants.Layer.CRUST
 
 var _opened: bool = false
+var _item_taken: bool = false
 var _player_nearby: bool = false
 var _popup_visible: bool = false
+var _inventory: InventoryManager = null
 
 @onready var _sprite: Sprite2D = $Sprite2D
 @onready var _prompt: Label    = $Prompt
@@ -22,8 +23,9 @@ var _popup_visible: bool = false
 
 var _popup_layer: CanvasLayer = null
 var _popup_panel: Panel = null
-var _popup_type: Label = null
-var _popup_body: Label = null
+var _category_lbl: Label = null
+var _item_btn: Button = null
+var _status_label: Label = null
 
 
 func _ready() -> void:
@@ -54,14 +56,14 @@ func _build_chest_sprite(opened: bool) -> void:
 	img.fill(Color(0, 0, 0, 0))
 
 	if opened:
-		var OP := Color(0.10, 0.05, 0.02)   # dark interior void
-		var WM := Color(0.32, 0.17, 0.06)   # muted body wood
+		var OP := Color(0.10, 0.05, 0.02)
+		var WM := Color(0.32, 0.17, 0.06)
 		for y in H:
 			for x in W:
 				if x == 0 or y == 0 or x == W - 1 or y == H - 1:
 					img.set_pixel(x, y, K)
 				elif y <= 3:
-					img.set_pixel(x, y, OP)   # open lid = interior void
+					img.set_pixel(x, y, OP)
 				elif y == 4:
 					img.set_pixel(x, y, BN)
 				elif (x == 7 or x == 8) and y > 4:
@@ -103,38 +105,45 @@ func _build_popup() -> void:
 	_popup_layer.visible = false
 	add_child(_popup_layer)
 
-	# Add Panel to the layer FIRST so anchors resolve against the viewport.
-	_popup_panel = Panel.new()
-	_popup_layer.add_child(_popup_panel)
+	# Dim backdrop — clicking it closes the popup. Added first so the panel renders on top.
+	var backdrop := ColorRect.new()
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = Color(0, 0, 0, 0.42)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	backdrop.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_close_popup())
+	_popup_layer.add_child(backdrop)
 
-	# 220×88 panel, centered on screen via 0.5 anchors + pixel offsets.
+	# Centered panel — 260×180.
+	_popup_panel = Panel.new()
 	_popup_panel.anchor_left   = 0.5
 	_popup_panel.anchor_right  = 0.5
 	_popup_panel.anchor_top    = 0.5
 	_popup_panel.anchor_bottom = 0.5
-	_popup_panel.offset_left   = -110.0
-	_popup_panel.offset_right  =  110.0
-	_popup_panel.offset_top    = -44.0
-	_popup_panel.offset_bottom =  44.0
+	_popup_panel.offset_left   = -130.0
+	_popup_panel.offset_right  =  130.0
+	_popup_panel.offset_top    = -90.0
+	_popup_panel.offset_bottom =  90.0
 
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.05, 0.03, 0.94)
-	style.set_border_width_all(1)
-	style.border_color = Color(0.56, 0.34, 0.12)
-	style.set_corner_radius_all(3)
-	_popup_panel.add_theme_stylebox_override("panel", style)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.08, 0.05, 0.03, 0.96)
+	panel_style.set_border_width_all(1)
+	panel_style.border_color = Color(0.56, 0.34, 0.12)
+	panel_style.set_corner_radius_all(3)
+	_popup_panel.add_theme_stylebox_override("panel", panel_style)
+	_popup_layer.add_child(_popup_panel)
 
-	# Add MarginContainer to Panel FIRST, then set FULL_RECT preset.
 	var margin := MarginContainer.new()
 	_popup_panel.add_child(margin)
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left",   10)
-	margin.add_theme_constant_override("margin_right",  10)
-	margin.add_theme_constant_override("margin_top",     8)
-	margin.add_theme_constant_override("margin_bottom",  8)
+	margin.add_theme_constant_override("margin_left",   14)
+	margin.add_theme_constant_override("margin_right",  14)
+	margin.add_theme_constant_override("margin_top",    12)
+	margin.add_theme_constant_override("margin_bottom", 12)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
+	vbox.add_theme_constant_override("separation", 8)
 	margin.add_child(vbox)
 
 	var title := Label.new()
@@ -144,26 +153,106 @@ func _build_popup() -> void:
 	title.add_theme_color_override("font_color", Color(0.90, 0.72, 0.30))
 	vbox.add_child(title)
 
-	_popup_type = Label.new()
-	_popup_type.text = ""
-	_popup_type.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_popup_type.add_theme_font_size_override("font_size", 7)
-	_popup_type.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
-	vbox.add_child(_popup_type)
+	_category_lbl = Label.new()
+	_category_lbl.text = ""
+	_category_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_category_lbl.add_theme_font_size_override("font_size", 8)
+	_category_lbl.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+	vbox.add_child(_category_lbl)
 
-	_popup_body = Label.new()
-	_popup_body.text = ""
-	_popup_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_popup_body.add_theme_font_size_override("font_size", 10)
-	_popup_body.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65))
-	vbox.add_child(_popup_body)
+	_item_btn = Button.new()
+	_item_btn.custom_minimum_size = Vector2(0, 38)
+	_item_btn.add_theme_font_size_override("font_size", 11)
+	_item_btn.pressed.connect(_on_item_pressed)
+	vbox.add_child(_item_btn)
+
+	_status_label = Label.new()
+	_status_label.text = ""
+	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_label.add_theme_font_size_override("font_size", 8)
+	vbox.add_child(_status_label)
 
 	var hint := Label.new()
-	hint.text = "Press E to close"
+	hint.text = "Press E or click outside to close"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 7)
-	hint.add_theme_color_override("font_color", Color(0.40, 0.40, 0.40))
+	hint.add_theme_color_override("font_color", Color(0.32, 0.32, 0.38))
 	vbox.add_child(hint)
+
+
+func _setup_item_button() -> void:
+	if _item_btn == null:
+		return
+	if item_data.is_empty():
+		item_data = LootTable.roll(source_layer)
+
+	var type_str: String = item_data.get("type", "item")
+	var cls_id: int      = item_data.get("item_class", -1)
+	var tier: int        = item_data.get("tier", Constants.Tier.COMMON)
+	var tier_name: String = Constants.TIER_NAMES.get(tier, "Common")
+	var tier_col: Color   = Constants.TIER_COLORS.get(tier, Color(0.82, 0.86, 0.92))
+
+	if _category_lbl != null:
+		_category_lbl.text = _category_label(type_str)
+
+	_item_btn.text = "%s %s" % [tier_name, _item_name(type_str, cls_id)]
+	_style_item_button(tier_col)
+	_refresh_button_state()
+
+
+func _style_item_button(tier_col: Color) -> void:
+	var mk_box := func(bg: Color, border: Color, bw: int) -> StyleBoxFlat:
+		var s := StyleBoxFlat.new()
+		s.bg_color = bg
+		s.set_border_width_all(bw)
+		s.border_color = border
+		s.set_corner_radius_all(3)
+		return s
+
+	_item_btn.add_theme_stylebox_override("normal",
+		mk_box.call(tier_col.darkened(0.78), tier_col, 1))
+	_item_btn.add_theme_stylebox_override("hover",
+		mk_box.call(tier_col.darkened(0.58), tier_col.lightened(0.18), 2))
+	_item_btn.add_theme_stylebox_override("pressed",
+		mk_box.call(tier_col.darkened(0.48), tier_col, 2))
+	_item_btn.add_theme_stylebox_override("disabled",
+		mk_box.call(Color(0.10, 0.10, 0.12, 0.70), Color(0.30, 0.30, 0.34, 0.55), 1))
+
+	_item_btn.add_theme_color_override("font_color", tier_col.lightened(0.20))
+	_item_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 0.92))
+	_item_btn.add_theme_color_override("font_pressed_color", tier_col.lightened(0.30))
+	_item_btn.add_theme_color_override("font_disabled_color", Color(0.38, 0.38, 0.40))
+
+
+func _refresh_button_state() -> void:
+	if _item_btn == null:
+		return
+	if _item_taken:
+		_item_btn.disabled = true
+		_item_btn.tooltip_text = ""
+		_status_label.text = "Item taken"
+		_status_label.add_theme_color_override("font_color", Color(0.28, 0.72, 0.32))
+		return
+	if _inventory == null or not _inventory.can_add(item_data):
+		_item_btn.disabled = true
+		_item_btn.tooltip_text = "Inventory Full"
+		_status_label.text = "Inventory Full"
+		_status_label.add_theme_color_override("font_color", Color(0.82, 0.28, 0.22))
+	else:
+		_item_btn.disabled = false
+		_item_btn.tooltip_text = ""
+		_status_label.text = "Click to take"
+		_status_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+
+
+func _on_item_pressed() -> void:
+	if _item_taken or _inventory == null:
+		return
+	var result: int = _inventory.add_item(item_data)
+	if result >= 0:
+		_item_taken = true
+	# Always refresh — if add_item returned -1, inventory filled between state check and click.
+	_refresh_button_state()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -173,21 +262,26 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _popup_visible:
 		_close_popup()
 		get_viewport().set_input_as_handled()
-	elif not _opened and _player_nearby:
-		_open()
+	elif _player_nearby:
+		if not _opened:
+			_open()
+		else:
+			_show_popup()   # re-open popup for an already-opened chest
 		get_viewport().set_input_as_handled()
 
 
 func _on_body_entered(body: Node) -> void:
 	if body is PlayerController:
 		_player_nearby = true
-		if not _opened:
+		_inventory = body.get_node_or_null("InventoryManager") as InventoryManager
+		if not _popup_visible:
 			_prompt.visible = true
 
 
 func _on_body_exited(body: Node) -> void:
 	if body is PlayerController:
 		_player_nearby = false
+		_inventory = null
 		_prompt.visible = false
 		if _popup_visible:
 			_close_popup()
@@ -197,39 +291,27 @@ func _open() -> void:
 	if _opened:
 		return
 	_opened = true
-	_prompt.visible = false
 	_build_chest_sprite(true)
-	_spawn_loot_drop()
+	_setup_item_button()
 	_show_popup()
 	chest_opened.emit(self)
 
 
-func _spawn_loot_drop() -> void:
-	if item_data.is_empty():
-		item_data = LootTable.roll(source_layer)
-
-	var drop := LootDropScene.instantiate() as LootDrop
-	if drop == null:
-		push_error("[Chest] LootDrop.tscn failed to instantiate")
-		return
-	drop.item_data = item_data
-	drop.source_layer = source_layer
-	# Place the drop one tile above the chest so it lands on the surface.
-	get_parent().add_child(drop)
-	drop.global_position = global_position + Vector2(0.0, -float(Constants.TILE_SIZE))
-
-	if _popup_body != null:
-		var tier_name: String = Constants.TIER_NAMES.get(item_data.get("tier", Constants.Tier.COMMON), "Common")
-		var type_str: String = item_data.get("type", "item")
-		var cls_id: int = item_data.get("item_class", -1)
-		var tier_col: Color = Constants.TIER_COLORS.get(item_data.get("tier", Constants.Tier.COMMON), Color(0.82, 0.86, 0.92))
-		if _popup_type != null:
-			_popup_type.text = _category_label(type_str)
-		_popup_body.text = "%s %s" % [tier_name, _item_name(type_str, cls_id)]
-		_popup_body.add_theme_color_override("font_color", tier_col)
+func _show_popup() -> void:
+	_refresh_button_state()
+	_popup_visible = true
+	_popup_layer.visible = true
+	_prompt.visible = false
 
 
-# Short category tag shown above the item name, e.g. "— DRILL —"
+func _close_popup() -> void:
+	_popup_visible = false
+	_popup_layer.visible = false
+	if _player_nearby:
+		_prompt.visible = true
+
+
+# Short category tag shown above the button, e.g. "— DRILL —"
 func _category_label(type_str: String) -> String:
 	match type_str:
 		"drill":      return "— DRILL —"
@@ -238,10 +320,9 @@ func _category_label(type_str: String) -> String:
 		"relic":      return "— RELIC —"
 		"throwable":  return "— THROWABLE —"
 		"consumable": return "— CONSUMABLE —"
-	return ("— %s —" % type_str.to_upper())
+	return "— %s —" % type_str.to_upper()
 
 
-# Human-readable item name, e.g. "Common Precision" for a drill, "Common Swords" for a weapon.
 func _item_name(type_str: String, cls_id: int) -> String:
 	match type_str:
 		"drill":      return Constants.DRILL_CLASS_NAMES.get(cls_id, "?")
@@ -251,13 +332,3 @@ func _item_name(type_str: String, cls_id: int) -> String:
 		"throwable":  return Constants.THROWABLE_NAMES.get(cls_id, "?")
 		"consumable": return "Consumable"
 	return type_str.capitalize()
-
-
-func _show_popup() -> void:
-	_popup_visible = true
-	_popup_layer.visible = true
-
-
-func _close_popup() -> void:
-	_popup_visible = false
-	_popup_layer.visible = false

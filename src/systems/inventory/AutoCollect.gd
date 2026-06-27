@@ -28,7 +28,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _scan_for_drops() -> void:
-	if not _inventory.has_space():
+	# Skip scan only when every slot is full — armor slot counts separately.
+	if not _inventory.has_space() and _inventory.get_armor() != null:
 		return
 	if not LootRestriction.can_loot(_controller.is_drilling(), _controller.is_attacking()):
 		return
@@ -44,12 +45,12 @@ func _collect_nearby(node: Node, my_pos: Vector2) -> void:
 	if node is LootDrop:
 		var drop := node as LootDrop
 		if my_pos.distance_to(drop.global_position) <= _pickup_radius:
-			if _inventory.has_space():
+			if _inventory.can_add(drop.item_data):
 				var accepted := _inventory.add_item(drop.item_data)
 				if accepted >= 0:
 					drop.consume()
 					return
 	for child in node.get_children():
-		if not _inventory.has_space():
+		if not _inventory.has_space() and _inventory.get_armor() != null:
 			return
 		_collect_nearby(child, my_pos)

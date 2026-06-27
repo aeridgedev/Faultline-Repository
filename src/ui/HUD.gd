@@ -21,6 +21,11 @@ var _slot_dur_fills: Array[StyleBoxFlat] = []   # stored so color can be updated
 var _inventory: InventoryManager = null
 var _player: PlayerController = null
 
+# Armor slot panel — built in code, appended to _bottom_hud after the hotbar.
+var _armor_panel: PanelContainer = null
+var _armor_cls_label: Label = null
+var _armor_panel_style: StyleBoxFlat = null
+
 const _COLOR_SLOT_NORMAL := Color(0.10, 0.12, 0.17, 0.92)
 const _COLOR_SLOT_ACTIVE := Color(0.08, 0.88, 0.96, 0.95)
 const _COLOR_SLOT_BORDER_NORMAL := Color(0.55, 0.58, 0.65, 0.90)
@@ -35,6 +40,7 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 	_inventory = player.get_node("InventoryManager")
 
 	_build_hotbar_slots()
+	_build_armor_slot()
 	_style_health_bar()
 	_style_panels()
 
@@ -148,6 +154,61 @@ func _build_hotbar_slots() -> void:
 	_highlight_slot(0)
 
 
+# --- Armor slot panel ---
+
+func _build_armor_slot() -> void:
+	_armor_label.visible = false   # hide the tscn label; panel replaces it
+
+	_armor_panel = PanelContainer.new()
+	_armor_panel.custom_minimum_size = Vector2(72, 60)
+
+	var col := VBoxContainer.new()
+
+	var inner := VBoxContainer.new()
+	inner.alignment = BoxContainer.ALIGNMENT_CENTER
+	inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	var hdr := Label.new()
+	hdr.text = "ARM"
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hdr.add_theme_font_size_override("font_size", 9)
+	hdr.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+
+	_armor_cls_label = Label.new()
+	_armor_cls_label.text = "—"
+	_armor_cls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_armor_cls_label.add_theme_font_size_override("font_size", 10)
+	_armor_cls_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+	_armor_cls_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_armor_cls_label.custom_minimum_size = Vector2(66, 0)
+
+	inner.add_child(hdr)
+	inner.add_child(_armor_cls_label)
+	col.add_child(inner)
+	_armor_panel.add_child(col)
+	_bottom_hud.add_child(_armor_panel)
+
+	_armor_panel_style = StyleBoxFlat.new()
+	_armor_panel_style.bg_color = _COLOR_SLOT_NORMAL
+	_armor_panel_style.set_corner_radius_all(4)
+	_armor_panel_style.set_border_width_all(2)
+	_armor_panel_style.border_color = _COLOR_SLOT_BORDER_NORMAL
+	_armor_panel.add_theme_stylebox_override("panel", _armor_panel_style)
+
+
+func _set_armor_slot_style(equipped: bool, tier: int) -> void:
+	if _armor_panel_style == null or _armor_panel == null:
+		return
+	if equipped:
+		var tc: Color = Constants.TIER_COLORS.get(tier, Color(0.82, 0.86, 0.92))
+		_armor_panel_style.bg_color = tc.darkened(0.82)
+		_armor_panel_style.border_color = tc
+	else:
+		_armor_panel_style.bg_color = _COLOR_SLOT_NORMAL
+		_armor_panel_style.border_color = _COLOR_SLOT_BORDER_NORMAL
+	_armor_panel.add_theme_stylebox_override("panel", _armor_panel_style)
+
+
 # --- Signal handlers ---
 
 func _on_player_died() -> void:
@@ -208,15 +269,19 @@ func _highlight_slot(active: int) -> void:
 
 
 func _refresh_armor(item) -> void:
+	if _armor_cls_label == null:
+		return
 	if item == null:
-		_armor_label.text = "ARMOR\n—"
-		_armor_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+		_armor_cls_label.text = "—"
+		_armor_cls_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+		_set_armor_slot_style(false, Constants.Tier.COMMON)
 		return
 	var cls_name: String = Constants.ARMOR_CLASS_NAMES.get(item.get("item_class", -1), "?")
-	var tier_name: String = Constants.TIER_NAMES.get(item.get("tier", -1), "?")
-	_armor_label.text = "ARMOR\n%s\n%s" % [tier_name, cls_name]
-	var tier_col: Color = Constants.TIER_COLORS.get(item.get("tier", Constants.Tier.COMMON), Color(0.82, 0.86, 0.92))
-	_armor_label.add_theme_color_override("font_color", tier_col)
+	var tier: int = item.get("tier", Constants.Tier.COMMON)
+	var tier_col: Color = Constants.TIER_COLORS.get(tier, Color(0.82, 0.86, 0.92))
+	_armor_cls_label.text = cls_name
+	_armor_cls_label.add_theme_color_override("font_color", tier_col)
+	_set_armor_slot_style(true, tier)
 
 
 ## Shows or hides the durability bar for a hotbar slot and connects the signal.

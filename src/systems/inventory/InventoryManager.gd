@@ -72,6 +72,14 @@ func has_space() -> bool:
 	return false
 
 
+## True if item_data can be accepted — armor items check the dedicated armor slot
+## separately from the hotbar/backpack has_space() check.
+func can_add(item_data: Dictionary) -> bool:
+	if item_data.get("type", "") == "armor" and _slots[ARMOR_SLOT] == null:
+		return true
+	return has_space()
+
+
 func get_armor():
 	return _slots[ARMOR_SLOT]
 
