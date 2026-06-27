@@ -7,6 +7,7 @@ extends CanvasLayer
 @onready var _health_bar: ProgressBar = $Control/BottomHUD/HealthSection/HealthBar
 @onready var _armor_label: Label = $Control/BottomHUD/HealthSection/ArmorLabel
 @onready var _hotbar_row: HBoxContainer = $Control/BottomHUD/HotbarSection
+@onready var _bottom_hud: HBoxContainer = $Control/BottomHUD
 @onready var _storm_timer: StormTimer = $Control/StormPanel/StormTimer
 @onready var _layer_indicator: LayerIndicator = $Control/LayerPanel/LayerIndicator
 @onready var _death_screen: DeathScreen = $Control/DeathScreen
@@ -124,7 +125,7 @@ func _on_player_died() -> void:
 
 func _on_spectate_requested() -> void:
 	_death_screen.visible = false
-	$Control/BottomHUD.visible = false
+	_bottom_hud.visible = false
 	_spectator_view.show_spectating()
 
 

@@ -21,7 +21,7 @@ func throw(origin: Vector2, direction: Vector2, speed: float) -> void:
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
-	get_tree().create_timer(10.0).timeout.connect(queue_free)
+	get_tree().create_timer(10.0).timeout.connect(func(): if is_instance_valid(self): queue_free())
 	_build_dev_sprite()
 
 

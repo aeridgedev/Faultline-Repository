@@ -31,7 +31,7 @@ func consume_durability(amount: float) -> void:
 	current_durability = maxf(current_durability - amount, 0.0)
 	var _max := float(max_durability) if max_durability != null else 0.0
 	durability_changed.emit(current_durability, _max)
-	if current_durability == 0.0:
+	if current_durability == 0.0 and max_durability != null:
 		is_broken = true
 		drill_broken.emit()
 

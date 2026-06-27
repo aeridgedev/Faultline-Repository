@@ -327,7 +327,7 @@ func setup_hotbar() -> void:
 		inv.add_item({"type": "drill",      "item_class": Constants.DrillClass.PRECISION, "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "weapon",     "item_class": Constants.WeaponClass.SWORDS,   "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "throwable",  "item_class": Constants.Throwable.SMOKE_BOMB, "tier": Constants.Tier.COMMON})
-		inv.add_item({"type": "consumable", "item_class": 0,                              "tier": Constants.Tier.COMMON})
+		inv.add_item({"type": "consumable", "item_class": 1,                              "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "relic",      "item_class": Constants.Relic.SPEED,          "tier": Constants.Tier.COMMON})
 		inv.slot_changed.connect(func(slot: int, _item: Variant) -> void:
 			_consumable_cache.erase(slot))
@@ -405,8 +405,9 @@ func _get_or_create_consumable(slot: int, item_class: int) -> ConsumableBase:
 
 func _make_consumable(item_class: int) -> ConsumableBase:
 	match item_class:
-		0: return Medkit.new()
-		_: return null  # TBD: Lytes / ThermalCapsule / Bloodstim / FaultBeacon (step 6)
+		0: return Lytes.new()
+		1: return Medkit.new()
+		_: return null  # TBD: ThermalCapsule / Bloodstim / FaultBeacon (step 6)
 
 
 func _physics_process(delta: float) -> void:
@@ -540,6 +541,9 @@ func _try_attack() -> void:
 	# Swing duration = 1 / swing_speed; falls back to 0.5s while TBD.
 	var swing_spd: Variant = _equipped_weapon.swing_speed
 	_attack_timer = (1.0 / float(swing_spd)) if swing_spd != null else 0.5
+	# Haste relic reduces the cooldown between swings (mult > 1 = faster).
+	if _relic_manager != null:
+		_attack_timer /= _relic_manager.attack_speed_mult()
 
 	# Raycast toward mouse to find the nearest hittable PlayerStats in range.
 	var attack_dir := (get_global_mouse_position() - global_position).normalized()
@@ -566,7 +570,11 @@ func _try_attack() -> void:
 	var dmg: Variant = _equipped_weapon.damage
 	if dmg == null:
 		return  # TBD: no base damage value yet
-	target_stats.take_damage(float(dmg))
+	var total_dmg := float(dmg)
+	# Strength relic multiplies outgoing damage.
+	if _relic_manager != null:
+		total_dmg *= _relic_manager.damage_mult()
+	target_stats.take_damage(total_dmg)
 	_equipped_weapon.consume_durability(1.0)
 
 

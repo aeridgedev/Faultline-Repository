@@ -146,7 +146,7 @@ const ARMOR_CLASS_NAMES := {
 }
 
 # ---------------------------------------------------------------------------
-# RELICS — exactly 4. Can be dropped after pickup.
+# RELICS — exactly 4. Cannot be dropped after pickup.
 # Toughness is permanent; the others last ~3-4s (exact TBD).
 # ---------------------------------------------------------------------------
 enum Relic { HASTE, SPEED, STRENGTH, TOUGHNESS }

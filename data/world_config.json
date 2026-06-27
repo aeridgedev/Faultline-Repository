@@ -12,7 +12,6 @@
   "player_max_health":    100.0,
   "player_move_speed":    200.0,
   "player_gravity":       800.0,
-  "player_jump_velocity": -400.0,
 
   "sprint_speed_mult":          1.6,
   "stamina_max":                100.0,
