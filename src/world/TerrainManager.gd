@@ -146,7 +146,7 @@ func _tile_crystal() -> Image:
 	const S := 16
 	var K  := Color(0.05, 0.18, 0.28)   # dark teal border
 	var D  := Color(0.10, 0.36, 0.50)   # dark inner
-	var B  := Color(0.22, 0.62, 0.78)   # base
+	var _B := Color(0.22, 0.62, 0.78)   # base
 	var LT := Color(0.40, 0.82, 0.90)   # bright
 	var SH := Color(0.08, 0.42, 0.58)   # shine gradient start
 	var WH := Color(0.82, 0.97, 1.00)   # specular highlight

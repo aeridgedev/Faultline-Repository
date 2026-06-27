@@ -24,7 +24,9 @@ func _ready() -> void:
 	player.equip_starter_weapon()
 	player.get_node("DescentTracker").init(layer_manager)
 
-	var storm := _init_hazards(player.stats)
+	var stamina := player.get_node("Stamina") as Stamina
+	var storm := _init_hazards(player.stats, stamina, layer_manager)
+	player.init_storm(storm)
 	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
 	_spawn_test_dummy(player.global_position)
 
@@ -38,15 +40,15 @@ func _ready() -> void:
 	GameManager.start_match()
 
 
-func _init_hazards(stats: PlayerStats) -> StormSystem:
+func _init_hazards(stats: PlayerStats, stamina: Stamina, layer_manager: LayerManager) -> StormSystem:
 	var depth := _world.get_node("DepthHazard") as DepthHazard
-	depth.init(stats)
+	depth.init(stats, stamina)
 
 	var pressure := _world.get_node("PressureSystem") as PressureSystem
 	pressure.init(stats)
 
 	var storm := _world.get_node("StormSystem") as StormSystem
-	storm.init(stats)
+	storm.init(stats, layer_manager)
 	storm.start()
 	return storm
 

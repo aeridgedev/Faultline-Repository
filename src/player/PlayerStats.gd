@@ -16,6 +16,7 @@ var damage_reduction: float = 0.0   # 0.0–1.0; set by ToughnessRelic
 var life_capsule_active: bool = false  # set by LifeCapsule; consumed on first lethal hit
 
 var _current_layer: int = Constants.Layer.CRUST
+var _storm: StormSystem = null
 
 var equipped_armor: Node = null
 
@@ -50,10 +51,17 @@ func _spawn_damage_number(amount: float) -> void:
 	dn.setup(amount)
 
 
+func init_storm(storm: StormSystem) -> void:
+	_storm = storm
+
+
 func heal(amount: float) -> void:
 	if is_dead:
 		return
-	current_health = clampf(current_health + amount, 0.0, max_health)
+	var effective := amount
+	if _storm != null:
+		effective *= _storm.get_heal_mult()
+	current_health = clampf(current_health + effective, 0.0, max_health)
 	health_changed.emit(current_health, max_health)
 
 

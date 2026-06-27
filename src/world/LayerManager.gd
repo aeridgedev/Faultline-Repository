@@ -46,10 +46,10 @@ func layer_at_y(world_y: float) -> Constants.Layer:
 		# Heights TBD: return CRUST to avoid null-dereference crashes in callers.
 		if h == null:
 			return Constants.Layer.CRUST
-		var layer_top_px: int = accumulated_px
+		var _layer_top_px: int = accumulated_px
 		var layer_bottom_px: int = accumulated_px + h * Constants.TILE_SIZE
 		if world_y < layer_bottom_px:
-			return layer
+			return layer as Constants.Layer
 		accumulated_px = layer_bottom_px
 	return Constants.Layer.CORE_HOLLOW
 
@@ -69,3 +69,10 @@ func world_height_px() -> Variant:
 			return null
 		total += h * Constants.TILE_SIZE
 	return total
+
+
+func world_width_px() -> Variant:
+	var w: Variant = GameManager.data.get("world_width_tiles", null)
+	if w == null:
+		return null
+	return int(w) * Constants.TILE_SIZE

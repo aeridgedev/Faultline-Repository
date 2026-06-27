@@ -46,3 +46,9 @@ static func hardness_order() -> Array[Constants.TerrainType]:
 		Constants.TerrainType.CRYSTAL,
 		Constants.TerrainType.BEDROCK,
 	]
+
+
+# SOIL and ROCK are structurally weak: soft enough for the Resonance drill
+# to detect via vibration. Used by ResonanceOverlay to paint its highlight.
+static func is_structurally_weak(type: Constants.TerrainType) -> bool:
+	return type == Constants.TerrainType.SOIL or type == Constants.TerrainType.ROCK

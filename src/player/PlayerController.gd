@@ -15,6 +15,7 @@ var _sprint_mult: float = 1.0   # TBD: loaded from GameManager.data["sprint_spee
 var _sprint_cost: float = 0.0   # TBD: stamina/sec while sprinting
 
 var _terrain_manager: TerrainManager = null
+var _storm: StormSystem = null
 var _equipped_drill: DrillBase = null
 var _equipped_weapon: WeaponBase = null
 
@@ -25,6 +26,8 @@ var _attack_timer: float = 0.0  # counts down while swing is active
 
 var _dig_highlight: Node2D = null   # world-space drill target indicator
 var _dig_fill: Sprite2D = null      # fills up as the tile is mined
+
+var _resonance_overlay: ResonanceOverlay = null
 
 var _held_pivot: Node2D = null      # rotates the held tool toward the aim point
 var _held_sprite: Sprite2D = null   # the in-hand drill / sword visual
@@ -58,6 +61,7 @@ func _ready() -> void:
 	_build_dig_highlight()
 	_build_held_visual()
 	_build_notify_label()
+	_build_resonance_overlay()
 
 
 func _build_dev_sprite() -> void:
@@ -236,7 +240,7 @@ func _make_drill_tex() -> Texture2D:
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	for x in range(W):
-		var taper := clampi(x - 9, 0, H / 2 - 1)
+		var taper := clampi(x - 9, 0, int(H / 2) - 1)
 		var y_min := taper; var y_max := H - 1 - taper
 		if y_max < y_min:
 			continue
@@ -276,7 +280,7 @@ func _make_sword_tex() -> Texture2D:
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	for x in range(W):
-		var taper := clampi(x - (W - 5), 0, H / 2 - 1)
+		var taper := clampi(x - (W - 5), 0, int(H / 2) - 1)
 		var y_min := taper; var y_max := H - 1 - taper
 		if y_max < y_min:
 			continue
@@ -287,11 +291,11 @@ func _make_sword_tex() -> Texture2D:
 			elif x < 3:
 				img.set_pixel(x, y, H2 if (x + y) % 2 == 0 else H1)
 			elif x < 5:
-				img.set_pixel(x, y, G2 if y <= H / 2 - 1 else G1)
+				img.set_pixel(x, y, G2 if y <= int(H / 2) - 1 else G1)
 			else:
 				if y == y_min + 1:
 					img.set_pixel(x, y, BE)                   # bright edge
-				elif y == (y_min + y_max) / 2:
+				elif y == (y_min + y_max) >> 1:
 					img.set_pixel(x, y, BF)                   # fuller groove
 				elif y == y_max - 1:
 					img.set_pixel(x, y, BS)                   # shadow edge
@@ -310,6 +314,22 @@ func _build_notify_label() -> void:
 	add_child(_notify_label)
 
 
+func _build_resonance_overlay() -> void:
+	_resonance_overlay = ResonanceOverlay.new()
+	_resonance_overlay.top_level = true
+	_resonance_overlay.visible = false
+	add_child(_resonance_overlay)
+
+
+func _update_resonance_visibility() -> void:
+	if _resonance_overlay == null:
+		return
+	var should_show := (_equipped_drill != null
+			and not _equipped_drill.is_broken
+			and DrillClassData.reveals_weak_terrain(_equipped_drill.drill_class))
+	_resonance_overlay.visible = should_show
+
+
 func _show_notify(text: String, duration: float = 3.5) -> void:
 	_notify_label.text = text
 	# Centre horizontally above the sprite (sprite top is at y≈-14).
@@ -321,6 +341,14 @@ func _show_notify(text: String, duration: float = 3.5) -> void:
 
 func init_world(tm: TerrainManager) -> void:
 	_terrain_manager = tm
+	if _resonance_overlay != null:
+		_resonance_overlay.setup(self, _terrain_manager)
+		_update_resonance_visibility()
+
+
+func init_storm(storm: StormSystem) -> void:
+	_storm = storm
+	stats.init_storm(storm)
 
 
 func equip_starter_drill() -> void:
@@ -329,11 +357,25 @@ func equip_starter_drill() -> void:
 	_equipped_drill.tier = Constants.Tier.COMMON
 	_equipped_drill.init_from_data()
 	_equipped_drill.drill_broken.connect(_on_drill_broken)
+	_equipped_drill.equip()
+	_update_resonance_visibility()
 
 
 func _on_drill_broken() -> void:
 	_show_notify("DRILL BROKEN\nNeeds Upgrade Template")
 	print("[Drill] Broken — all %d blocks used." % int(_equipped_drill.max_durability if _equipped_drill.max_durability != null else 0))
+	_update_resonance_visibility()
+
+
+# Called by the inventory system when the player picks up or swaps drills.
+# Unequips the current drill (hides Resonance overlay etc.) then wires the new one.
+func equip_drill(drill: DrillBase) -> void:
+	if _equipped_drill != null:
+		_equipped_drill.unequip()
+	_equipped_drill = drill
+	_equipped_drill.drill_broken.connect(_on_drill_broken)
+	_equipped_drill.equip()
+	_update_resonance_visibility()
 
 
 func equip_starter_weapon() -> void:
@@ -506,9 +548,32 @@ func _handle_drill(delta: float) -> void:
 	_dig_timer -= delta
 	_update_dig_highlight()
 	if _dig_timer <= 0.0:
-		if _terrain_manager.destroy_tile(_dig_target):
-			_equipped_drill.consume_durability(1.0)
+		_complete_dig()
 		_reset_dig()
+
+
+func _complete_dig() -> void:
+	if not _terrain_manager.destroy_tile(_dig_target):
+		return
+	_equipped_drill.consume_durability(1.0)
+	# Burst: also destroys the next tile in the dig direction (one tile beyond the primary).
+	if DrillClassData.burst_tile_count(_equipped_drill.drill_class) > 1:
+		var secondary := _calc_burst_secondary()
+		if _terrain_manager.destroy_tile(secondary):
+			_equipped_drill.consume_durability(1.0)
+
+
+# Returns the cell one step beyond the primary dig target in the dominant dig direction.
+# Used by Burst drills to destroy a second tile per completed dig.
+func _calc_burst_secondary() -> Vector2i:
+	var player_cell := _terrain_manager.world_to_cell(global_position)
+	var diff        := _dig_target - player_cell
+	var step: Vector2i
+	if abs(diff.x) >= abs(diff.y):
+		step = Vector2i(signi(diff.x), 0)
+	else:
+		step = Vector2i(0, signi(diff.y))
+	return _dig_target + step
 
 
 func _update_dig_highlight() -> void:
@@ -541,14 +606,21 @@ func _calc_dig_duration(cell: Vector2i) -> float:
 	if terrain_type == null:
 		return 0.0
 	var base: Variant = TerrainTypes.base_dig_time(terrain_type)
-	var class_mult: Variant = TerrainTypes.class_effectiveness(terrain_type, _equipped_drill.drill_class)
+	# Thermal ignores class_effectiveness — uniform dig speed on all terrain.
+	var class_mult: Variant = null
+	if not DrillClassData.ignores_terrain_effectiveness(_equipped_drill.drill_class):
+		class_mult = TerrainTypes.class_effectiveness(terrain_type, _equipped_drill.drill_class)
 	var tier_mult: Variant = DrillTier.dig_time_mult(_equipped_drill.drill_class, _equipped_drill.tier)
-	# TBD: all values null until balance pass; 1.0 keeps the dig system functional in the meantime
 	var duration := float(base) if base != null else 1.0
 	if class_mult != null:
 		duration *= float(class_mult)
 	if tier_mult != null:
 		duration *= float(tier_mult)
+	# Storm reduces drill efficiency — lower mult means longer dig time.
+	if _storm != null:
+		var storm_eff := _storm.get_drill_efficiency_mult()
+		if storm_eff > 0.0:
+			duration /= storm_eff
 	return duration
 
 

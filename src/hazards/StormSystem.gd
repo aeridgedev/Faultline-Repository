@@ -1,8 +1,18 @@
-## Faultline — match-time storm that descends through layers every ~3.5 min.
-## Phase timings and layer order are LOCKED in Constants.STORM_PHASES.
-## Applies storm_dps (TBD) each frame to any player whose layer is at or above
-## the current storm layer. At CORE_HOLLOW_DEADLINE_SECONDS, any player not in
-## Core Hollow is instantly killed.
+## Faultline — descending storm that consumes layers every ~3.5 min.
+##
+## Storm front moves continuously through each layer, interpolated between the
+## layer's top and bottom over the phase duration. Position-based check:
+##   player is in storm zone  ↔  player.Y < storm_front_Y
+## (Godot Y increases downward; the storm descends from above.)
+##
+## Visible effects when inside the storm zone:
+##   • Passive DPS (storm_dps from data)
+##   • Reduced drill efficiency (storm_drill_efficiency_mult)
+##   • Reduced healing (storm_heal_mult)
+##   • Red screen-space overlay
+##
+## World-space visual: a Polygon2D descending from off-screen top to the storm
+## front, gradient from solid red (deep in storm) to nearly transparent at front.
 class_name StormSystem
 extends Node
 
@@ -10,14 +20,46 @@ signal storm_advanced(region_name: String)
 signal storm_deadline_reached
 
 var _stats: PlayerStats = null
+var _layer_manager: LayerManager = null
 
 var _phase_idx: int = 0
 var _deadline_fired: bool = false
 var _running: bool = false
 
+# World-space storm zone polygon (visible in the game world)
+var _storm_poly: Polygon2D = null
 
-func init(stats: PlayerStats) -> void:
+# Screen-space tint overlay (CanvasLayer above world, below HUD)
+var _screen_layer: CanvasLayer = null
+var _screen_overlay: ColorRect = null
+
+
+func init(stats: PlayerStats, layer_manager: LayerManager) -> void:
 	_stats = stats
+	_layer_manager = layer_manager
+	_build_visuals()
+
+
+func _build_visuals() -> void:
+	# World-space polygon: sits in World's coordinate space via the Node ancestor
+	_storm_poly = Polygon2D.new()
+	_storm_poly.name = "StormZonePoly"
+	_storm_poly.z_index = -1
+	_storm_poly.z_as_relative = true
+	add_child(_storm_poly)
+
+	# Screen-space red tint when inside storm
+	_screen_layer = CanvasLayer.new()
+	_screen_layer.name = "StormScreenLayer"
+	_screen_layer.layer = 1
+	add_child(_screen_layer)
+
+	_screen_overlay = ColorRect.new()
+	_screen_overlay.name = "StormOverlay"
+	_screen_overlay.color = Color(0.70, 0.08, 0.04, 0.0)
+	_screen_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_screen_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screen_layer.add_child(_screen_overlay)
 
 
 func start() -> void:
@@ -26,16 +68,13 @@ func start() -> void:
 	_deadline_fired = false
 
 
-# --- Phase advancement reads from GameManager.match_elapsed (single source of truth) ---
-
 func _process(_delta: float) -> void:
 	if not _running:
 		return
 	_advance_phase_if_needed()
 	_check_deadline()
+	_update_visuals()
 
-
-# --- Damage application (physics-rate for smooth DPS) ---
 
 func _physics_process(delta: float) -> void:
 	if not _running or _stats == null or _stats.is_dead or _stats.max_health <= 0.0:
@@ -44,11 +83,56 @@ func _physics_process(delta: float) -> void:
 		return
 	var dps: Variant = GameManager.data.get("storm_dps", null)
 	if dps == null:
-		return  # TBD: no values until balance pass
+		return
 	_stats.take_damage(float(dps) * delta)
 
 
-# --- Phase logic ---
+# --- Visuals ---------------------------------------------------------------
+
+func _update_visuals() -> void:
+	var front_y := get_storm_front_y()
+	_update_storm_poly(front_y)
+	_update_screen_overlay()
+
+
+func _update_storm_poly(front_y: float) -> void:
+	if _storm_poly == null or _layer_manager == null:
+		return
+	if front_y < -500.0:
+		_storm_poly.polygon = PackedVector2Array()
+		return
+
+	var world_w_var = _layer_manager.world_width_px()
+	if world_w_var == null:
+		return
+	var w := float(world_w_var) + 200.0
+
+	# Gradient from solid at the top to nearly transparent at storm front.
+	_storm_poly.polygon = PackedVector2Array([
+		Vector2(-100.0, -5000.0),
+		Vector2(w,      -5000.0),
+		Vector2(w,       front_y),
+		Vector2(-100.0,  front_y),
+	])
+	_storm_poly.vertex_colors = PackedColorArray([
+		Color(0.72, 0.10, 0.06, 0.55),   # top-left  — dense storm core
+		Color(0.72, 0.10, 0.06, 0.55),   # top-right — dense storm core
+		Color(0.72, 0.10, 0.06, 0.04),   # front-right — nearly transparent
+		Color(0.72, 0.10, 0.06, 0.04),   # front-left  — nearly transparent
+	])
+
+
+func _update_screen_overlay() -> void:
+	if _screen_overlay == null:
+		return
+	if _is_player_in_storm():
+		var alpha: Variant = GameManager.data.get("storm_overlay_alpha", 0.35)
+		_screen_overlay.color.a = float(alpha)
+	else:
+		_screen_overlay.color.a = 0.0
+
+
+# --- Phase advancement -----------------------------------------------------
 
 func _advance_phase_if_needed() -> void:
 	var elapsed := GameManager.match_elapsed
@@ -72,31 +156,83 @@ func _check_deadline() -> void:
 	if _stats == null or _stats.is_dead:
 		return
 	if _stats.get_layer() != Constants.Layer.CORE_HOLLOW:
-		# Kill instantly: deal more than any possible max_health.
 		_stats.take_damage(_stats.max_health + 1.0)
 
+
+# --- Storm front position --------------------------------------------------
+
+## World-space Y of the descending storm front.
+## Returns a large negative number (< -500) when the storm has not yet entered
+## the playfield (Atmosphere phase). Increases as the storm descends.
+func get_storm_front_y() -> float:
+	var phases := Constants.STORM_PHASES
+	var current: Dictionary = phases[_phase_idx]
+	var region: String = current["region"]
+
+	if region == "Atmosphere":
+		return -9999.0
+
+	if region == "Core Hollow (final)":
+		if _layer_manager == null:
+			return 99999.0
+		var bottom = _layer_manager.world_height_px()
+		return float(bottom) if bottom != null else 99999.0
+
+	var layer := _region_to_layer_int(region)
+	if layer < 0 or _layer_manager == null:
+		return -9999.0
+
+	var layer_top = _layer_manager.get_layer_top_y(layer)
+	var layer_bottom = _layer_manager.get_layer_bottom_y(layer)
+	if layer_top == null or layer_bottom == null:
+		return -9999.0
+
+	var phase_start := float(current["start"])
+	var phase_end_var = current["end"]
+	var phase_end := float(phase_end_var) if phase_end_var != -1 else float(phase_start + 210.0)
+	var t := clampf((GameManager.match_elapsed - phase_start) / (phase_end - phase_start), 0.0, 1.0)
+	return lerpf(float(layer_top), float(layer_bottom), t)
+
+
+# --- Storm zone check (position-based) ------------------------------------
 
 func _is_player_in_storm() -> bool:
 	if _stats == null:
 		return false
-	var storm_layer_int := _region_to_layer_int(get_current_region())
-	if storm_layer_int < 0:
-		return false  # "Atmosphere" phase — no player areas are stormed yet
-	# Player is in storm if they haven't descended past the currently stormed layer.
-	return _stats.get_layer() <= storm_layer_int
+	var front_y := get_storm_front_y()
+	if front_y < -500.0:
+		return false   # Atmosphere phase — no storm zone yet
+	var player := _stats.get_parent() as Node2D
+	if player == null:
+		return false
+	return player.global_position.y < front_y
 
 
-func _region_to_layer_int(region: String) -> int:
-	match region:
-		"Crust":               return Constants.Layer.CRUST
-		"Mantle":              return Constants.Layer.MANTLE
-		"Outer Core":          return Constants.Layer.OUTER_CORE
-		"Inner Core":          return Constants.Layer.INNER_CORE
-		"Core Hollow (final)": return Constants.Layer.CORE_HOLLOW
-		_:                     return -1  # "Atmosphere" or unknown
+# --- Public modifier API (queried by PlayerController + PlayerStats) -------
+
+## Returns the drill dig-time multiplier. Drill takes longer in the storm.
+## Callers divide dig_duration by this: lower value → slower drilling.
+func get_drill_efficiency_mult() -> float:
+	if not _is_player_in_storm():
+		return 1.0
+	var mult: Variant = GameManager.data.get("storm_drill_efficiency_mult", null)
+	return float(mult) if mult != null else 0.5
 
 
-# --- Public query API (used by UI in step 8) ---
+## Returns the heal effectiveness multiplier. Healing is reduced in the storm.
+func get_heal_mult() -> float:
+	if not _is_player_in_storm():
+		return 1.0
+	var mult: Variant = GameManager.data.get("storm_heal_mult", null)
+	return float(mult) if mult != null else 0.5
+
+
+## True while the storm front is anywhere inside the playfield.
+func is_storm_active() -> bool:
+	return _running and get_storm_front_y() >= -500.0
+
+
+# --- Public query API (used by StormTimer UI) ------------------------------
 
 func get_elapsed() -> float:
 	return GameManager.match_elapsed
@@ -109,3 +245,15 @@ func get_current_region() -> String:
 func get_phase_end_seconds() -> float:
 	var end_val = Constants.STORM_PHASES[_phase_idx]["end"]
 	return float(end_val) if end_val != -1 else -1.0
+
+
+# --- Helpers ---------------------------------------------------------------
+
+func _region_to_layer_int(region: String) -> int:
+	match region:
+		"Crust":               return Constants.Layer.CRUST
+		"Mantle":              return Constants.Layer.MANTLE
+		"Outer Core":          return Constants.Layer.OUTER_CORE
+		"Inner Core":          return Constants.Layer.INNER_CORE
+		"Core Hollow (final)": return Constants.Layer.CORE_HOLLOW
+		_:                     return -1

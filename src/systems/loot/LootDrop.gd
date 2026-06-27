@@ -24,7 +24,7 @@ func _build_dev_marker() -> void:
 	var tier: int = item_data.get("tier", Constants.Tier.COMMON)
 	var base: Color = Constants.TIER_COLORS.get(tier, Color(0.7, 0.7, 0.7))
 	# Diamond gem shape (12×12, rotated square). Tier-colored with inner shading.
-	const S := 12; const MID := S / 2 - 1
+	const S := 12; const MID := int(S / 2) - 1
 	var K  := Color(0.04, 0.05, 0.08)
 	var lit := base.lightened(0.28)
 	var shd := base.darkened(0.32)

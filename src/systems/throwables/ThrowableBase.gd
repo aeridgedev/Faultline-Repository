@@ -70,13 +70,13 @@ func _apply_effect(hit_body: Node) -> void:
 			print("[Throwable] Smoke Bomb detonated")
 		Constants.Throwable.PARALYSIS_BOMB:
 			# TODO(step 6 balance): freeze hit player's input for TBD seconds.
-			_try_apply_to_stats(hit_body, func(s): print("[Throwable] Paralysis on player"))
+			_try_apply_to_stats(hit_body, func(_s): print("[Throwable] Paralysis on player"))
 		Constants.Throwable.WEAKNESS_BOMB:
 			# TODO(step 6 balance): reduce hit player's damage dealt for TBD seconds.
-			_try_apply_to_stats(hit_body, func(s): print("[Throwable] Weakness on player"))
+			_try_apply_to_stats(hit_body, func(_s): print("[Throwable] Weakness on player"))
 		Constants.Throwable.HEAT_CHARGE:
 			# TODO(step 6 balance): deal fire damage over TBD seconds in radius.
-			_try_apply_to_stats(hit_body, func(s): print("[Throwable] Heat Charge on player"))
+			_try_apply_to_stats(hit_body, func(_s): print("[Throwable] Heat Charge on player"))
 		Constants.Throwable.DUST_CAPSULE:
 			# TODO(step 6 balance): obscure drill targeting in radius for TBD seconds.
 			print("[Throwable] Dust Capsule detonated")

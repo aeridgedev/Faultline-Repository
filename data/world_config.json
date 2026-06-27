@@ -25,13 +25,30 @@
   "_hazards_meta": "DEV PLACEHOLDERS — provisional hazard/relic/scanner values so these systems do something. NOT final.",
 
   "storm_dps": 6.0,
+  "storm_drill_efficiency_mult": 0.5,
+  "storm_heal_mult": 0.5,
+  "storm_overlay_alpha": 0.35,
+
   "pressure_dps_base": 2.0,
+
   "depth_hazard": {
     "crust_dps": 0.0,
     "mantle_dps": 1.0,
     "outer_core_dps": 2.5,
     "inner_core_dps": 5.0,
-    "core_hollow_dps": 0.0
+    "core_hollow_dps": 0.0,
+
+    "crust_oxygen_drain": 0.0,
+    "mantle_oxygen_drain": 2.0,
+    "outer_core_oxygen_drain": 5.0,
+    "inner_core_oxygen_drain": 10.0,
+    "core_hollow_oxygen_drain": 0.0,
+
+    "crust_visibility_alpha": 0.0,
+    "mantle_visibility_alpha": 0.08,
+    "outer_core_visibility_alpha": 0.18,
+    "inner_core_visibility_alpha": 0.30,
+    "core_hollow_visibility_alpha": 0.05
   },
 
   "relic_duration": { "haste": 3.5, "speed": 3.5, "strength": 3.5 },

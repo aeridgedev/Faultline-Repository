@@ -37,7 +37,8 @@ func init_from_data() -> void:
 	damage       = float(base_dmg)   * scaling["damage"]      if base_dmg   != null else null
 	swing_speed  = float(base_swing) * scaling["swing"]       if base_swing != null else null
 	max_durability = float(base_dur) * scaling["durability"]  if base_dur   != null else null
-	attack_range = float(base_range)                          if base_range != null else null
+	if base_range != null:
+		attack_range = float(base_range)
 
 	current_durability = float(max_durability) if max_durability != null else 0.0
 	is_broken = false

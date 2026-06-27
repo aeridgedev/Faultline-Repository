@@ -40,5 +40,5 @@ func use_progress() -> float:
 	return clampf(_use_progress / required, 0.0, 1.0)
 
 
-func _on_use_complete(stats: PlayerStats) -> void:
+func _on_use_complete(_stats: PlayerStats) -> void:
 	pass  # override in subclasses

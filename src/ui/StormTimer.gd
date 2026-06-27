@@ -32,7 +32,7 @@ func _refresh_countdown() -> void:
 		_countdown_label.text = "FINAL"
 		return
 	var remaining := maxf(phase_end - _storm.get_elapsed(), 0.0)
-	_countdown_label.text = "%d:%02d" % [int(remaining) / 60, int(remaining) % 60]
+	_countdown_label.text = "%d:%02d" % [int(int(remaining) / 60), int(remaining) % 60]
 
 
 func _on_storm_advanced(region_name: String) -> void:
