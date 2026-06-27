@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://flt_killcounter"]
+
+[ext_resource type="Script" path="res://src/ui/KillCounter.gd" id="1_killcounter"]
+
+[node name="KillCounter" type="PanelContainer"]
+script = ExtResource("1_killcounter")

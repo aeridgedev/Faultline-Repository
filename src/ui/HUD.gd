@@ -12,6 +12,7 @@ extends CanvasLayer
 @onready var _layer_indicator: LayerIndicator = $Control/LayerPanel/LayerIndicator
 @onready var _death_screen: DeathScreen = $Control/DeathScreen
 @onready var _spectator_view: SpectatorView = $Control/SpectatorView
+@onready var _kill_counter: KillCounter = $Control/KillCounter
 
 var _slot_panels: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
@@ -52,6 +53,7 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 
 	_layer_indicator.init(stats)
 	_storm_timer.init(storm)
+	_kill_counter.init(stats)
 
 
 func _style_health_bar() -> void:
@@ -79,7 +81,7 @@ func _style_panels() -> void:
 	var ctrl := get_node_or_null("Control")
 	if ctrl == null:
 		return
-	for panel_name in ["LayerPanel", "StormPanel"]:
+	for panel_name in ["LayerPanel", "StormPanel", "KillCounter"]:
 		var panel := ctrl.get_node_or_null(panel_name)
 		if panel != null:
 			panel.add_theme_stylebox_override("panel", s.duplicate())
@@ -207,11 +209,14 @@ func _highlight_slot(active: int) -> void:
 
 func _refresh_armor(item) -> void:
 	if item == null:
-		_armor_label.text = "ARMOR: —"
+		_armor_label.text = "ARMOR\n—"
+		_armor_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
 		return
 	var cls_name: String = Constants.ARMOR_CLASS_NAMES.get(item.get("item_class", -1), "?")
 	var tier_name: String = Constants.TIER_NAMES.get(item.get("tier", -1), "?")
-	_armor_label.text = "ARMOR: %s %s" % [tier_name, cls_name]
+	_armor_label.text = "ARMOR\n%s\n%s" % [tier_name, cls_name]
+	var tier_col: Color = Constants.TIER_COLORS.get(item.get("tier", Constants.Tier.COMMON), Color(0.82, 0.86, 0.92))
+	_armor_label.add_theme_color_override("font_color", tier_col)
 
 
 ## Shows or hides the durability bar for a hotbar slot and connects the signal.

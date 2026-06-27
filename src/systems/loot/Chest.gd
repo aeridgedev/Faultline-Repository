@@ -1,8 +1,10 @@
 ## Faultline — physical chest placed by ChestSpawner.
-## Player walks into range and presses E to open. Shows an "Empty" popup
-## (loot not yet implemented) and switches to an open visual. One-time open.
+## Player walks into range and presses E to open. Spawns a LootDrop in the world
+## and shows a popup with the item name, then switches to an open visual. One-time open.
 class_name Chest
 extends Node2D
+
+const LootDropScene := preload("res://src/systems/loot/LootDrop.tscn")
 
 signal chest_opened(chest: Chest)
 
@@ -20,6 +22,8 @@ var _popup_visible: bool = false
 
 var _popup_layer: CanvasLayer = null
 var _popup_panel: Panel = null
+var _popup_type: Label = null
+var _popup_body: Label = null
 
 
 func _ready() -> void:
@@ -140,12 +144,19 @@ func _build_popup() -> void:
 	title.add_theme_color_override("font_color", Color(0.90, 0.72, 0.30))
 	vbox.add_child(title)
 
-	var body := Label.new()
-	body.text = "Empty  (loot not yet implemented)"
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.add_theme_font_size_override("font_size", 8)
-	body.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65))
-	vbox.add_child(body)
+	_popup_type = Label.new()
+	_popup_type.text = ""
+	_popup_type.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_popup_type.add_theme_font_size_override("font_size", 7)
+	_popup_type.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+	vbox.add_child(_popup_type)
+
+	_popup_body = Label.new()
+	_popup_body.text = ""
+	_popup_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_popup_body.add_theme_font_size_override("font_size", 10)
+	_popup_body.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65))
+	vbox.add_child(_popup_body)
 
 	var hint := Label.new()
 	hint.text = "Press E to close"
@@ -188,8 +199,58 @@ func _open() -> void:
 	_opened = true
 	_prompt.visible = false
 	_build_chest_sprite(true)
+	_spawn_loot_drop()
 	_show_popup()
 	chest_opened.emit(self)
+
+
+func _spawn_loot_drop() -> void:
+	if item_data.is_empty():
+		item_data = LootTable.roll(source_layer)
+
+	var drop := LootDropScene.instantiate() as LootDrop
+	if drop == null:
+		push_error("[Chest] LootDrop.tscn failed to instantiate")
+		return
+	drop.item_data = item_data
+	drop.source_layer = source_layer
+	# Place the drop one tile above the chest so it lands on the surface.
+	get_parent().add_child(drop)
+	drop.global_position = global_position + Vector2(0.0, -float(Constants.TILE_SIZE))
+
+	if _popup_body != null:
+		var tier_name: String = Constants.TIER_NAMES.get(item_data.get("tier", Constants.Tier.COMMON), "Common")
+		var type_str: String = item_data.get("type", "item")
+		var cls_id: int = item_data.get("item_class", -1)
+		var tier_col: Color = Constants.TIER_COLORS.get(item_data.get("tier", Constants.Tier.COMMON), Color(0.82, 0.86, 0.92))
+		if _popup_type != null:
+			_popup_type.text = _category_label(type_str)
+		_popup_body.text = "%s %s" % [tier_name, _item_name(type_str, cls_id)]
+		_popup_body.add_theme_color_override("font_color", tier_col)
+
+
+# Short category tag shown above the item name, e.g. "— DRILL —"
+func _category_label(type_str: String) -> String:
+	match type_str:
+		"drill":      return "— DRILL —"
+		"weapon":     return "— WEAPON —"
+		"armor":      return "— ARMOR —"
+		"relic":      return "— RELIC —"
+		"throwable":  return "— THROWABLE —"
+		"consumable": return "— CONSUMABLE —"
+	return ("— %s —" % type_str.to_upper())
+
+
+# Human-readable item name, e.g. "Common Precision" for a drill, "Common Swords" for a weapon.
+func _item_name(type_str: String, cls_id: int) -> String:
+	match type_str:
+		"drill":      return Constants.DRILL_CLASS_NAMES.get(cls_id, "?")
+		"weapon":     return Constants.WEAPON_CLASS_NAMES.get(cls_id, "?")
+		"armor":      return Constants.ARMOR_CLASS_NAMES.get(cls_id, "?")
+		"relic":      return Constants.RELIC_NAMES.get(cls_id, "?")
+		"throwable":  return Constants.THROWABLE_NAMES.get(cls_id, "?")
+		"consumable": return "Consumable"
+	return type_str.capitalize()
 
 
 func _show_popup() -> void:

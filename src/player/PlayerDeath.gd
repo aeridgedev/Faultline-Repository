@@ -4,6 +4,7 @@ extends Node
 
 # TODO(match controller): connect death_processed to alive-count logic
 signal death_processed(player_id: int)
+signal died
 
 @onready var _stats: PlayerStats = $"../PlayerStats"
 @onready var _controller: PlayerController = $".."
@@ -17,6 +18,7 @@ func _on_player_died() -> void:
 	_controller.set_physics_process(false)
 	_controller.set_process_input(false)
 	death_processed.emit(_controller.player_id)
+	died.emit()
 	_enter_spectator_mode()
 
 
