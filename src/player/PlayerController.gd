@@ -620,6 +620,14 @@ func _try_attack() -> void:
 	_equipped_weapon.consume_durability(1.0)
 
 
+func get_equipped_drill() -> DrillBase:
+	return _equipped_drill
+
+
+func get_equipped_weapon() -> WeaponBase:
+	return _equipped_weapon
+
+
 func is_drilling() -> bool:
 	return _dig_target != Vector2i(-1, -1)
 
