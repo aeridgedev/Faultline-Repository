@@ -268,12 +268,26 @@ func get_elapsed() -> float:
 	return GameManager.match_elapsed
 
 
+## Compute the current phase index directly from elapsed time.
+## This is the authoritative source for UI queries — it does NOT rely on
+## _phase_idx being up to date, so it is safe to call from any node's _process
+## regardless of execution order.
+func _compute_phase_idx(elapsed: float) -> int:
+	var phases := Constants.STORM_PHASES
+	for i in range(phases.size() - 1, -1, -1):
+		if elapsed >= float(phases[i]["start"]):
+			return i
+	return 0
+
+
 func get_current_region() -> String:
-	return Constants.STORM_PHASES[_phase_idx]["region"]
+	var idx := _compute_phase_idx(GameManager.match_elapsed)
+	return Constants.STORM_PHASES[idx]["region"]
 
 
 func get_phase_end_seconds() -> float:
-	var end_val = Constants.STORM_PHASES[_phase_idx]["end"]
+	var idx := _compute_phase_idx(GameManager.match_elapsed)
+	var end_val = Constants.STORM_PHASES[idx]["end"]
 	return float(end_val) if end_val != -1 else -1.0
 
 

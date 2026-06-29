@@ -514,9 +514,15 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_handle_movement(delta)
+<<<<<<< HEAD
 	_handle_tool_toggle()
 	_handle_tool_use(delta)
 	_handle_item_use(delta)
+=======
+	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
+	_handle_tool_use(delta)     # left-click uses the equipped tool
+	_handle_item_use(delta)     # G-key uses the active throwable / consumable / relic
+>>>>>>> ed334df6b21d17624928b72f413d2ec1d23c0cdc
 	_update_held_visual()
 	move_and_slide()
 	_wrap_horizontal()

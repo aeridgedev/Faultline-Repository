@@ -1,0 +1,523 @@
+# GAME_STATE.md — Faultline Living Implementation Record
+
+> **Living document.** Every session that makes a logic change must update this file
+> and CLAUDE.md before finishing. Treat any discrepancy between this file and the
+> actual code as a bug in this file — fix it immediately.
+
+Last updated: 2026-06-29
+
+---
+
+## Overall Status
+
+| Build Step | Status | Notes |
+|---|---|---|
+| 1. Player movement + terrain | ✓ Complete | Merge conflict marker remains in PlayerController.gd |
+| 2. Drill system | ✓ Complete | All 4 classes, all tiers; balance values are placeholders |
+| 3. Layer/depth system + hazards | ✓ Complete | LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker |
+| 4. Inventory + loot | ✓ Complete | InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest UI |
+| 5. Weapons + combat | Not started | WeaponBase exists; no weapon combat loop beyond swing raycast stub |
+| 6. Relics + throwables + consumables | Partial stub | Lytes/Medkit work; rest are signal stubs only |
+| 7. Storm system | ✓ Complete (visual + phases) | Damage values TBD; drill efficiency + heal penalty wired |
+| 8. UI | Partial | HUD, StormTimer, LayerIndicator, KillCounter done; DeathScreen/SpectatorView are stubs |
+| 9. Network | Not started | All offline; placeholder structure only |
+
+The game runs as a functional offline single-player build. All balance numbers are
+provisional dev-placeholders pending a formal balance pass.
+
+---
+
+## Core Architecture
+
+### Autoloads (always present)
+- **Constants** (`src/core/Constants.gd`) — all structural enums, locked values, and formulas.
+- **GameManager** (`src/core/GameManager.gd`) — match state machine (BOOT → LOBBY → IN_MATCH → POST_MATCH); owns `data: Dictionary` loaded from all JSON files; advances `match_elapsed` each frame.
+
+### Bootstrap (`src/core/Main.gd`)
+Entry point: `src/core/Main.tscn`. On `_ready`:
+1. Instantiates PlayerScene and HUDScene.
+2. Calls `WorldGenerator.generate()` with random seed.
+3. Builds vertical background gradient.
+4. Spawns player at atmosphere above Crust surface (centered X — single-player placeholder; real 100-player scatter TBD with networking).
+5. Initialises DepthHazard, PressureSystem, StormSystem.
+6. Spawns `TestDummy` (DEV-ONLY; remove when networking exists).
+7. Calls `player.setup_hotbar()` after HUD is ready.
+8. Calls `GameManager.start_match()`.
+
+### Data loading (`src/core/DataLoader.gd`)
+Reads all `data/*.json` files and returns a consolidated Dictionary into `GameManager.data`. All systems read tunable values through `GameManager.data` at runtime — never hardcoded.
+
+---
+
+## Player Systems
+
+### PlayerController (`src/player/PlayerController.gd`)
+**Movement:** WASD, sprint (Shift) with stamina drain, gravity-based vertical movement.
+Horizontal world wrap (cylindrical world).
+
+**Active-tool toggle:** Right-click cycles between TOOL_DRILL and TOOL_SWORD (persists between frames).
+
+**Drill (left-click, TOOL_DRILL):**
+- Targets tile under cursor.
+- Dig duration = `terrain_base_dig_time × terrain_class_effectiveness[drill_class] × drill_tier_dig_time_mult ÷ storm_drill_efficiency_mult`.
+- On complete: calls `TerrainManager.destroy_tile()`; consumes drill durability.
+- Burst class: destroys primary tile plus the next tile in dig direction.
+- Storm penalty: `storm_drill_efficiency_mult` (currently 0.5) slows digging when in storm zone.
+- Broken drill: cannot dig.
+
+**Weapon swing (left-click, TOOL_SWORD):**
+- Cooldown: `1.0 / weapon.swing_speed` seconds.
+- Raycast finds nearest `PlayerStats` node within `weapon.attack_range`.
+- Calls `stats.take_damage(weapon.damage)`.
+- Consumes weapon durability per swing.
+- Broken weapon: cannot swing.
+
+**Consumable/relic/throwable use (G-key):**
+- Reads active hotbar slot item type.
+- Dispatches to appropriate handler (ConsumableBase.tick_use, RelicManager.activate_relic, ThrowableBase.throw).
+
+**Hotbar:** Mouse scroll wheel + keys 1–5 cycle active slot.
+
+**Known issues:**
+- Merge conflict marker at lines ~517–525 (two comment-style variants of the tool-toggle block; identical behaviour; neither causes bugs but should be resolved).
+- Player spawn X is always world centre — needs scatter once 100-player drop is wired.
+
+### PlayerStats (`src/player/PlayerStats.gd`)
+Holds `current_health`, `max_health` (100.0 default), `damage_reduction` (0.0–1.0, set by ToughnessRelic), `life_capsule_active`, `_current_layer`.
+
+`take_damage(amount)`: applies reduction, clamps to 0, spawns floating DamageNumber, emits `health_changed`. If health reaches 0 and `life_capsule_active`, consumes it and leaves player at 1 HP instead.
+
+`heal(amount)`: multiplied by `storm.get_heal_mult()` if player is inside storm zone; clamped to `max_health`.
+
+`set_layer(new_layer)`: only ever increments (no returning upward); emits `layer_changed`.
+
+Signals: `health_changed`, `player_died`, `layer_changed`.
+
+### Stamina (`src/player/Stamina.gd`)
+- Drain: `stamina_sprint_cost_per_sec` per second while sprinting.
+- When hits 0: `is_depleted = true`; sprint locked out.
+- Regen starts after `stamina_regen_delay` seconds; regen rate `stamina_regen_rate` per second.
+- Recovery: once stamina reaches `stamina_recovery_threshold`, `is_depleted` clears.
+- All values from `world_config.json` (currently: max 100, cost 30/s, regen 20/s, delay 1.0s, threshold 20).
+
+### DescentTracker (`src/player/DescentTracker.gd`)
+Polls player Y position each physics frame; queries `LayerManager.layer_at_y()`; emits `layer_changed(new_layer)` when the layer changes. Wires into `PlayerStats.set_layer()`.
+
+### PlayerDeath (`src/player/PlayerDeath.gd`)
+On `player_died`: freezes `PlayerController` physics and input; emits `death_processed(player_id)`. `_enter_spectator_mode()` is a stub (prints debug message; real follow-cam logic TBD step 9).
+
+---
+
+## World Systems
+
+### WorldGenerator (`src/world/WorldGenerator.gd`)
+Called once per match with a random seed. Populates `TerrainManager` via `place_tile`.
+
+**Generation sequence:**
+1. Per layer: fill with weighted terrain type (see distributions below).
+2. Carve caves: wrapping horizontal tunnels + vertical shafts.
+3. Horizontal rock bands every 8–14 rows within each layer (harder terrain variety).
+4. Core Hollow: generates as a circular bedrock-walled chamber with an open interior void. **The shell (boundary wall) must be the hardest terrain in the game** — currently it uses generic Bedrock but may need a dedicated "Core Shell" terrain type that is drillable (unlike Bedrock) but far harder than Ultra Dense. The **interior remains open/void** — this is intentional: once inside, players move through a semi-fluid substance (free movement, no terrain tiles, no gravity). The current open-void interior is correct in spirit but the physics (zero-gravity, fluid movement feel) are not yet implemented.
+5. Bedrock border: bottom row only; world wraps horizontally.
+
+**Terrain distributions (provisional weights, not from JSON):**
+| Layer | Types |
+|---|---|
+| Crust | 50% Soil, 28% Clay, 22% Limestone |
+| Mantle | 10% Clay, 25% Limestone, 33% Rock, 20% Basalt, 12% Granite |
+| Outer Core | 8% Rock, 14% Basalt, 20% Granite, 18% Obsidian, 18% Iron Formation, 22% Dense Crystal |
+| Inner Core | 6% Granite, 14% Obsidian, 18% Iron Formation, 17% Dense Crystal, 45% Ultra Dense |
+| Core Hollow | Open void interior (correct — semi-fluid, no tiles). Shell wall must be hardest drillable terrain (TBD type; harder than Ultra Dense but destructible unlike Bedrock) |
+
+### TerrainManager (`src/world/TerrainManager.gd`)
+Owns and mutates the Godot `TileMap`. Single interface for all terrain reads/writes.
+
+- **`_tile_registry: Dictionary`** — canonical map of `Vector2i → TerrainType`; source of truth.
+- **`place_tile(cell, type)`** — adds to registry + tilemap.
+- **`destroy_tile(cell)`** — removes if destructible; emits signal. Bedrock cannot be destroyed.
+- **`get_tile_type(cell)`, `has_tile(cell)`** — query registry.
+- **Streaming:** `stream_columns(center_col, half_range)` — ensures columns near player exist by mirroring canonical columns. Cylindrical wrapping: columns repeat seamlessly left/right.
+- **`init_streaming(world_width)`** — called once by WorldGenerator.
+
+Dev tileset built in code (no external asset needed): all 11 terrain types as pixel-art 16×16 images.
+
+### LayerManager (`src/world/LayerManager.gd`)
+Maps world-space pixel Y coordinates to `Constants.Layer` enum values.
+
+Layer heights (tiles, from `world_config.json`; currently provisional):
+| Layer | Height (tiles) |
+|---|---|
+| Crust | 150 |
+| Mantle | 180 |
+| Outer Core | 210 |
+| Inner Core | 240 |
+| Core Hollow | 120 |
+
+Methods: `get_layer_top_y(layer)`, `get_layer_bottom_y(layer)`, `layer_at_y(world_y)`.
+Falls back to CRUST if heights are null (prevents crashes during balance pass).
+
+World bounds: `world_width_px()`, `world_height_px()`.
+
+### TerrainTypes (`src/world/TerrainTypes.gd`)
+Reads `terrain_stats.json` per type. Provides: `base_dig_time`, `move_speed_mod`, `class_effectiveness(type, drill_class)`.
+
+`is_destructible(type)` — false only for BEDROCK.
+`is_structurally_weak(type)` — true for SOIL, CLAY, ROCK (shown by Resonance overlay).
+
+**Terrain types and hardness order (softest → hardest):**
+Soil (0.4s) → Clay (0.5s) → Rock (0.8s) → Limestone (0.9s) → Basalt (1.3s) → Granite (1.7s) → Iron Formation (2.0s) → Obsidian (2.2s) → Dense Crystal (2.5s) → Ultra Dense (3.5s) → Bedrock (indestructible)
+
+All values above are provisional dev placeholders.
+
+### ChestSpawner (`src/world/ChestSpawner.gd`)
+After world generation, places Chest nodes at valid surface positions.
+
+Algorithm:
+1. Find all surface tiles (solid tile with air tile directly above).
+2. Group by 6×6 tile slot to limit density.
+3. One roll per slot: pick random candidate, apply `0.8 × (1 − depthFactor)²`.
+4. Core Hollow excluded (no loot spawns there).
+
+Spawn chances: Crust 80% / Mantle ~51% / Outer Core ~29% / Inner Core ~13% / Core Hollow 0%.
+
+---
+
+## Terrain Types Detail
+
+11 types defined in `Constants.TerrainType`: SOIL, CLAY, LIMESTONE, ROCK, BASALT, GRANITE, IRON_FORMATION, OBSIDIAN, DENSE_CRYSTAL, ULTRA_DENSE, BEDROCK.
+
+Pixel art renders for each are built in code inside `TerrainManager._build_dev_tileset()`. No external tileset asset required yet.
+
+---
+
+## Hazard Systems
+
+### DepthHazard (`src/hazards/DepthHazard.gd`)
+Tick-based (1s interval). Applies ambient DPS and stamina (oxygen) drain scaling with current layer. Also renders a screen-space vignette overlay (alpha and tint colour keyed per layer).
+
+Data keys (all TBD): `{layer}_dps`, `{layer}_oxygen_drain`, `{layer}_visibility_alpha`.
+
+### PressureSystem (`src/hazards/PressureSystem.gd`)
+Tick-based pressure damage = `pressure_dps_base × depth_factor`. When player enters Core Hollow, emits `zero_gravity_changed(true)`.
+
+**Deviation:** `zero_gravity_changed` signal fires but Godot physics `gravity_scale` is not yet modified — zero-gravity physics are not implemented.
+
+Data key: `pressure_dps_base` (currently 2.0, provisional).
+
+### StormSystem (`src/hazards/StormSystem.gd`)
+World-space `Polygon2D` storm body + bright wall strip descends through layers on fixed schedule. Screen-space red tint overlay activates when player is above (inside) the storm front.
+
+**Phase schedule (LOCKED):**
+| Phase | Time |
+|---|---|
+| Atmosphere | 0:00–3:30 |
+| Crust | 3:30–7:00 |
+| Mantle | 7:00–10:30 |
+| Outer Core | 10:30–14:00 |
+| Inner Core | 14:00–17:30 |
+| Core Hollow | 17:30+ (permanent) |
+
+At 17:30: anyone not inside Core Hollow is killed by `storm_deadline_reached` signal.
+
+Storm front position is interpolated continuously within each phase (not a snap at phase boundaries).
+
+Methods used by other systems:
+- `get_storm_front_y()` — current world Y of storm front.
+- `get_drill_efficiency_mult()` — currently 0.5; PlayerController divides dig duration by this when in storm.
+- `get_heal_mult()` — currently 0.5; PlayerStats multiplies heal amount by this when in storm.
+- `is_storm_active()` — true once storm front enters the playfield.
+
+Data keys: `storm_dps` (TBD), `storm_drill_efficiency_mult` (0.5), `storm_heal_mult` (0.5), `storm_overlay_alpha` (0.35).
+
+---
+
+## Drill System
+
+### DrillBase (`src/systems/drill/DrillBase.gd`)
+Resource. Holds `drill_class`, `tier`, `max_durability`, `current_durability`, `is_broken`, `is_equipped`.
+
+`init_from_data()` reads `drill_stats.json[class_name][tier_name]`.
+`consume_durability(amount)` subtracts, emits `durability_changed`, sets `is_broken` at 0.
+`restore_durability()` used by DrillUpgrade (Upgrade Template).
+
+Signals: `durability_changed`, `drill_broken`, `equipped`, `unequipped`.
+
+### DrillClass (`src/systems/drill/DrillClass.gd`)
+Static accessors for class-specific behaviours:
+- **PRECISION** — single-tile, fastest (baseline).
+- **BURST** — destroys 2 tiles per dig (primary + next in direction); `burst_tile_count()` returns 2.
+- **THERMAL** — `ignores_terrain_effectiveness()` returns true; uniform speed regardless of terrain type.
+- **RESONANCE** — `reveals_weak_terrain()` returns true; triggers `ResonanceOverlay`.
+
+Spawn weights (provisional): Precision 40 / Burst 28 / Thermal 18 / Resonance 14.
+
+### DrillTier (`src/systems/drill/DrillTier.gd`)
+Reads class × tier matrix from `drill_stats.json`. Returns `dig_time_mult` and `max_durability`.
+
+Provisional values:
+| Tier | dig_time_mult | durability |
+|---|---|---|
+| Common | 1.00× | ~200 |
+| Rare | ~0.85× | ~310–320 |
+| Epic | ~0.70× | ~460–480 |
+| Legendary | ~0.55× | ~760–800 |
+
+### DrillUpgrade (`src/systems/drill/DrillUpgrade.gd`)
+`apply(drill)` — increments tier (max Legendary), calls `init_from_data()`, restores durability.
+
+### ResonanceOverlay (`src/systems/drill/ResonanceOverlay.gd`)
+World-space overlay drawn by the Resonance drill class. Scans tiles within radius 9 every 0.10s; draws pulsing green highlight (alpha 0.15–0.40) on SOIL, CLAY, and ROCK tiles.
+
+---
+
+## Weapon System
+
+### WeaponBase (`src/systems/weapon/WeaponBase.gd`)
+Resource. Holds `weapon_class`, `tier`, `damage`, `swing_speed`, `attack_range`, `max_durability`, `current_durability`, `is_broken`.
+
+`init_from_data()` reads `weapon_stats.json[class]["base"]` then applies `Constants.WEAPON_TIER_SCALING`.
+
+**Tier scaling (LOCKED):**
+| Tier | Damage | Swing Speed | Durability | Passive |
+|---|---|---|---|---|
+| Common | base | base | base | — |
+| Rare | +20% | +10% | +15% | — |
+| Epic | +35% | +15% | +25% | Minor Passive |
+| Legendary | +50% | +20% | +40% | Unique Passive |
+
+Signals: `durability_changed`, `weapon_broken`.
+
+**Provisional base stats (dev placeholders — all TBD):**
+| Class | Damage | Swing Speed | Durability | Range |
+|---|---|---|---|---|
+| Daggers | 8 | 2.5/s | 60 | 28px |
+| Swords | 15 | 1.5/s | 80 | 64px |
+| Hammers | 30 | 0.7/s | 100 | 36px |
+| Spears | 14 | 1.3/s | 70 | 56px |
+| Axes | 22 | 1.0/s | 90 | 38px |
+
+### WeaponClass / WeaponTier / WeaponUpgrade
+Mirror the drill equivalents. Passives are "TBD" strings in JSON; no mechanical effect yet.
+
+---
+
+## Armor System
+
+`ArmorBase`, `ArmorClass`, `ArmorTier` exist as file stubs only. `armor_stats.json` has schema but all values are `null`. No armor mechanics are wired anywhere yet (step 5).
+
+---
+
+## Inventory System
+
+### InventoryManager (`src/systems/inventory/InventoryManager.gd`)
+8 carry slots: indices 0–4 = hotbar, 5 = armor sidebar, 6–7 = backpack. Each slot holds one item (Dictionary `{type, item_class, tier}`) or null.
+
+F-key toggles panel UI (built in code). Drop buttons call `remove_item()` and spawn a `LootDrop` at player position.
+
+Signals: `slot_changed(slot_idx, item)`, `inventory_opened`, `inventory_closed`.
+
+Key methods: `add_item()`, `remove_item()`, `swap_slots()`, `get_armor()`, `can_add()`, `all_items()`.
+
+### Hotbar (`src/systems/inventory/Hotbar.gd`)
+Tracks `_active_slot` (0–4). Input: keys 1–5 and scroll wheel. Emits `active_slot_changed(slot_idx)`. `get_active_item()` queries InventoryManager.
+
+### AutoCollect (`src/systems/inventory/AutoCollect.gd`)
+Scans scene tree every 0.1s for `LootDrop` nodes within `pickup_radius` (48px = 3 tiles). Calls `InventoryManager.add_item()` if `LootRestriction.can_loot()` passes (blocked while drilling or attacking).
+
+---
+
+## Loot System
+
+### LootTable (`src/systems/loot/LootTable.gd`)
+`roll(layer)` → `{type, item_class, tier}` or `{}`.
+
+Rolls: category first (weighted per layer), then rarity (weighted per layer), then random item within that category/rarity. Falls back to uniform weights if JSON values are null.
+
+**Rarity weights (provisional):**
+| Layer | Common | Rare | Epic | Legendary |
+|---|---|---|---|---|
+| Crust | 65% | 28% | 6% | 1% |
+| Mantle | 45% | 38% | 14% | 3% |
+| Outer Core | 20% | 42% | 28% | 10% |
+| Inner Core | 5% | 28% | 44% | 23% |
+
+Upgrade Template weight = 10% within the relevant rarity pool (LOCKED).
+
+### LootDrop (`src/systems/loot/LootDrop.gd`)
+Physical node in the world. Holds `item_data` and `source_layer`. `pickup_delay` prevents instant re-collection of dropped items. Dev visual: tier-coloured gem with glow.
+
+### LootRestriction (`src/systems/loot/LootRestriction.gd`)
+`can_loot(drilling, attacking)` — returns `not (drilling or attacking)`. Damage-window restriction is TBD.
+
+### Chest (`src/systems/loot/Chest.gd`)
+Area2D. Player walks in range → "Press E" prompt. Press E → popup with item button. Clicking item transfers to inventory if space available. Once item taken, lid animates open and interior darkens. Re-opening an empty chest shows "Empty" status.
+
+---
+
+## Relic System
+
+### RelicManager (`src/systems/relics/RelicManager.gd`)
+Manages all 4 relics for one player. `activate_relic(relic_type)` dispatches to `BuffRelic` or `ToughnessRelic`. Tick-expires timed relics each frame. Provides multiplier queries: `move_speed_mult()`, `attack_speed_mult()`, `damage_mult()`.
+
+### BuffRelic (`src/systems/relics/BuffRelic.gd`)
+Timed (Haste / Speed / Strength). `activate(current_time)` sets expiration from data `relic_duration` (fallback 3.5s). `tick(current_time)` returns true when expired. Multipliers read from data `relic_strength.*_mult` (all TBD).
+
+### ToughnessRelic (`src/systems/relics/ToughnessRelic.gd`)
+Permanent. `activate(stats)` sets `stats.damage_reduction` from `relic_strength.toughness_reduction` (TBD; fallback 0.0). Never expires in normal play.
+
+**Relics cannot be dropped after pickup** (enforced by InventoryManager; relic slot has no Drop button).
+
+---
+
+## Scanner System
+
+### BasicScanner / DeepRadar (`src/systems/scanners/`)
+Resource-based. `activate(world_pos)` → 8-second scan window. Emits `scan_started(pos, radius)` and `scan_ended`. Scanned players are **not** notified. Radius values TBD.
+
+**Deviation:** Signals fire but no actual player detection or denial-of-knowledge mechanic is wired. Scanners are non-functional beyond signal emission.
+
+---
+
+## Throwable System
+
+### ThrowableBase (`src/systems/throwables/ThrowableBase.gd`)
+`RigidBody2D` with gravity. `throw(origin, direction, speed)` launches it. `on_body_entered` calls `_apply_effect(hit_body)`. Auto-despawns after 10 seconds.
+
+`_owner_id` used to skip FFA friendly-fire (no self-damage).
+
+**All 7 throwable effects are stubs** — they print to console only. No actual game effect.
+
+| Type | Intended Effect |
+|---|---|
+| SMOKE_BOMB | Obscure vision in radius |
+| PARALYSIS_BOMB | Freeze input |
+| WEAKNESS_BOMB | Reduce damage dealt |
+| HEAT_CHARGE | Fire DoT in radius |
+| DUST_CAPSULE | Obscure drill targeting |
+| ECHO_CHARGE | Reveal all players in radius |
+| SEISMIC_CHARGE | Destroy terrain tiles in radius |
+
+---
+
+## Consumable System
+
+### ConsumableBase (`src/systems/consumables/ConsumableBase.gd`)
+Channelled use: `tick_use(delta, stats)` increments `_use_progress`; calls `_on_use_complete()` when `use_time` elapsed. `interrupt_use()` cancels. `use_progress()` returns 0.0–1.0 for HUD bar.
+
+| Consumable | Status | Notes |
+|---|---|---|
+| Lytes | Functional | Fast one-time heal on completion |
+| Medkit | Functional | Incremental heal over channel duration (every 0.5s tick) |
+| Bloodstim | Stub | `bloodstim_active(duration)` fires; multiplier hookup TBD |
+| ThermalCapsule | Stub | `thermal_active(duration)` fires; DepthHazard integration TBD |
+| FaultBeacon | Stub | `beacon_placed(Vector2.ZERO)` fires; real world position + HUD rendering TBD |
+
+---
+
+## Special Items
+
+### LifeCapsule (`src/systems/special/LifeCapsule.gd`)
+Sets `stats.life_capsule_active`. On lethal hit, `PlayerStats.take_damage()` consumes the flag and leaves player at 1 HP instead of dying.
+
+### LayerBreachDevice (`src/systems/special/LayerBreachDevice.gd`)
+Destroys a 1-tile-wide, 8-tile-deep column below player, dropping them into the next layer. Column radius/depth TBD (step 6).
+
+### UpgradeTemplate (`src/systems/special/UpgradeTemplate.gd`)
+`apply_to_inventory(inventory, hotbar)` — finds upgradeable drill or weapon. Priority: active hotbar drill → active hotbar weapon → first drill in inventory → first weapon in inventory. Raises tier by 1 (max Legendary), restores durability. Returns false if nothing upgradeable found.
+
+---
+
+## UI Systems
+
+### HUD (`src/ui/HUD.gd`)
+Built entirely in code. Contains:
+- **Health bar** — gradient green → amber → red by threshold.
+- **HP label** (`HPLabel` in `HUD.tscn`) — shows exact `"current / max"` integer HP (e.g. `80 / 100`); updated every `health_changed` signal via `_on_health_changed()`.
+- **5 hotbar slots** (40×40) — item label + tier-coloured border + durability bar (visible for drill/weapon only; connected to Resource signals).
+- **Armor slot** (48×40) — tier-coloured.
+- **Backpack** (2 × 46×16).
+- **LayerIndicator** — current layer name; updates on `layer_changed`.
+- **StormTimer** — current region name + MM:SS countdown to next phase. Updates both labels once per second via a tick accumulator. Region and countdown always computed from `match_elapsed` directly (not from `_phase_idx`), so display is correct regardless of node execution order.
+- **KillCounter** — local player kill count; increments on any `player_died` signal heard in tree.
+- **DeathScreen** — full-screen overlay on death; SPECTATE button emits `spectate_requested`.
+- **SpectatorView** — shown after spectate clicked; no camera follow logic (stub; TBD step 9).
+
+### DamageNumber (`src/ui/DamageNumber.gd`)
+World-space floating label. Spawned by `PlayerStats.take_damage()`. Floats upward at 22px/s, fades, self-destructs after 0.9s. White text with black outline.
+
+---
+
+## Data Files Summary
+
+All values below marked **[TBD]** are provisional dev placeholders pending the formal balance pass.
+
+### `data/weapon_stats.json`
+Per-class `base` stats + `minor_passive`/`unique_passive` strings. All passives are `"TBD"` strings with no mechanical effect. Base stat numbers are **[TBD]** dev values.
+
+### `data/drill_stats.json`
+4 classes × 4 tiers matrix of `{dig_time_mult, durability}` plus per-class `spawn_weight`. Values are **[TBD]** dev values.
+
+### `data/armor_stats.json`
+5 classes × 4 tiers — all values `null`. No armor mechanics wired.
+
+### `data/loot_tables.json`
+Per-layer `rarity_weights` + `category_weights`. Provisional weights set for rough feel. Upgrade Template weight locked at 10%.
+
+### `data/world_config.json`
+World dimensions, player stats, stamina config, hazard DPS values, relic/scanner ranges, consumable durations. Most values are **[TBD]** dev numbers.
+
+Notable locked or wired values:
+- `world_width_tiles`: 400
+- Layer heights (tiles): Crust 150 / Mantle 180 / Outer Core 210 / Inner Core 240 / Core Hollow 120
+- `player_max_health`: 100.0
+- `player_move_speed`: 200.0 px/s
+- `storm_drill_efficiency_mult`: 0.5
+- `storm_heal_mult`: 0.5
+
+**Hazard damage (TBD placeholders, reduced for testability):**
+Combined effective DPS per layer (depth_hazard DPS + pressure DPS at 0.5 base × depth_factor):
+| Layer | depth_hazard DPS | pressure DPS | Total DPS | TTK at 100 HP |
+|---|---|---|---|---|
+| Crust | 0.0 | 0.0 | 0.0 | ∞ |
+| Mantle | 0.3 | 0.1 | ~0.4 | ~250s |
+| Outer Core | 1.0 | 0.2 | ~1.2 | ~83s |
+| Inner Core | 2.5 | 0.3 | ~2.8 | ~36s |
+| Core Hollow | 0.0 | 0.4 | ~0.4 | ~250s |
+
+### `data/terrain_stats.json`
+Per-terrain-type `{base_dig_time, move_speed_mod, class_effectiveness}`. All values are **[TBD]** dev values.
+
+### `data/spawn_rates.json`
+Chest formula (`0.8 × (1−depthFactor)²`) locked. Special-item spawn rates all `null`.
+
+### `data/storm_timings.json`
+Phase schedule locked. Damage values TBD.
+
+---
+
+## Known Issues and Deviations from CLAUDE.md
+
+| # | File(s) | Issue | Severity |
+|---|---|---|---|
+| 1 | `PlayerController.gd:517–525` | Merge conflict marker — two comment-style variants of tool-toggle block. No functional bug but must be cleaned up. | Low |
+| 2 | `WorldGenerator.gd` | Core Hollow shell currently uses generic Bedrock (indestructible). Design requires the shell to be the **hardest drillable terrain** — a dedicated terrain type harder than Ultra Dense but still destructible. The open interior is correct (semi-fluid; no terrain tiles inside). Shell terrain type is TBD. | **High** |
+| 3 | `PressureSystem.gd` | `zero_gravity_changed` signal fires when entering Core Hollow but `gravity_scale` is never modified. Zero-gravity physics are unimplemented. | Medium |
+| 4 | `armor_stats.json` / armor files | Armor system is entirely non-functional. `ArmorBase`, `ArmorClass`, `ArmorTier` are stubs; no armor mechanics wired. | Medium (step 5) |
+| 5 | All throwable files | All 7 throwable effects print to console only. No actual game effect. | Medium (step 6) |
+| 6 | `Bloodstim.gd`, `ThermalCapsule.gd`, `FaultBeacon.gd` | Signals fire but multiplier/rendering hookups not implemented. | Medium (step 6) |
+| 7 | `BasicScanner.gd`, `DeepRadar.gd` | Signals fire but no detection or denial-of-knowledge mechanic wired. | Medium |
+| 8 | `KillCounter.gd` | Tracks any `player_died` signal in tree — no official kill-attribution system. Inflates count in multi-player. | Low (step 9) |
+| 9 | `PlayerDeath.gd`, `SpectatorView.gd` | Spectator follow-cam and player-list not implemented. | Low (step 9) |
+| 10 | `GameManager.gd` | POST_MATCH state has no UI or logic (no win screen, no leaderboard). | Low (step 8) |
+| 11 | `TestDummy.gd` | DEV-ONLY offline combat target must be removed when networked players exist. | Low (step 9) |
+| 12 | `Main.gd` | Player always spawns at world centre X. Needs per-player scatter for 100-player drops. | Low (step 9) |
+
+---
+
+## Session Change Log
+
+| Date | Changed By | Summary |
+|---|---|---|
+| 2026-06-29 | Initial population | GAME_STATE.md created from full codebase survey. CLAUDE.md updated: Core Hollow shell is hardest drillable terrain; interior is semi-fluid (open void, free movement, zero-gravity). |
+| 2026-06-29 | Health + hazard fixes | HUD: HPLabel now shows exact "current / max" HP, updated on health_changed signal. Hazard values reduced in world_config.json: pressure_dps_base 2.0→0.5; depth_hazard DPS halved/scaled for testability (Mantle 0.3, Outer Core 1.0, Inner Core 2.5). All values TBD. |
+| 2026-06-29 | Storm timer fix | StormSystem: added `_compute_phase_idx(elapsed)` helper; `get_current_region()` and `get_phase_end_seconds()` now compute from `match_elapsed` directly instead of relying on `_phase_idx`. StormTimer: switched from per-frame to 1-second tick accumulator; `_refresh()` updates both labels; `storm_advanced` resets accumulator for immediate update. |

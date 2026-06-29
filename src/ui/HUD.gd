@@ -7,6 +7,7 @@ extends CanvasLayer
 
 @onready var _health_bar: ProgressBar = $Control/BottomHUD/HealthSection/HealthBar
 @onready var _armor_label: Label = $Control/BottomHUD/HealthSection/ArmorLabel
+@onready var _hp_label: Label = $Control/BottomHUD/HealthSection/HPLabel
 @onready var _hotbar_row: HBoxContainer = $Control/BottomHUD/HotbarSection
 @onready var _bottom_hud: HBoxContainer = $Control/BottomHUD
 @onready var _storm_timer: StormTimer = $Control/StormPanel/StormTimer
@@ -50,9 +51,9 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 	_build_backpack_slots()
 	_style_health_bar()
 	_style_panels()
-	var hp_lbl := get_node_or_null("Control/BottomHUD/HealthSection/HPLabel") as Label
-	if hp_lbl != null:
-		hp_lbl.add_theme_font_size_override("font_size", 8)
+	_hp_label.add_theme_font_size_override("font_size", 8)
+	_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hp_label.add_theme_color_override("font_color", Color(0.75, 0.80, 0.85))
 
 	stats.health_changed.connect(_on_health_changed)
 	stats.player_died.connect(_on_player_died)
@@ -63,6 +64,7 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 	var max_hp := stats.max_health if stats.max_health > 0.0 else 1.0
 	_health_bar.max_value = max_hp
 	_health_bar.value = stats.current_health
+	_hp_label.text = "%d / %d" % [int(stats.current_health), int(max_hp)]
 
 	_refresh_armor(_inventory.get_armor())
 	_on_slot_changed(hotbar.get_active_slot())
@@ -291,6 +293,7 @@ func _on_spectate_requested() -> void:
 func _on_health_changed(new_hp: float, max_hp: float) -> void:
 	_health_bar.max_value = max_hp if max_hp > 0.0 else 1.0
 	_health_bar.value = new_hp
+	_hp_label.text = "%d / %d" % [int(new_hp), int(max_hp)]
 	var ratio := new_hp / max_hp if max_hp > 0.0 else 1.0
 	var fill_color: Color
 	if ratio > 0.55:

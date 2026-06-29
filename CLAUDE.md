@@ -11,8 +11,9 @@ wins.** Matches run **18–22 minutes**. Death is permanent (no respawn — you
 spectate). Terrain is **fully destructible and persistent** within a match.
 
 Core loop: drill downward through layers → loot chests for gear → fight other
-players → keep ahead of a descending storm → reach the Core Hollow → win the
-final arena fight.
+players → keep ahead of a descending storm → breach the Core Hollow shell
+(hardest terrain in the game) → fight freely inside its semi-fluid interior
+→ last player standing wins.
 
 - Mode: **Free For All only.** No teams, ever.
 - Players only ever go **down** — abandoned upper layers cannot be re-entered.
@@ -73,9 +74,12 @@ Common (gray) / Rare (blue) / Epic (purple) / Legendary (gold).
 2. Mantle — medium / medium
 3. Outer Core — high / high
 4. Inner Core — extreme / extreme
-5. Core Hollow — full spatial layer present all match; **zero-gravity final
-   melee arena, no drilling, no loot.** Anyone not inside it by **17:30** dies
-   to the storm.
+5. Core Hollow — full spatial layer present all match. **The boundary shell is
+   the hardest terrain in the game to drill through** — players must breach it
+   to enter. Once inside, the interior is a **semi-fluid substance** that
+   allows completely free movement in any direction (no gravity, no terrain
+   obstruction). No loot spawns inside it. Anyone not inside it by **17:30**
+   dies to the storm.
 
 **Drills — Class × Tier matrix, fully independent.** 4 classes: Precision /
 Burst / Thermal / Resonance. Any class can be any tier (a Legendary Resonance
@@ -157,7 +161,7 @@ which item this session targets before writing code.
 
 1. **Player movement + terrain**  ✓ complete
 2. **Drill system**  ✓ complete
-3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker, zero-gravity Core Hollow)
+3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker, zero-gravity flag for Core Hollow — physics not yet applied)
 4. **Inventory + loot**  ✓ complete (InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest interactive UI, discard-to-world-drop)
 5. Weapons + combat
 6. Relics + throwables + consumables
@@ -172,3 +176,12 @@ which item this session targets before writing code.
 - Pixel art, 16px tile grid; keep the world on the TileMap.
 - Removed and must never reappear: Uncommon tier, Mythic tier, Team modes,
   Sudden Death, Bunker Breaker.
+- **FLAG — Core Hollow shell terrain (needs its own session):** The Core Hollow
+  boundary wall currently uses `BEDROCK` (indestructible), which means players
+  can never breach it. It needs a dedicated terrain type — drillable but harder
+  than Ultra Dense. Add it to `Constants.TerrainType`, `terrain_stats.json`,
+  and update `WorldGenerator` to use it for the shell wall.
+- **Every session that makes a logic change must update both `CLAUDE.md` and
+  `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
+  GAME_STATE.md holds the current implemented state, deviations, and the
+  session change log.

@@ -29,19 +29,22 @@
   "storm_heal_mult": 0.5,
   "storm_overlay_alpha": 0.35,
 
-  "pressure_dps_base": 2.0,
+  "_pressure_dps_base_meta": "TBD — pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8). Reduced for testability; not final.",
+  "pressure_dps_base": 0.5,
 
   "depth_hazard": {
+    "_meta": "TBD — all DPS and drain values below are testable placeholders. Not final. Scaling intent: low Crust / moderate Mantle / noticeable Outer Core / high Inner Core.",
+
     "crust_dps": 0.0,
-    "mantle_dps": 1.0,
-    "outer_core_dps": 2.5,
-    "inner_core_dps": 5.0,
+    "mantle_dps": 0.3,
+    "outer_core_dps": 1.0,
+    "inner_core_dps": 2.5,
     "core_hollow_dps": 0.0,
 
     "crust_oxygen_drain": 0.0,
-    "mantle_oxygen_drain": 2.0,
-    "outer_core_oxygen_drain": 5.0,
-    "inner_core_oxygen_drain": 10.0,
+    "mantle_oxygen_drain": 1.0,
+    "outer_core_oxygen_drain": 2.5,
+    "inner_core_oxygen_drain": 5.0,
     "core_hollow_oxygen_drain": 0.0,
 
     "crust_visibility_alpha": 0.0,

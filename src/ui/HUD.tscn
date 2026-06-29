@@ -85,7 +85,8 @@ custom_minimum_size = Vector2(110, 0)
 
 [node name="HPLabel" type="Label" parent="Control/BottomHUD/HealthSection"]
 layout_mode = 2
-text = "HP"
+text = "— / —"
+horizontal_alignment = 1
 
 [node name="HealthBar" type="ProgressBar" parent="Control/BottomHUD/HealthSection"]
 layout_mode = 2
