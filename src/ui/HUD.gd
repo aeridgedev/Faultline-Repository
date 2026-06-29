@@ -1,5 +1,6 @@
 ## Faultline — main heads-up display.
-## Shows health bar, 5-slot hotbar (with per-slot durability bars), armor slot, and storm timer.
+## Shows health bar, 5-slot hotbar (with per-slot durability bars), armor slot,
+## 2 backpack slots, and storm timer.
 ## Call init(player, storm) from Main after player and StormSystem are ready.
 class_name HUD
 extends CanvasLayer
@@ -17,7 +18,8 @@ extends CanvasLayer
 var _slot_panels: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
 var _slot_dur_bars: Array[ProgressBar] = []
-var _slot_dur_fills: Array[StyleBoxFlat] = []   # stored so color can be updated in place
+var _slot_dur_fills: Array[StyleBoxFlat] = []
+var _slot_dur_resources: Array = []   # DrillBase|WeaponBase|null per hotbar slot
 var _inventory: InventoryManager = null
 var _player: PlayerController = null
 
@@ -25,6 +27,10 @@ var _player: PlayerController = null
 var _armor_panel: PanelContainer = null
 var _armor_cls_label: Label = null
 var _armor_panel_style: StyleBoxFlat = null
+
+# Backpack slot panels — built in code, appended after the armor slot.
+var _bp_panels: Array[PanelContainer] = []
+var _bp_labels: Array[Label] = []
 
 const _COLOR_SLOT_NORMAL := Color(0.10, 0.12, 0.17, 0.92)
 const _COLOR_SLOT_ACTIVE := Color(0.08, 0.88, 0.96, 0.95)
@@ -41,6 +47,7 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 
 	_build_hotbar_slots()
 	_build_armor_slot()
+	_build_backpack_slots()
 	_style_health_bar()
 	_style_panels()
 	var hp_lbl := get_node_or_null("Control/BottomHUD/HealthSection/HPLabel") as Label
@@ -59,6 +66,8 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 
 	_refresh_armor(_inventory.get_armor())
 	_on_slot_changed(hotbar.get_active_slot())
+	for i in 2:
+		_refresh_bp_slot(i, _inventory.get_item(InventoryManager.BACKPACK_START + i))
 
 	_layer_indicator.init(stats)
 	_storm_timer.init(storm)
@@ -99,6 +108,7 @@ func _style_panels() -> void:
 # --- Hotbar construction ---
 
 func _build_hotbar_slots() -> void:
+	_slot_dur_resources.resize(Constants.HOTBAR_SLOTS)
 	for i in Constants.HOTBAR_SLOTS:
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(40, 40)
@@ -199,6 +209,60 @@ func _build_armor_slot() -> void:
 	_armor_panel.add_theme_stylebox_override("panel", _armor_panel_style)
 
 
+func _build_backpack_slots() -> void:
+	# Thin divider between armor and backpack.
+	var sep := ColorRect.new()
+	sep.custom_minimum_size = Vector2(3, 0)
+	sep.color = Color(0.20, 0.22, 0.28, 0.70)
+	_bottom_hud.add_child(sep)
+
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 2)
+
+	var hdr := Label.new()
+	hdr.text = "PACK"
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hdr.add_theme_font_size_override("font_size", 6)
+	hdr.add_theme_color_override("font_color", Color(0.40, 0.44, 0.52))
+	section.add_child(hdr)
+
+	for i in 2:
+		var panel := PanelContainer.new()
+		panel.custom_minimum_size = Vector2(46, 16)
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 3)
+
+		var key_lbl := Label.new()
+		key_lbl.text = "BP%d" % (i + 1)
+		key_lbl.add_theme_font_size_override("font_size", 6)
+		key_lbl.add_theme_color_override("font_color", Color(0.40, 0.44, 0.52))
+		row.add_child(key_lbl)
+
+		var item_lbl := Label.new()
+		item_lbl.text = "—"
+		item_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		item_lbl.add_theme_font_size_override("font_size", 7)
+		item_lbl.add_theme_color_override("font_color", Color(0.40, 0.44, 0.52))
+		item_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		item_lbl.custom_minimum_size = Vector2(30, 0)
+		row.add_child(item_lbl)
+
+		panel.add_child(row)
+		section.add_child(panel)
+		_bp_panels.append(panel)
+		_bp_labels.append(item_lbl)
+
+		var style := StyleBoxFlat.new()
+		style.bg_color = _COLOR_SLOT_NORMAL
+		style.set_corner_radius_all(3)
+		style.set_border_width_all(1)
+		style.border_color = _COLOR_SLOT_BORDER_NORMAL
+		panel.add_theme_stylebox_override("panel", style)
+
+	_bottom_hud.add_child(section)
+
+
 func _set_armor_slot_style(equipped: bool, tier: int) -> void:
 	if _armor_panel_style == null or _armor_panel == null:
 		return
@@ -249,10 +313,15 @@ func _on_inventory_slot_changed(slot_idx: int, item) -> void:
 	if slot_idx == InventoryManager.ARMOR_SLOT:
 		_refresh_armor(item)
 		return
-	if slot_idx < 0 or slot_idx >= Constants.HOTBAR_SLOTS:
+	if slot_idx < 0:
 		return
-	_slot_labels[slot_idx].text = _item_short_name(item, slot_idx)
-	_refresh_dur_bar(slot_idx, item)
+	if slot_idx < Constants.HOTBAR_SLOTS:
+		_slot_labels[slot_idx].text = _item_short_name(item, slot_idx)
+		_refresh_dur_bar(slot_idx, item)
+		return
+	var bp_idx := slot_idx - InventoryManager.BACKPACK_START
+	if bp_idx >= 0 and bp_idx < _bp_labels.size():
+		_refresh_bp_slot(bp_idx, item)
 
 
 # --- Helpers ---
@@ -287,43 +356,79 @@ func _refresh_armor(item) -> void:
 	_set_armor_slot_style(true, tier)
 
 
-## Shows or hides the durability bar for a hotbar slot and connects the signal.
+## Shows or hides the durability bar for a hotbar slot.
 ## Only drills and weapons have durability; everything else hides the bar.
+## Uses a named Callable so duplicate connections are detected and skipped.
 func _refresh_dur_bar(slot_idx: int, item) -> void:
 	var bar: ProgressBar = _slot_dur_bars[slot_idx]
-	if item == null:
+
+	# Disconnect from the previous resource occupying this slot.
+	if slot_idx < _slot_dur_resources.size():
+		var prev = _slot_dur_resources[slot_idx]
+		var cb := Callable(self, "_on_dur_changed").bind(slot_idx)
+		if prev is DrillBase:
+			if (prev as DrillBase).durability_changed.is_connected(cb):
+				(prev as DrillBase).durability_changed.disconnect(cb)
+		elif prev is WeaponBase:
+			if (prev as WeaponBase).durability_changed.is_connected(cb):
+				(prev as WeaponBase).durability_changed.disconnect(cb)
+		_slot_dur_resources[slot_idx] = null
+
+	if item == null or _player == null:
 		bar.visible = false
 		return
 
 	var item_type: String = item.get("type", "")
-	if item_type not in ["drill", "weapon"]:
-		bar.visible = false
-		return
+	var cb := Callable(self, "_on_dur_changed").bind(slot_idx)
 
-	if _player == null:
-		bar.visible = false
-		return
-
-	var resource: Resource = null
 	match item_type:
-		"drill":  resource = _player.get_equipped_drill()
-		"weapon": resource = _player.get_equipped_weapon()
+		"drill":
+			var drill: DrillBase = _player.get_equipped_drill()
+			if drill == null or drill.max_durability == null:
+				bar.visible = false
+				return
+			if not drill.durability_changed.is_connected(cb):
+				drill.durability_changed.connect(cb)
+			_slot_dur_resources[slot_idx] = drill
+			_update_dur_bar(slot_idx, drill.current_durability, float(drill.max_durability))
+		"weapon":
+			var weapon: WeaponBase = _player.get_equipped_weapon()
+			if weapon == null or weapon.max_durability == null:
+				bar.visible = false
+				return
+			if not weapon.durability_changed.is_connected(cb):
+				weapon.durability_changed.connect(cb)
+			_slot_dur_resources[slot_idx] = weapon
+			_update_dur_bar(slot_idx, weapon.current_durability, float(weapon.max_durability))
+		_:
+			bar.visible = false
 
-	if resource == null:
-		bar.visible = false
+
+func _on_dur_changed(current: float, maximum: float, slot_idx: int) -> void:
+	_update_dur_bar(slot_idx, current, maximum)
+
+
+func _refresh_bp_slot(bp_idx: int, item) -> void:
+	if bp_idx < 0 or bp_idx >= _bp_labels.size():
 		return
-
-	var max_val: Variant = resource.max_durability
-	if max_val == null:
-		# TBD balance values not set yet; hide bar rather than show 0/0.
-		bar.visible = false
-		return
-
-	# Connect so the bar updates automatically whenever durability changes.
-	resource.durability_changed.connect(func(cur: float, mx: float) -> void:
-		_update_dur_bar(slot_idx, cur, mx))
-
-	_update_dur_bar(slot_idx, resource.current_durability, float(max_val))
+	var lbl: Label = _bp_labels[bp_idx]
+	var panel: PanelContainer = _bp_panels[bp_idx]
+	var style := StyleBoxFlat.new()
+	style.set_corner_radius_all(3)
+	style.set_border_width_all(1)
+	if item == null:
+		lbl.text = "—"
+		lbl.add_theme_color_override("font_color", Color(0.40, 0.44, 0.52))
+		style.bg_color = _COLOR_SLOT_NORMAL
+		style.border_color = _COLOR_SLOT_BORDER_NORMAL
+	else:
+		var tier: int = item.get("tier", Constants.Tier.COMMON)
+		var tier_col: Color = Constants.TIER_COLORS.get(tier, Color(0.82, 0.86, 0.92))
+		lbl.text = _item_short_name(item, InventoryManager.BACKPACK_START + bp_idx)
+		lbl.add_theme_color_override("font_color", tier_col)
+		style.bg_color = tier_col.darkened(0.84)
+		style.border_color = tier_col.darkened(0.25)
+	panel.add_theme_stylebox_override("panel", style)
 
 
 func _update_dur_bar(slot_idx: int, current: float, maximum: float) -> void:

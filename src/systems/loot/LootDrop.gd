@@ -32,6 +32,8 @@ func _ready() -> void:
 func _build_dev_marker() -> void:
 	var tier: int = item_data.get("tier", Constants.Tier.COMMON)
 	var base: Color = Constants.TIER_COLORS.get(tier, Color(0.7, 0.7, 0.7))
+	# Glow behind the gem (drawn first so z-order puts it under).
+	_build_glow(tier, base)
 	# Diamond gem shape (12×12, rotated square). Tier-colored with inner shading.
 	const S := 12; const MID := int(S / 2) - 1
 	var K  := Color(0.04, 0.05, 0.08)
@@ -61,6 +63,39 @@ func _build_dev_marker() -> void:
 	var sprite := Sprite2D.new()
 	sprite.texture = ImageTexture.create_from_image(img)
 	add_child(sprite)
+
+
+func _build_glow(tier: int, tier_col: Color) -> void:
+	# Radii and peak alpha scale with tier so rarer items glow more visibly.
+	const RADIUS := {
+		Constants.Tier.COMMON:    8,
+		Constants.Tier.RARE:      13,
+		Constants.Tier.EPIC:      18,
+		Constants.Tier.LEGENDARY: 26,
+	}
+	const ALPHA := {
+		Constants.Tier.COMMON:    0.10,
+		Constants.Tier.RARE:      0.32,
+		Constants.Tier.EPIC:      0.50,
+		Constants.Tier.LEGENDARY: 0.70,
+	}
+	var r: int   = RADIUS.get(tier, 8)
+	var peak: float = ALPHA.get(tier, 0.10)
+	var size := r * 2
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var center := float(r)
+	for y in size:
+		for x in size:
+			var dist := Vector2(x - center + 0.5, y - center + 0.5).length() / float(r)
+			if dist >= 1.0:
+				continue
+			# Quadratic falloff: full brightness at centre, zero at edge.
+			var a := (1.0 - dist) * (1.0 - dist) * peak
+			img.set_pixel(x, y, Color(tier_col.r, tier_col.g, tier_col.b, a))
+	var glow := Sprite2D.new()
+	glow.texture = ImageTexture.create_from_image(img)
+	glow.z_index = -1
+	add_child(glow)
 
 
 ## Called by AutoCollect when within pickup radius.

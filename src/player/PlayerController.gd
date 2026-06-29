@@ -17,6 +17,7 @@ var _sprint_cost: float = 0.0   # TBD: stamina/sec while sprinting
 
 var _terrain_manager: TerrainManager = null
 var _storm: StormSystem = null
+var _world_width_px: float = 0.0
 var _equipped_drill: DrillBase = null
 var _equipped_weapon: WeaponBase = null
 
@@ -55,11 +56,13 @@ var _notify_timer: float = 0.0
 
 func _ready() -> void:
 	var d: Dictionary = GameManager.data
-	_move_speed = float(d.get("player_move_speed", 0.0))       # TBD: balance pass
-	_gravity = float(d.get("player_gravity", 0.0))             # TBD: balance pass
+	_move_speed = float(d.get("player_move_speed", 0.0))
+	_gravity = float(d.get("player_gravity", 0.0))
 	_gravity_default = _gravity
-	_sprint_mult = float(d.get("sprint_speed_mult", 1.0))      # TBD: balance pass
-	_sprint_cost = float(d.get("stamina_sprint_cost_per_sec", 0.0))  # TBD: balance pass
+	_sprint_mult = float(d.get("sprint_speed_mult", 1.0))
+	_sprint_cost = float(d.get("stamina_sprint_cost_per_sec", 0.0))
+	var wtiles: int = d.get("world_width_tiles", 0)
+	_world_width_px = float(wtiles) * float(Constants.TILE_SIZE)
 	_build_dev_sprite()
 	_build_dig_highlight()
 	_build_held_visual()
@@ -511,11 +514,13 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_handle_movement(delta)
-	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
-	_handle_tool_use(delta)     # left-click uses the equipped tool
-	_handle_item_use(delta)     # G-key uses the active throwable / consumable / relic
+	_handle_tool_toggle()
+	_handle_tool_use(delta)
+	_handle_item_use(delta)
 	_update_held_visual()
 	move_and_slide()
+	_wrap_horizontal()
+	_stream_terrain()
 
 
 func _apply_gravity(delta: float) -> void:
@@ -705,6 +710,31 @@ func _try_attack() -> void:
 		total_dmg *= _relic_manager.damage_mult()
 	target_stats.take_damage(total_dmg)
 	_equipped_weapon.consume_durability(1.0)
+
+
+func _wrap_horizontal() -> void:
+	if _world_width_px <= 0.0:
+		return
+	var x := global_position.x
+	if x < 0.0:
+		global_position.x += _world_width_px
+		_snap_camera()
+	elif x >= _world_width_px:
+		global_position.x -= _world_width_px
+		_snap_camera()
+
+
+func _snap_camera() -> void:
+	var cam := get_node_or_null("Camera2D") as Camera2D
+	if cam != null:
+		cam.reset_smoothing()
+
+
+func _stream_terrain() -> void:
+	if _terrain_manager == null:
+		return
+	var col := int(global_position.x / float(Constants.TILE_SIZE))
+	_terrain_manager.stream_columns(col, 48)
 
 
 func get_equipped_drill() -> DrillBase:

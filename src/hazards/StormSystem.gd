@@ -28,6 +28,8 @@ var _running: bool = false
 
 # World-space storm zone polygon (visible in the game world)
 var _storm_poly: Polygon2D = null
+# Bright leading-edge strip that makes the approaching wall clearly visible.
+var _wall_strip: Polygon2D = null
 
 # Screen-space tint overlay (CanvasLayer above world, below HUD)
 var _screen_layer: CanvasLayer = null
@@ -47,6 +49,14 @@ func _build_visuals() -> void:
 	_storm_poly.z_index = -1
 	_storm_poly.z_as_relative = true
 	add_child(_storm_poly)
+
+	# Bright leading-edge strip — a thin band just at the storm front so the
+	# approaching wall is unmistakable even when the player is far below it.
+	_wall_strip = Polygon2D.new()
+	_wall_strip.name = "StormWallStrip"
+	_wall_strip.z_index = 0
+	_wall_strip.z_as_relative = true
+	add_child(_wall_strip)
 
 	# Screen-space red tint when inside storm
 	_screen_layer = CanvasLayer.new()
@@ -100,6 +110,8 @@ func _update_storm_poly(front_y: float) -> void:
 		return
 	if front_y < -500.0:
 		_storm_poly.polygon = PackedVector2Array()
+		if _wall_strip != null:
+			_wall_strip.polygon = PackedVector2Array()
 		return
 
 	var world_w_var = _layer_manager.world_width_px()
@@ -107,7 +119,8 @@ func _update_storm_poly(front_y: float) -> void:
 		return
 	var w := float(world_w_var) + 200.0
 
-	# Gradient from solid at the top to nearly transparent at storm front.
+	# Storm body: nearly transparent far above, building to semi-opaque at front.
+	# Players see the wall COMING rather than a solid block overhead.
 	_storm_poly.polygon = PackedVector2Array([
 		Vector2(-100.0, -5000.0),
 		Vector2(w,      -5000.0),
@@ -115,11 +128,28 @@ func _update_storm_poly(front_y: float) -> void:
 		Vector2(-100.0,  front_y),
 	])
 	_storm_poly.vertex_colors = PackedColorArray([
-		Color(0.72, 0.10, 0.06, 0.55),   # top-left  — dense storm core
-		Color(0.72, 0.10, 0.06, 0.55),   # top-right — dense storm core
-		Color(0.72, 0.10, 0.06, 0.04),   # front-right — nearly transparent
-		Color(0.72, 0.10, 0.06, 0.04),   # front-left  — nearly transparent
+		Color(0.70, 0.08, 0.04, 0.08),   # top-left  — barely visible far above
+		Color(0.70, 0.08, 0.04, 0.08),   # top-right — barely visible far above
+		Color(0.80, 0.18, 0.04, 0.48),   # front-right — thick red at leading edge
+		Color(0.80, 0.18, 0.04, 0.48),   # front-left  — thick red at leading edge
 	])
+
+	# Wall strip: a narrow bright band (3 tiles) just below the front so the
+	# exact storm boundary is obvious even through terrain.
+	if _wall_strip != null:
+		var strip_h := float(Constants.TILE_SIZE * 3)
+		_wall_strip.polygon = PackedVector2Array([
+			Vector2(-100.0, front_y),
+			Vector2(w,      front_y),
+			Vector2(w,      front_y + strip_h),
+			Vector2(-100.0, front_y + strip_h),
+		])
+		_wall_strip.vertex_colors = PackedColorArray([
+			Color(0.98, 0.55, 0.10, 0.88),   # top-left  — bright orange leading edge
+			Color(0.98, 0.55, 0.10, 0.88),   # top-right
+			Color(0.80, 0.15, 0.04, 0.00),   # bottom-right — fades to transparent
+			Color(0.80, 0.15, 0.04, 0.00),   # bottom-left
+		])
 
 
 func _update_screen_overlay() -> void:

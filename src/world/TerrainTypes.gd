@@ -41,14 +41,21 @@ static func is_destructible(type: Constants.TerrainType) -> bool:
 static func hardness_order() -> Array[Constants.TerrainType]:
 	return [
 		Constants.TerrainType.SOIL,
+		Constants.TerrainType.CLAY,
+		Constants.TerrainType.LIMESTONE,
 		Constants.TerrainType.ROCK,
-		Constants.TerrainType.DENSE_ROCK,
-		Constants.TerrainType.CRYSTAL,
+		Constants.TerrainType.BASALT,
+		Constants.TerrainType.GRANITE,
+		Constants.TerrainType.IRON_FORMATION,
+		Constants.TerrainType.OBSIDIAN,
+		Constants.TerrainType.DENSE_CRYSTAL,
+		Constants.TerrainType.ULTRA_DENSE,
 		Constants.TerrainType.BEDROCK,
 	]
 
 
-# SOIL and ROCK are structurally weak: soft enough for the Resonance drill
-# to detect via vibration. Used by ResonanceOverlay to paint its highlight.
+# Structurally weak: soft enough for the Resonance drill to detect via vibration.
 static func is_structurally_weak(type: Constants.TerrainType) -> bool:
-	return type == Constants.TerrainType.SOIL or type == Constants.TerrainType.ROCK
+	return (type == Constants.TerrainType.SOIL
+		or type == Constants.TerrainType.CLAY
+		or type == Constants.TerrainType.ROCK)

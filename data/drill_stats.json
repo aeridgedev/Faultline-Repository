@@ -5,13 +5,13 @@
     "fields": {
       "dig_time_mult": "multiplier on base terrain dig time (lower = faster). Per-terrain class strength lives in terrain_stats.json class_effectiveness.",
       "durability": "number of tile-breaks before the drill is consumed/needs an Upgrade Template",
-      "spawn_weight": "relative class spawn weight; CURRENT VALUES INCOMPLETE (sum != 100), still TBD"
+      "spawn_weight": "relative class spawn weight out of 100; Precision most common, Resonance rarest"
     }
   },
   "classes": {
     "Precision": {
       "role": "TBD — narrow/efficient digging",
-      "spawn_weight": 30,
+      "spawn_weight": 40,
       "tiers": {
         "Common":    { "dig_time_mult": 1.0,  "durability": 200.0 },
         "Rare":      { "dig_time_mult": 0.85, "durability": 320.0 },
@@ -21,7 +21,7 @@
     },
     "Burst": {
       "role": "TBD — area/multi-tile digging",
-      "spawn_weight": 20,
+      "spawn_weight": 28,
       "tiers": {
         "Common":    { "dig_time_mult": 1.05, "durability": 200.0 },
         "Rare":      { "dig_time_mult": 0.90, "durability": 310.0 },
@@ -31,7 +31,7 @@
     },
     "Thermal": {
       "role": "TBD — heat-based, strong vs Crystal",
-      "spawn_weight": 10,
+      "spawn_weight": 18,
       "tiers": {
         "Common":    { "dig_time_mult": 1.0,  "durability": 200.0 },
         "Rare":      { "dig_time_mult": 0.85, "durability": 315.0 },
@@ -41,7 +41,7 @@
     },
     "Resonance": {
       "role": "TBD — vibration-based, strong vs Dense Rock",
-      "spawn_weight": 10,
+      "spawn_weight": 14,
       "tiers": {
         "Common":    { "dig_time_mult": 1.0,  "durability": 200.0 },
         "Rare":      { "dig_time_mult": 0.85, "durability": 315.0 },

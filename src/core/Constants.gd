@@ -205,17 +205,40 @@ const STORM_PHASES := [
 
 # ---------------------------------------------------------------------------
 # TERRAIN — tile-based, fully destructible, persistent, procedural.
-# Hardness ordering only (relative); exact dig times come from data + drill
-# class/tier effectiveness. Bedrock is the hardest and bounds the playfield.
+# 11 types spread across 5 layers. Hardness increases with depth.
+# Bedrock is indestructible and bounds the playfield.
 # ---------------------------------------------------------------------------
-enum TerrainType { SOIL, ROCK, DENSE_ROCK, CRYSTAL, BEDROCK }
+enum TerrainType {
+	# Crust
+	SOIL,           # 0 — very easy
+	CLAY,           # 1 — easy
+	LIMESTONE,      # 2 — easy-medium
+	# Mantle
+	ROCK,           # 3 — medium
+	BASALT,         # 4 — medium-hard
+	GRANITE,        # 5 — hard
+	# Outer Core
+	OBSIDIAN,       # 6 — very hard, glass-like
+	IRON_FORMATION, # 7 — hard, metallic
+	DENSE_CRYSTAL,  # 8 — very hard, crystalline
+	# Inner Core
+	ULTRA_DENSE,    # 9 — extreme
+	# Special
+	BEDROCK,        # 10 — indestructible boundary
+}
 
 const TERRAIN_NAMES := {
-	TerrainType.SOIL: "Soil",
-	TerrainType.ROCK: "Rock",
-	TerrainType.DENSE_ROCK: "Dense Rock",
-	TerrainType.CRYSTAL: "Crystal",
-	TerrainType.BEDROCK: "Bedrock",
+	TerrainType.SOIL:           "Soil",
+	TerrainType.CLAY:           "Clay",
+	TerrainType.LIMESTONE:      "Limestone",
+	TerrainType.ROCK:           "Rock",
+	TerrainType.BASALT:         "Basalt",
+	TerrainType.GRANITE:        "Granite",
+	TerrainType.OBSIDIAN:       "Obsidian",
+	TerrainType.IRON_FORMATION: "Iron Formation",
+	TerrainType.DENSE_CRYSTAL:  "Dense Crystal",
+	TerrainType.ULTRA_DENSE:    "Ultra Dense",
+	TerrainType.BEDROCK:        "Bedrock",
 }
 
 const TILE_SIZE := 16  # pixels per terrain cell (pixel-art grid)

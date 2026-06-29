@@ -19,6 +19,9 @@ func _ready() -> void:
 	var player: PlayerController = PlayerScene.instantiate() as PlayerController
 	add_child(player)
 	player.global_position = _spawn_position(layer_manager)
+	# Snap camera to spawn position immediately — prevents a visible left-side
+	# gap caused by the camera starting at (0,0) and smoothly panning to spawn.
+	(player.get_node("Camera2D") as Camera2D).reset_smoothing()
 	player.init_world(terrain_manager)
 	player.equip_starter_drill()
 	player.equip_starter_weapon()
@@ -93,8 +96,11 @@ func _build_background(layer_manager: LayerManager) -> void:
 	bg.centered = false
 	bg.z_index = -100
 	bg.z_as_relative = false
-	bg.position = Vector2(-64.0, float(-atmosphere_px))
-	bg.scale = Vector2((width_px + 128.0) / tex.width, total_h / tex.height)
+	# Extend far enough in both directions that the player will never see the edge
+	# during a match, even walking purely horizontal for 22 minutes.
+	var bg_half := width_px * 60.0
+	bg.position = Vector2(-bg_half, float(-atmosphere_px))
+	bg.scale = Vector2(bg_half * 2.0 / tex.width, total_h / tex.height)
 	add_child(bg)
 
 

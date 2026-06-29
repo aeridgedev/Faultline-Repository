@@ -1,13 +1,13 @@
 {
   "_meta": "DEV PLACEHOLDERS — all numbers provisional, pending balance pass. Do not treat as final.",
 
-  "world_width_tiles": 80,
+  "world_width_tiles": 400,
 
-  "layer_height_crust":       50,
-  "layer_height_mantle":      60,
-  "layer_height_outer_core":  70,
-  "layer_height_inner_core":  80,
-  "layer_height_core_hollow": 40,
+  "layer_height_crust":       150,
+  "layer_height_mantle":      180,
+  "layer_height_outer_core":  210,
+  "layer_height_inner_core":  240,
+  "layer_height_core_hollow": 120,
 
   "player_max_health":    100.0,
   "player_move_speed":    200.0,

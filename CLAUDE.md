@@ -137,7 +137,6 @@ needs one, **leave it `null`/placeholder and flag it** — never fabricate a
 
 - All weapon Common base stats (damage, swing speed, durability, range).
 - All drill dig times, durability, and class-vs-terrain effectiveness multipliers.
-- Drill class **spawn rates** (current 30/20/10/10 placeholder is incomplete — sums to 70%).
 - All armor values, move-speed mods, and resistance profiles.
 - Terrain base dig times and movement-speed modifiers.
 - Loot table rarity/category weights per layer.
