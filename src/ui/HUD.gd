@@ -16,6 +16,9 @@ extends CanvasLayer
 @onready var _death_screen: DeathScreen = $Control/DeathScreen
 @onready var _spectator_view: SpectatorView = $Control/SpectatorView
 @onready var _kill_counter: KillCounter = $Control/KillCounter
+@onready var _kill_progress_panel: PanelContainer = $Control/KillProgressPanel
+@onready var _kill_progress_label: Label = $Control/KillProgressPanel/VBoxContainer/KillLabel
+@onready var _kill_progress_bar: ProgressBar = $Control/KillProgressPanel/VBoxContainer/KillBar
 @onready var _effects_panel: PanelContainer = $Control/EffectsPanel
 @onready var _effects_vbox: VBoxContainer = $Control/EffectsPanel/VBoxContainer
 
@@ -80,6 +83,18 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 	_storm_timer.init(storm)
 	_kill_counter.init(stats)
 
+	_kill_progress_label.add_theme_font_size_override("font_size", 8)
+	_kill_progress_label.add_theme_color_override("font_color", Color(0.75, 0.80, 0.85))
+	var kp_fill := StyleBoxFlat.new()
+	kp_fill.bg_color = Color(0.08, 0.88, 0.96)
+	kp_fill.set_corner_radius_all(1)
+	_kill_progress_bar.add_theme_stylebox_override("fill", kp_fill)
+	var kp_bg := StyleBoxFlat.new()
+	kp_bg.bg_color = Color(0.06, 0.05, 0.05, 0.85)
+	_kill_progress_bar.add_theme_stylebox_override("background", kp_bg)
+	var descent_tracker: DescentTracker = player.get_node("DescentTracker")
+	descent_tracker.kill_progress_changed.connect(_on_kill_progress_changed)
+
 
 func _process(_delta: float) -> void:
 	_fps_label.text = str(Engine.get_frames_per_second()) + " fps"
@@ -110,7 +125,7 @@ func _style_panels() -> void:
 	var ctrl := get_node_or_null("Control")
 	if ctrl == null:
 		return
-	for panel_name in ["LayerPanel", "StormPanel", "KillCounter", "EffectsPanel"]:
+	for panel_name in ["LayerPanel", "StormPanel", "KillCounter", "KillProgressPanel", "EffectsPanel"]:
 		var panel := ctrl.get_node_or_null(panel_name)
 		if panel != null:
 			panel.add_theme_stylebox_override("panel", s.duplicate())
@@ -474,6 +489,16 @@ func _item_short_name(item, slot_idx: int) -> String:
 		"relic":      return Constants.RELIC_NAMES.get(item_class, "?").left(6)
 		"consumable": return "Medkit"
 	return "?"
+
+
+func _on_kill_progress_changed(current_kills: int, required_kills: int, next_layer_name: String) -> void:
+	if required_kills == 0 or next_layer_name.is_empty():
+		_kill_progress_panel.visible = false
+		return
+	_kill_progress_panel.visible = true
+	var display_kills := mini(current_kills, required_kills)
+	_kill_progress_label.text = "%s: %d/%d kills" % [next_layer_name, display_kills, required_kills]
+	_kill_progress_bar.value = minf(float(current_kills) / float(required_kills), 1.0)
 
 
 func _on_effects_changed(effects: Array) -> void:

@@ -14,11 +14,13 @@ extends Node
 
 signal layer_changed(new_layer: int)
 signal descent_blocked(required_kills: int)
+signal kill_progress_changed(current_kills: int, required_kills: int, next_layer_name: String)
 
 @onready var _stats: PlayerStats = $"../PlayerStats"
 
 var _layer_manager: LayerManager
 var _block_cooldown: float = 0.0
+var _last_kill_count: int = -1  # -1 forces an emit on the first physics frame
 
 
 func _ready() -> void:
@@ -30,7 +32,16 @@ func init(lm: LayerManager) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if _layer_manager == null or _stats.is_dead:
+	if _stats.is_dead:
+		return
+
+	# Detect kill count changes; runs before the layer_manager guard so the
+	# initial emit fires on the very first frame even during world setup.
+	if _stats.kill_count != _last_kill_count:
+		_last_kill_count = _stats.kill_count
+		_emit_kill_progress()
+
+	if _layer_manager == null:
 		return
 
 	_block_cooldown = maxf(0.0, _block_cooldown - delta)
@@ -68,5 +79,16 @@ func _clamp_to_boundary() -> void:
 		player_node.velocity.y = 0.0
 
 
+func _emit_kill_progress() -> void:
+	var current_layer := _stats.get_layer()
+	var required: int = Constants.LAYER_KILL_REQUIREMENTS.get(current_layer, 0)
+	if required == 0:
+		kill_progress_changed.emit(_stats.kill_count, 0, "")
+		return
+	var next_name: String = Constants.LAYER_NAMES.get(current_layer + 1, "")
+	kill_progress_changed.emit(_stats.kill_count, required, next_name)
+
+
 func _on_layer_changed(new_layer: int) -> void:
 	layer_changed.emit(new_layer)
+	_emit_kill_progress()
