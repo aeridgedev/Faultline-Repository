@@ -31,11 +31,9 @@ static func spawn(
 	# Collect candidate surface tiles grouped by 6×6 slot.
 	# slot key = Vector2i(col / SLOT_SIZE, row / SLOT_SIZE)
 	var slots: Dictionary = {}   # slot_key -> Array of {cell, layer}
-	var tile_total := 0
 
 	for col in by_col:
 		var col_data: Dictionary = by_col[col]
-		tile_total += col_data.size()
 		for row in col_data:
 			# Surface check: tile directly above must be empty air (absent here).
 			if col_data.has(row - 1):
@@ -51,12 +49,9 @@ static func spawn(
 				slots[slot_key] = []
 			slots[slot_key].append({"cell": Vector2i(col, row), "layer": layer})
 
-	print("[ChestSpawner] registry=%d tiles, slots=%d" % [tile_total, slots.size()])
-
 	# One roll per slot — pick a random candidate from the slot, then apply
 	# the layer spawn-chance formula. This distributes chests evenly without
 	# flooding every tunnel floor.
-	var placed := 0
 	for slot_key in slots:
 		var candidates: Array = slots[slot_key]
 		if candidates.is_empty():
@@ -69,8 +64,6 @@ static func spawn(
 		if randf() > chance:
 			continue
 		_place_chest(pick["cell"], layer, terrain_manager, chest_parent)
-		placed += 1
-	print("[ChestSpawner] placed %d chests" % placed)
 
 
 static func _place_chest(

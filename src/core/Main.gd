@@ -44,10 +44,6 @@ func _ready() -> void:
 
 	GameManager.start_match()
 
-	# Diagnostic: report scene size so future regressions are visible in Output.
-	# AutoCollect was walking ALL of these nodes every 0.1s — now uses groups.
-	print("[Diagnostic] Total scene nodes after setup: %d" % int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
-
 
 func _init_hazards(stats: PlayerStats, stamina: Stamina, layer_manager: LayerManager) -> StormSystem:
 	var depth := _world.get_node("DepthHazard") as DepthHazard

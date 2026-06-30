@@ -7,6 +7,7 @@ const _DamageNumberScene := preload("res://src/ui/DamageNumber.tscn")
 signal health_changed(new_hp: float, max_hp: float)
 signal player_died
 signal layer_changed(new_layer: int)
+signal active_effects_changed(effects: Array)
 
 var max_health: float  # TBD: loaded from GameManager.data at _ready; null-safe sentinel if missing
 var current_health: float
@@ -21,11 +22,68 @@ var _storm: StormSystem = null
 
 var equipped_armor: Node = null
 
+# { effect_name: { "remaining": float, "is_buff": bool } }
+var _active_effects: Dictionary = {}
+var _effects_tick: float = 0.0
+
 
 func _ready() -> void:
 	var data_hp = GameManager.data.get("player_max_health", null) if GameManager.data else null
 	max_health = float(data_hp) if data_hp != null else 100.0  # TBD: 100.0 dev fallback until balance pass
 	current_health = max_health
+	_start_test_effects()
+
+
+func _process(delta: float) -> void:
+	if _active_effects.is_empty():
+		_effects_tick = 0.0
+		return
+	_effects_tick += delta
+	var tick_fired := _effects_tick >= 1.0
+	if tick_fired:
+		_effects_tick -= 1.0
+	var any_expired := false
+	var to_remove: Array[String] = []
+	for effect_name: String in _active_effects:
+		_active_effects[effect_name]["remaining"] -= delta
+		if _active_effects[effect_name]["remaining"] <= 0.0:
+			to_remove.append(effect_name)
+			any_expired = true
+	for effect_name: String in to_remove:
+		_active_effects.erase(effect_name)
+	if any_expired or tick_fired:
+		active_effects_changed.emit(_build_effects_array())
+
+
+func apply_effect(effect_name: String, duration: float, is_buff: bool) -> void:
+	_active_effects[effect_name] = {"remaining": duration, "is_buff": is_buff}
+	active_effects_changed.emit(_build_effects_array())
+
+
+func _build_effects_array() -> Array:
+	var result: Array = []
+	for effect_name: String in _active_effects:
+		result.append({
+			"name": effect_name,
+			"remaining": _active_effects[effect_name]["remaining"],
+			"is_buff": _active_effects[effect_name]["is_buff"],
+		})
+	return result
+
+
+func _start_test_effects() -> void:
+	var t1 := Timer.new()
+	t1.wait_time = 2.0
+	t1.one_shot = true
+	t1.timeout.connect(func(): apply_effect("Haste", 8.0, true))
+	add_child(t1)
+	t1.start()
+	var t2 := Timer.new()
+	t2.wait_time = 5.0
+	t2.one_shot = true
+	t2.timeout.connect(func(): apply_effect("Weakened", 6.0, false))
+	add_child(t2)
+	t2.start()
 
 
 func take_damage(amount: float) -> void:

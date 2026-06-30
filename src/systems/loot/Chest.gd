@@ -35,7 +35,9 @@ func _ready() -> void:
 	_prompt.add_theme_font_size_override("font_size", 7)
 	_area.body_entered.connect(_on_body_entered)
 	_area.body_exited.connect(_on_body_exited)
-	_build_popup()
+	# Popup UI is built lazily on first open — see _ensure_popup_built(). Building
+	# it here for every chest spawned hundreds of CanvasLayers + full-rect Controls
+	# up front, bloating the scene tree for UI that most chests never show.
 
 
 # Draws the 16×12 chest pixel art.  opened=false → closed lid with tier latch;
@@ -97,6 +99,12 @@ func _build_chest_sprite(opened: bool) -> void:
 
 	_sprite.texture = ImageTexture.create_from_image(img)
 	_sprite.centered = true
+
+
+# Builds the popup UI on demand (first open). No-op once built.
+func _ensure_popup_built() -> void:
+	if _popup_layer == null:
+		_build_popup()
 
 
 func _build_popup() -> void:
@@ -291,6 +299,7 @@ func _open() -> void:
 	if _opened:
 		return
 	_opened = true
+	_ensure_popup_built()
 	_build_chest_sprite(true)
 	_setup_item_button()
 	_show_popup()
@@ -298,6 +307,7 @@ func _open() -> void:
 
 
 func _show_popup() -> void:
+	_ensure_popup_built()
 	_refresh_button_state()
 	_popup_visible = true
 	_popup_layer.visible = true

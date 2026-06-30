@@ -16,7 +16,8 @@ extends CanvasLayer
 @onready var _death_screen: DeathScreen = $Control/DeathScreen
 @onready var _spectator_view: SpectatorView = $Control/SpectatorView
 @onready var _kill_counter: KillCounter = $Control/KillCounter
-@onready var _minimap: Minimap = $Control/Minimap
+@onready var _effects_panel: PanelContainer = $Control/EffectsPanel
+@onready var _effects_vbox: VBoxContainer = $Control/EffectsPanel/VBoxContainer
 
 var _slot_panels: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
@@ -42,7 +43,6 @@ const _COLOR_SLOT_BORDER_ACTIVE := Color(0.08, 0.88, 0.96, 1.00)
 
 
 func init(player: PlayerController, storm: StormSystem, layer_manager: LayerManager) -> void:
-	print("[HUD] init started")
 	_player = player
 	var stats: PlayerStats = player.get_node("PlayerStats")
 	var hotbar: Hotbar = player.get_node("Hotbar")
@@ -61,6 +61,7 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 
 	stats.health_changed.connect(_on_health_changed)
 	stats.player_died.connect(_on_player_died)
+	stats.active_effects_changed.connect(_on_effects_changed)
 	hotbar.active_slot_changed.connect(_on_slot_changed)
 	_inventory.slot_changed.connect(_on_inventory_slot_changed)
 	_death_screen.spectate_requested.connect(_on_spectate_requested)
@@ -78,7 +79,6 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 	_layer_indicator.init(stats)
 	_storm_timer.init(storm)
 	_kill_counter.init(stats)
-	_minimap.init(player, storm, layer_manager)
 
 
 func _process(_delta: float) -> void:
@@ -110,7 +110,7 @@ func _style_panels() -> void:
 	var ctrl := get_node_or_null("Control")
 	if ctrl == null:
 		return
-	for panel_name in ["LayerPanel", "StormPanel", "KillCounter"]:
+	for panel_name in ["LayerPanel", "StormPanel", "KillCounter", "EffectsPanel"]:
 		var panel := ctrl.get_node_or_null(panel_name)
 		if panel != null:
 			panel.add_theme_stylebox_override("panel", s.duplicate())
@@ -474,3 +474,31 @@ func _item_short_name(item, slot_idx: int) -> String:
 		"relic":      return Constants.RELIC_NAMES.get(item_class, "?").left(6)
 		"consumable": return "Medkit"
 	return "?"
+
+
+func _on_effects_changed(effects: Array) -> void:
+	for child in _effects_vbox.get_children():
+		_effects_vbox.remove_child(child)
+		child.queue_free()
+	if effects.is_empty():
+		_effects_panel.visible = false
+		return
+	_effects_panel.visible = true
+	for effect: Dictionary in effects:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var name_lbl := Label.new()
+		name_lbl.text = effect["name"]
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lbl.add_theme_font_size_override("font_size", 8)
+		var col: Color = Color(0.38, 0.90, 0.45) if effect["is_buff"] else Color(0.92, 0.30, 0.30)
+		name_lbl.add_theme_color_override("font_color", col)
+		var dur_lbl := Label.new()
+		dur_lbl.text = "%ds" % ceili(effect["remaining"])
+		dur_lbl.add_theme_font_size_override("font_size", 8)
+		dur_lbl.add_theme_color_override("font_color", Color(0.70, 0.74, 0.82))
+		row.add_child(name_lbl)
+		row.add_child(dur_lbl)
+		_effects_vbox.add_child(row)
+	# 14px per row + 6px panel padding, grows downward from offset_top.
+	_effects_panel.offset_bottom = _effects_panel.offset_top + 6 + effects.size() * 14
