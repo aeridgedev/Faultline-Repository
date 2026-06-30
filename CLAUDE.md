@@ -69,7 +69,10 @@ listed above are the intended contents, not all present yet.
 Common (gray) / Rare (blue) / Epic (purple) / Legendary (gold).
 **No Uncommon. No Mythic.** Defined in `Constants.Tier`.
 
-**World — 5 layers, descend only:**
+**World — 5 layers, descend only. Kill gate enforced between each layer:**
+Kill count required to descend (LOCKED, `Constants.LAYER_KILL_REQUIREMENTS`):
+Crust → Mantle: 1 kill · Mantle → Outer Core: 2 kills · Outer Core → Inner Core: 3 kills · Inner Core → Core Hollow: 4 kills.
+
 1. Crust — low hazard / low PvP
 2. Mantle — medium / medium
 3. Outer Core — high / high

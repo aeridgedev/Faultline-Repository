@@ -88,8 +88,4 @@ func _refresh_label() -> void:
 
 
 func _on_died() -> void:
-	# Dev convenience: respawn at full health so combat can be tested repeatedly.
-	_stats.is_dead = false
-	_stats.current_health = _stats.max_health
-	_stats.health_changed.emit(_stats.current_health, _stats.max_health)
-	_refresh_label()
+	queue_free()

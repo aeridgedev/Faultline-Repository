@@ -35,22 +35,17 @@ func _scan_for_drops() -> void:
 		return
 
 	var my_pos: Vector2 = _controller.global_position
-	# Walk the scene tree from root to find all LootDrop nodes.
-	# This is deliberately simple for offline play; server step will use interest management.
-	var root := get_tree().get_root()
-	_collect_nearby(root, my_pos)
-
-
-func _collect_nearby(node: Node, my_pos: Vector2) -> void:
-	if node is LootDrop:
+	# Use a group instead of a recursive tree walk. LootDrop.add_to_group("loot_drops")
+	# is called in _ready(); queue_free() removes it automatically. O(active drops only).
+	for node: Node in get_tree().get_nodes_in_group("loot_drops"):
 		var drop := node as LootDrop
-		if drop.pickup_delay <= 0.0 and my_pos.distance_to(drop.global_position) <= _pickup_radius:
-			if _inventory.can_add(drop.item_data):
-				var accepted := _inventory.add_item(drop.item_data)
-				if accepted >= 0:
-					drop.consume()
-					return
-	for child in node.get_children():
-		if not _inventory.has_space() and _inventory.get_armor() != null:
-			return
-		_collect_nearby(child, my_pos)
+		if drop == null or drop.pickup_delay > 0.0:
+			continue
+		if my_pos.distance_to(drop.global_position) > _pickup_radius:
+			continue
+		if not _inventory.can_add(drop.item_data):
+			continue
+		if _inventory.add_item(drop.item_data) >= 0:
+			drop.consume()
+			if not _inventory.has_space() and _inventory.get_armor() != null:
+				return

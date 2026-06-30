@@ -23,6 +23,7 @@ func _process(delta: float) -> void:
 
 
 func _ready() -> void:
+	add_to_group("loot_drops")
 	# TBD(art): replace with a real tier-colored chest/icon once assets exist.
 	# Dev placeholder: a tier-colored gem with a dark outline so loot is visible
 	# on the terrain and you can watch AutoCollect pick it up.
@@ -35,7 +36,7 @@ func _build_dev_marker() -> void:
 	# Glow behind the gem (drawn first so z-order puts it under).
 	_build_glow(tier, base)
 	# Diamond gem shape (12×12, rotated square). Tier-colored with inner shading.
-	const S := 12; const MID := int(S / 2) - 1
+	const S := 12; const MID := 5
 	var K  := Color(0.04, 0.05, 0.08)
 	var lit := base.lightened(0.28)
 	var shd := base.darkened(0.32)

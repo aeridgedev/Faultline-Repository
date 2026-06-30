@@ -443,6 +443,21 @@ func init_streaming(world_width: int) -> void:
 		_streamed_cols[col] = true
 
 
+# Lazy variant: accepts pre-computed world data directly from WorldGenerator.
+# Tiles are NOT placed into TileMap here — stream_columns() places them on demand.
+func init_streaming_lazy(world_data: Dictionary, world_width: int) -> void:
+	_world_width = world_width
+	_canonical_by_col = world_data
+
+
+# Returns the canonical world as a nested per-column dict: { col:int -> { row:int -> type } }.
+# ChestSpawner scans this directly. Previously a flat Vector2i-keyed dict was built here
+# (360k struct allocations + hash inserts every startup) — eliminated by exposing the
+# already-built column index by reference instead.
+func get_canonical_by_col() -> Dictionary:
+	return _canonical_by_col
+
+
 # Ensures all columns within [center_col - half_range, center_col + half_range]
 # exist in the TileMap. Missing columns are filled by repeating the canonical
 # column at (col % world_width). O(1) per already-streamed column.
@@ -454,6 +469,8 @@ func stream_columns(center_col: int, half_range: int) -> void:
 			continue
 		_streamed_cols[col] = true
 		var canonical_col: int = ((col % _world_width) + _world_width) % _world_width
-		var col_data: Dictionary = _canonical_by_col.get(canonical_col, {})
+		if not _canonical_by_col.has(canonical_col):
+			continue
+		var col_data: Dictionary = _canonical_by_col[canonical_col]
 		for row: int in col_data:
 			place_tile(Vector2i(col, row), col_data[row])

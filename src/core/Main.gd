@@ -12,7 +12,7 @@ func _ready() -> void:
 	var terrain_manager: TerrainManager = _world.get_node("TerrainManager")
 
 	var generator := WorldGenerator.new()
-	generator.generate(terrain_manager, layer_manager, randi())
+	var dummy_positions: Array = generator.generate(terrain_manager, layer_manager, randi())
 
 	_build_background(layer_manager)
 
@@ -32,16 +32,21 @@ func _ready() -> void:
 	player.init_storm(storm)
 	(_world.get_node("PressureSystem") as PressureSystem).zero_gravity_changed.connect(player.set_zero_gravity)
 	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
-	_spawn_test_dummy(player.global_position)
+	for pos: Vector2 in dummy_positions:
+		_spawn_test_dummy(pos)
 
 	var hud: HUD = HUDScene.instantiate() as HUD
 	add_child(hud)
-	hud.init(player, storm)
+	hud.init(player, storm, layer_manager)
 
 	# After the HUD is listening, populate the hotbar so its slot labels update.
 	player.setup_hotbar()
 
 	GameManager.start_match()
+
+	# Diagnostic: report scene size so future regressions are visible in Output.
+	# AutoCollect was walking ALL of these nodes every 0.1s — now uses groups.
+	print("[Diagnostic] Total scene nodes after setup: %d" % int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
 
 
 func _init_hazards(stats: PlayerStats, stamina: Stamina, layer_manager: LayerManager) -> StormSystem:
@@ -104,13 +109,14 @@ func _build_background(layer_manager: LayerManager) -> void:
 	add_child(bg)
 
 
-# DEV-ONLY: drop a melee test target a few tiles to the player's right so combat
-# can be verified offline. Remove once networked players exist.
-func _spawn_test_dummy(near: Vector2) -> void:
+# DEV-ONLY: place a test dummy at a world-space position.
+# Positions come from WorldGenerator (2 per layer, on cave floors).
+# Remove once networked players exist.
+func _spawn_test_dummy(pos: Vector2) -> void:
 	var dummy := TestDummy.new()
 	dummy.name = "TestDummy"
 	add_child(dummy)
-	dummy.global_position = near + Vector2(Constants.TILE_SIZE * 2, -Constants.TILE_SIZE)
+	dummy.global_position = pos
 
 
 func _spawn_position(layer_manager: LayerManager) -> Vector2:

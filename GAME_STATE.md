@@ -79,11 +79,10 @@ Horizontal world wrap (cylindrical world).
 **Hotbar:** Mouse scroll wheel + keys 1–5 cycle active slot.
 
 **Known issues:**
-- Merge conflict marker at lines ~517–525 (two comment-style variants of the tool-toggle block; identical behaviour; neither causes bugs but should be resolved).
 - Player spawn X is always world centre — needs scatter once 100-player drop is wired.
 
 ### PlayerStats (`src/player/PlayerStats.gd`)
-Holds `current_health`, `max_health` (100.0 default), `damage_reduction` (0.0–1.0, set by ToughnessRelic), `life_capsule_active`, `_current_layer`.
+Holds `current_health`, `max_health` (100.0 default), `damage_reduction` (0.0–1.0, set by ToughnessRelic), `life_capsule_active`, `_current_layer`, `kill_count` (incremented by `add_kill()`).
 
 `take_damage(amount)`: applies reduction, clamps to 0, spawns floating DamageNumber, emits `health_changed`. If health reaches 0 and `life_capsule_active`, consumes it and leaves player at 1 HP instead.
 
@@ -101,7 +100,24 @@ Signals: `health_changed`, `player_died`, `layer_changed`.
 - All values from `world_config.json` (currently: max 100, cost 30/s, regen 20/s, delay 1.0s, threshold 20).
 
 ### DescentTracker (`src/player/DescentTracker.gd`)
-Polls player Y position each physics frame; queries `LayerManager.layer_at_y()`; emits `layer_changed(new_layer)` when the layer changes. Wires into `PlayerStats.set_layer()`.
+Polls player Y position each physics frame; queries `LayerManager.layer_at_y()`; enforces the kill gate; emits `layer_changed(new_layer)` when the layer changes. Wires into `PlayerStats.set_layer()`.
+
+**Kill gate:** Before allowing a layer transition, checks `PlayerStats.kill_count` against `Constants.LAYER_KILL_REQUIREMENTS` for the current layer. If the requirement is not met:
+- Player's `global_position.y` is clamped to `layer_bottom_y - 1px` (just above the boundary).
+- Player's `velocity.y` is zeroed (prevents gravity from immediately re-crossing the boundary).
+- `descent_blocked(required_kills)` signal is emitted with a 2-second cooldown to avoid spam.
+
+Execution order: DescentTracker is a child of PlayerController, so Godot processes it AFTER the parent's `_physics_process`. The position clamp therefore overrides any `move_and_slide()` movement from the same frame.
+
+Signals: `layer_changed(int)`, `descent_blocked(int)`.
+
+**Kill requirements (LOCKED in Constants.LAYER_KILL_REQUIREMENTS):**
+| Leaving layer | Kills needed |
+|---|---|
+| Crust | 1 |
+| Mantle | 2 |
+| Outer Core | 3 |
+| Inner Core | 4 |
 
 ### PlayerDeath (`src/player/PlayerDeath.gd`)
 On `player_died`: freezes `PlayerController` physics and input; emits `death_processed(player_id)`. `_enter_spectator_mode()` is a stub (prints debug message; real follow-cam logic TBD step 9).
@@ -111,14 +127,18 @@ On `player_died`: freezes `PlayerController` physics and input; emits `death_pro
 ## World Systems
 
 ### WorldGenerator (`src/world/WorldGenerator.gd`)
-Called once per match with a random seed. Populates `TerrainManager` via `place_tile`.
+Called once per match with a random seed. Pre-computes all tile data into a per-column Dictionary without touching TileMap, then hands the data to TerrainManager for lazy placement.
 
 **Generation sequence:**
-1. Per layer: fill with weighted terrain type (see distributions below).
+1. Per layer: fill with weighted terrain type (see distributions below). Data written to `world_data[col][row]` — no `tile_map.set_cell()` calls yet.
 2. Carve caves: wrapping horizontal tunnels + vertical shafts.
 3. Horizontal rock bands every 8–14 rows within each layer (harder terrain variety).
-4. Core Hollow: generates as a circular bedrock-walled chamber with an open interior void. **The shell (boundary wall) must be the hardest terrain in the game** — currently it uses generic Bedrock but may need a dedicated "Core Shell" terrain type that is drillable (unlike Bedrock) but far harder than Ultra Dense. The **interior remains open/void** — this is intentional: once inside, players move through a semi-fluid substance (free movement, no terrain tiles, no gravity). The current open-void interior is correct in spirit but the physics (zero-gravity, fluid movement feel) are not yet implemented.
-5. Bedrock border: bottom row only; world wraps horizontally.
+4. After filling each layer, scan air cells for valid floor positions (air cell with solid tile directly below); collect 2 positions per layer for TestDummy spawning.
+5. Core Hollow: generates as a circular bedrock-walled chamber with an open interior void. **The shell (boundary wall) must be the hardest terrain in the game** — currently it uses generic Bedrock but may need a dedicated "Core Shell" terrain type that is drillable (unlike Bedrock) but far harder than Ultra Dense. The **interior remains open/void** — this is intentional: once inside, players move through a semi-fluid substance (free movement, no terrain tiles, no gravity). The current open-void interior is correct in spirit but the physics (zero-gravity, fluid movement feel) are not yet implemented.
+6. Bedrock border: bottom row only; world wraps horizontally.
+7. Calls `terrain_manager.init_streaming_lazy(world_data, width)` — passes all data to TerrainManager without placing tiles.
+8. Calls `terrain_manager.stream_columns(width / 2, 48)` — places only the ~97 columns around spawn into TileMap at startup. PlayerController streams the rest on demand as the player moves.
+9. Returns `Array` of `Vector2` world-space dummy spawn positions to Main.gd.
 
 **Terrain distributions (provisional weights, not from JSON):**
 | Layer | Types |
@@ -132,12 +152,15 @@ Called once per match with a random seed. Populates `TerrainManager` via `place_
 ### TerrainManager (`src/world/TerrainManager.gd`)
 Owns and mutates the Godot `TileMap`. Single interface for all terrain reads/writes.
 
-- **`_tile_registry: Dictionary`** — canonical map of `Vector2i → TerrainType`; source of truth.
+- **`_tile_registry: Dictionary`** — live map of `Vector2i → TerrainType` for tiles actually placed in TileMap.
+- **`_canonical_by_col: Dictionary`** — col_int → {row_int: TerrainType}; full world layout received from WorldGenerator. Source of truth for streaming.
 - **`place_tile(cell, type)`** — adds to registry + tilemap.
 - **`destroy_tile(cell)`** — removes if destructible; emits signal. Bedrock cannot be destroyed.
 - **`get_tile_type(cell)`, `has_tile(cell)`** — query registry.
 - **Streaming:** `stream_columns(center_col, half_range)` — ensures columns near player exist by mirroring canonical columns. Cylindrical wrapping: columns repeat seamlessly left/right.
-- **`init_streaming(world_width)`** — called once by WorldGenerator.
+- **`init_streaming_lazy(world_data, world_width)`** — receives pre-computed world data from WorldGenerator; no TileMap calls. Tiles placed on demand by `stream_columns()`.
+- **`get_canonical_by_col()`** — returns the nested `{col → {row → TerrainType}}` index by reference; used by ChestSpawner at startup to scan the full world without requiring all tiles to be placed (replaces the old `get_canonical_registry_flat()`, which allocated a 360k Vector2i-keyed dict every startup).
+- **`init_streaming(world_width)`** — legacy path (not called in current flow; kept for reference).
 
 Dev tileset built in code (no external asset needed): all 11 terrain types as pixel-art 16×16 images.
 
@@ -173,10 +196,11 @@ All values above are provisional dev placeholders.
 After world generation, places Chest nodes at valid surface positions.
 
 Algorithm:
-1. Find all surface tiles (solid tile with air tile directly above).
-2. Group by 6×6 tile slot to limit density.
-3. One roll per slot: pick random candidate, apply `0.8 × (1 − depthFactor)²`.
-4. Core Hollow excluded (no loot spawns there).
+1. Calls `terrain_manager.get_canonical_by_col()` to get the nested `{col → {row → type}}` index and iterates it column-by-column. This works even under lazy generation because canonical data is always populated before ChestSpawner runs.
+2. Find all surface tiles (solid tile whose row−1 is absent in the same column = air above).
+3. Group by 6×6 tile slot to limit density.
+4. One roll per slot: pick random candidate, apply `0.8 × (1 − depthFactor)²`.
+5. Core Hollow excluded (no loot spawns there).
 
 Spawn chances: Crust 80% / Mantle ~51% / Outer Core ~29% / Inner Core ~13% / Core Hollow 0%.
 
@@ -432,6 +456,7 @@ Destroys a 1-tile-wide, 8-tile-deep column below player, dropping them into the 
 ### HUD (`src/ui/HUD.gd`)
 Built entirely in code. Contains:
 - **Health bar** — gradient green → amber → red by threshold.
+- **FPS counter** (`FPSLabel` in `HUD.tscn`) — top-centre, small text (9px), semi-transparent gray. Updated every frame in `_process()` via `Engine.get_frames_per_second()`. Dev aid; always visible during testing.
 - **HP label** (`HPLabel` in `HUD.tscn`) — shows exact `"current / max"` integer HP (e.g. `80 / 100`); updated every `health_changed` signal via `_on_health_changed()`.
 - **5 hotbar slots** (40×40) — item label + tier-coloured border + durability bar (visible for drill/weapon only; connected to Resource signals).
 - **Armor slot** (48×40) — tier-coloured.
@@ -499,7 +524,7 @@ Phase schedule locked. Damage values TBD.
 
 | # | File(s) | Issue | Severity |
 |---|---|---|---|
-| 1 | `PlayerController.gd:517–525` | Merge conflict marker — two comment-style variants of tool-toggle block. No functional bug but must be cleaned up. | Low |
+| 1 | `PlayerController.gd:517–525` | ~~Merge conflict marker~~ — **resolved**. HEAD version (no inline comments) kept. | Fixed |
 | 2 | `WorldGenerator.gd` | Core Hollow shell currently uses generic Bedrock (indestructible). Design requires the shell to be the **hardest drillable terrain** — a dedicated terrain type harder than Ultra Dense but still destructible. The open interior is correct (semi-fluid; no terrain tiles inside). Shell terrain type is TBD. | **High** |
 | 3 | `PressureSystem.gd` | `zero_gravity_changed` signal fires when entering Core Hollow but `gravity_scale` is never modified. Zero-gravity physics are unimplemented. | Medium |
 | 4 | `armor_stats.json` / armor files | Armor system is entirely non-functional. `ArmorBase`, `ArmorClass`, `ArmorTier` are stubs; no armor mechanics wired. | Medium (step 5) |
@@ -521,3 +546,8 @@ Phase schedule locked. Damage values TBD.
 | 2026-06-29 | Initial population | GAME_STATE.md created from full codebase survey. CLAUDE.md updated: Core Hollow shell is hardest drillable terrain; interior is semi-fluid (open void, free movement, zero-gravity). |
 | 2026-06-29 | Health + hazard fixes | HUD: HPLabel now shows exact "current / max" HP, updated on health_changed signal. Hazard values reduced in world_config.json: pressure_dps_base 2.0→0.5; depth_hazard DPS halved/scaled for testability (Mantle 0.3, Outer Core 1.0, Inner Core 2.5). All values TBD. |
 | 2026-06-29 | Storm timer fix | StormSystem: added `_compute_phase_idx(elapsed)` helper; `get_current_region()` and `get_phase_end_seconds()` now compute from `match_elapsed` directly instead of relying on `_phase_idx`. StormTimer: switched from per-frame to 1-second tick accumulator; `_refresh()` updates both labels; `storm_advanced` resets accumulator for immediate update. |
+| 2026-06-29 | Performance — chunked terrain generation | WorldGenerator now pre-computes all tile data into a `world_data` dict (no TileMap calls). Hands data to `TerrainManager.init_streaming_lazy()`. At startup only ~97 columns around spawn are placed via `stream_columns(width/2, 48)`. PlayerController streams remaining columns on demand. ChestSpawner updated to use `get_canonical_registry_flat()` so it sees all tiles even under lazy generation. HUD: FPS counter added at top-centre (small semi-transparent label, updates every frame). |
+| 2026-06-29 | Kill gate between layers | `Constants.LAYER_KILL_REQUIREMENTS` added (Crust→1, Mantle→2, Outer Core→3, Inner Core→4). `PlayerStats.kill_count` + `add_kill()` added; `PlayerController._try_attack()` calls `stats.add_kill()` on lethal hit. `DescentTracker` enforces kill gate: clamps player position/velocity at layer boundary and emits `descent_blocked(required)` with 2s cooldown. `PlayerController` connects to signal and shows "Need X kills to descend" via notify label. `TestDummy` now permanently dies (`queue_free()`) instead of respawning. `WorldGenerator` collects 2 floor-position dummy spawn points per non-hollow layer and returns them from `generate()`; `Main.gd` spawns dummies at those positions. |
+| 2026-06-30 | Use-item input (G) | Added `use_item` action (G / physical keycode 71) to `project.godot`. `PlayerController._handle_item_use()` switched from raw key polling + manual edge-detection to `Input.is_action_just_pressed/pressed/just_released("use_item")`; removed `_use_was_pressed`. Drill/weapon slots (no G effect) print `"[Item] Used: <Tier Name>"` via new `_debug_item_name()` helper. |
+| 2026-06-30 | Minimap added | New `src/ui/Minimap.gd` (+`.tscn`): canvas-drawn Control in bottom-right HUD corner showing layer-colored bands, descending storm front as a red line, and the player as a white dot; redraws each frame via `_process`→`queue_redraw`. Wired into `HUD.tscn`; `HUD.init()` gained a `LayerManager` param and calls `_minimap.init(player, storm, layer_manager)`; `Main.gd` passes `layer_manager`. |
+| 2026-06-30 | Performance — 1 FPS startup freeze fixed | Root cause: three synchronous O(360k) operations in `Main._ready()` (no frame yield). Fixes: (1) `AutoCollect._scan_for_drops()` no longer recursively walks the entire scene tree every 0.1s — `LootDrop` joins group `"loot_drops"` and AutoCollect uses `get_nodes_in_group()`. (2) `TerrainManager.get_canonical_registry_flat()` (rebuilt a 360k Vector2i-keyed dict each startup) removed; replaced with `get_canonical_by_col()` returning the existing column index by reference. (3) `ChestSpawner.spawn()` scans the nested column dict directly instead of allocating a 360k-element `keys()` array. (4) `WorldGenerator` cave air restructured to column-keyed `{col→{row→true}}` (`_mark_air` helper); `_compute_layer` fill loop is column-outer, fetching each column's air set + destination dict once — zero per-tile `Vector2i` allocation across the 312k fill. Map remains 400×900 (=360k tiles); dimensions are provisional placeholders in `world_config.json`. |

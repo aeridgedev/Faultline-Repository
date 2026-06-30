@@ -17,23 +17,36 @@ var _layer_manager: LayerManager
 var _rng: RandomNumberGenerator
 
 
-func generate(terrain_manager: TerrainManager, layer_manager: LayerManager, seed_value: int) -> void:
+## Returns an Array of Vector2 world-space positions for TestDummy spawning (2 per layer).
+func generate(terrain_manager: TerrainManager, layer_manager: LayerManager, seed_value: int) -> Array:
 	_terrain_manager = terrain_manager
 	_layer_manager   = layer_manager
 	_rng = RandomNumberGenerator.new()
 	_rng.seed = seed_value
 
+	# Build the full world layout into a per-column dict WITHOUT touching TileMap.
+	# Avoids ~360k tile_map.set_cell() calls on startup which block the main thread.
+	var world_data: Dictionary = {}   # col_int -> { row_int: TerrainType }
+	var dummy_positions: Array = []   # Vector2 world-space positions
+
 	for layer in Constants.Layer.values():
 		if layer == Constants.Layer.CORE_HOLLOW:
-			_generate_core_hollow()
+			_compute_core_hollow(world_data)
 		else:
-			_generate_layer(layer, _rng)
+			_compute_layer(layer, _rng, world_data, dummy_positions)
 
-	_place_bedrock_border()
-	_terrain_manager.init_streaming(_world_width_tiles())
+	_compute_bedrock_border(world_data)
+
+	var width := _world_width_tiles()
+	terrain_manager.init_streaming_lazy(world_data, width)
+
+	# Place only the columns visible at spawn; PlayerController streams the rest.
+	terrain_manager.stream_columns(width / 2, 48)
+
+	return dummy_positions
 
 
-func _generate_layer(layer: Constants.Layer, rng: RandomNumberGenerator) -> void:
+func _compute_layer(layer: Constants.Layer, rng: RandomNumberGenerator, world_data: Dictionary, dummy_positions: Array) -> void:
 	var top_y    = _layer_manager.get_layer_top_y(layer)
 	var bottom_y = _layer_manager.get_layer_bottom_y(layer)
 	if top_y == null or bottom_y == null:
@@ -49,23 +62,31 @@ func _generate_layer(layer: Constants.Layer, rng: RandomNumberGenerator) -> void
 	var band_rows: Dictionary = _compute_rock_bands(top_tile, bottom_tile, rng)
 	var band_type: Constants.TerrainType = _band_terrain_for_layer(layer)
 
-	for row in range(top_tile, bottom_tile):
-		for col in range(width):
-			var cell := Vector2i(col, row)
-			if air_cells.has(cell):
+	# Column-outer: fetch this column's air set and destination dict once, then
+	# fill its rows. Avoids a Vector2i allocation and two dict lookups per tile.
+	for col in range(width):
+		var col_air = air_cells.get(col, null)
+		var wd_col = world_data.get(col, null)
+		for row in range(top_tile, bottom_tile):
+			if col_air != null and col_air.has(row):
 				continue
 			var terrain: Constants.TerrainType
 			if band_rows.has(row):
 				terrain = band_type
 			else:
 				terrain = _pick_terrain(layer, rng)
-			_terrain_manager.place_tile(cell, terrain)
+			if wd_col == null:
+				wd_col = {}
+				world_data[col] = wd_col
+			wd_col[row] = terrain
+
+	_append_dummy_positions(air_cells, world_data, top_tile, bottom_tile, dummy_positions)
 
 
 # ---------------------------------------------------------------------------
 # Core Hollow — circular bedrock-walled chamber, open interior, zero gravity.
 # ---------------------------------------------------------------------------
-func _generate_core_hollow() -> void:
+func _compute_core_hollow(world_data: Dictionary) -> void:
 	var top_y    = _layer_manager.get_layer_top_y(Constants.Layer.CORE_HOLLOW)
 	var bottom_y = _layer_manager.get_layer_bottom_y(Constants.Layer.CORE_HOLLOW)
 	if top_y == null or bottom_y == null:
@@ -88,12 +109,47 @@ func _generate_core_hollow() -> void:
 			var dx := col - center_col
 			var dy := row - center_row
 			if dx * dx + dy * dy > hollow_r * hollow_r:
-				_terrain_manager.place_tile(Vector2i(col, row), Constants.TerrainType.BEDROCK)
+				if not world_data.has(col):
+					world_data[col] = {}
+				world_data[col][row] = Constants.TerrainType.BEDROCK
+
+
+# ---------------------------------------------------------------------------
+# Dummy spawn positions — 2 floor positions per layer for TestDummy placement.
+# A floor position is an air cell (carved by caves) that has a solid tile directly
+# below it in world_data. Picks at 1/3 and 2/3 of the candidate list to spread
+# spawns across the layer rather than clustering at one end.
+# ---------------------------------------------------------------------------
+func _append_dummy_positions(air_cells: Dictionary, world_data: Dictionary, top_tile: int, bottom_tile: int, out: Array) -> void:
+	# air_cells is column-keyed: { col -> { row -> true } }.
+	var candidates: Array = []
+	for col: int in air_cells:
+		var col_air: Dictionary = air_cells[col]
+		var col_data: Dictionary = world_data.get(col, {})
+		for row: int in col_air:
+			# Skip 3 tiles from each edge of the layer to avoid spawning in inaccessible spots.
+			if row < top_tile + 3 or row >= bottom_tile - 3:
+				continue
+			if col_data.has(row + 1):  # solid floor directly below this air cell
+				candidates.append(Vector2i(col, row))
+	if candidates.is_empty():
+		return
+	for frac: int in [3, 6]:  # picks at ~1/3 and ~2/3 of the list
+		var idx := candidates.size() * frac / 9
+		idx = clampi(idx, 0, candidates.size() - 1)
+		var cell: Vector2i = candidates[idx]
+		out.append(Vector2(
+			(cell.x + 0.5) * float(Constants.TILE_SIZE),
+			cell.y * float(Constants.TILE_SIZE),
+		))
 
 
 # ---------------------------------------------------------------------------
 # Cave carver — wrapping horizontal tunnels + vertical shafts.
 # Tunnels use col % width so they continue seamlessly across the seam.
+# Returns a column-keyed set: { col:int -> { row:int -> true } }. Column-keying
+# (rather than a Vector2i-keyed dict) lets _compute_layer fetch a column's air
+# set once and skip per-tile Vector2i allocation across the 312k-iteration fill.
 # ---------------------------------------------------------------------------
 func _carve_caves(top_tile: int, bottom_tile: int, width: int, rng: RandomNumberGenerator) -> Dictionary:
 	var air := {}
@@ -116,7 +172,7 @@ func _carve_caves(top_tile: int, bottom_tile: int, width: int, rng: RandomNumber
 			var open_len: int = mini(rng.randi_range(8, 24), width - travelled)
 			for _i in range(open_len):
 				for dy in range(tunnel_h):
-					air[Vector2i(col, row + dy)] = true
+					_mark_air(air, col, row + dy)
 				col = (col + 1) % width
 				travelled += 1
 		row += rng.randi_range(4, 8)
@@ -126,10 +182,19 @@ func _carve_caves(top_tile: int, bottom_tile: int, width: int, rng: RandomNumber
 	for _i in range(shaft_count):
 		var sx: int = rng.randi_range(0, width - 1)
 		for sr in range(top_tile + 2, bottom_tile - 1):
-			air[Vector2i(sx,               sr)] = true
-			air[Vector2i((sx + 1) % width, sr)] = true
+			_mark_air(air, sx,               sr)
+			_mark_air(air, (sx + 1) % width, sr)
 
 	return air
+
+
+# Marks (col, row) as air in the column-keyed set, creating the column entry on demand.
+func _mark_air(air: Dictionary, col: int, row: int) -> void:
+	var col_air = air.get(col, null)
+	if col_air == null:
+		col_air = {}
+		air[col] = col_air
+	col_air[row] = true
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +279,7 @@ func _pick_terrain_type(weights: Dictionary, rng: RandomNumberGenerator) -> Cons
 # Bedrock border — cylindrical world: only the bottom row is bounded.
 # No left/right bedrock walls; terrain wraps seamlessly.
 # ---------------------------------------------------------------------------
-func _place_bedrock_border() -> void:
+func _compute_bedrock_border(world_data: Dictionary) -> void:
 	var width: int = _world_width_tiles()
 	if width == 0:
 		return
@@ -226,7 +291,9 @@ func _place_bedrock_border() -> void:
 	var total_rows: int = int(world_h) / Constants.TILE_SIZE
 
 	for col in range(width):
-		_terrain_manager.place_tile(Vector2i(col, total_rows - 1), Constants.TerrainType.BEDROCK)
+		if not world_data.has(col):
+			world_data[col] = {}
+		world_data[col][total_rows - 1] = Constants.TerrainType.BEDROCK
 
 
 func _world_width_tiles() -> int:

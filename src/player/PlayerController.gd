@@ -46,7 +46,6 @@ var _active_slot: int = 0
 var _consumable_cache: Dictionary = {}  # slot_index -> ConsumableBase instance
 var _hotbar: Hotbar = null
 var _relic_manager: RelicManager = null
-var _use_was_pressed: bool = false   # G-key edge detection (no input-map entry needed)
 var _inv_open: bool = false          # true while InventoryManager panel is visible
 
 # Floating status label — shows transient messages (drill broken, etc.) above the player.
@@ -68,6 +67,9 @@ func _ready() -> void:
 	_build_held_visual()
 	_build_notify_label()
 	_build_resonance_overlay()
+	var dt := get_node_or_null("DescentTracker") as DescentTracker
+	if dt != null:
+		dt.descent_blocked.connect(_on_descent_blocked)
 
 
 func _build_dev_sprite() -> void:
@@ -345,6 +347,10 @@ func _show_notify(text: String, duration: float = 3.5) -> void:
 	_notify_timer = duration
 
 
+func _on_descent_blocked(required: int) -> void:
+	_show_notify("Need %d kills\nto descend" % required, 2.0)
+
+
 func init_world(tm: TerrainManager) -> void:
 	_terrain_manager = tm
 	if _resonance_overlay != null:
@@ -411,8 +417,7 @@ func setup_hotbar() -> void:
 			_consumable_cache.erase(slot))
 		inv.inventory_opened.connect(func() -> void:
 			_inv_open = true
-			_reset_dig()
-			_use_was_pressed = false)
+			_reset_dig())
 		inv.inventory_closed.connect(func() -> void:
 			_inv_open = false)
 
@@ -427,16 +432,14 @@ func _active_item() -> Variant:
 	return _hotbar.get_active_item()
 
 
-# Drill (left-click) and sword (right-click) are always available on the mouse.
-# The F key uses whatever non-weapon item is selected in the hotbar. We poll the
-# physical key directly (with manual edge detection) so no input-map entry is
-# required — Godot tends to overwrite manual project.godot edits while it's open.
+# G key (use_item action) uses whatever non-weapon item is in the active hotbar slot.
 func _handle_item_use(delta: float) -> void:
-	var use_held := Input.is_physical_key_pressed(KEY_G)
-	var use_just := use_held and not _use_was_pressed
-	var use_released := (not use_held) and _use_was_pressed
-	_use_was_pressed = use_held
+	var use_just     := Input.is_action_just_pressed("use_item")
+	var use_held     := Input.is_action_pressed("use_item")
+	var use_released := Input.is_action_just_released("use_item")
 
+	if not use_just and not use_held and not use_released:
+		return
 	var item: Variant = _active_item()
 	if item == null:
 		return
@@ -457,9 +460,9 @@ func _handle_item_use(delta: float) -> void:
 			if use_just:
 				_use_relic(item)
 		_:
-			# drill / weapon slots are mouse-controlled; F has nothing to use here.
+			# drill / weapon slots are mouse-controlled; G has nothing to use here.
 			if use_just:
-				print("[Item] Slot %d is the %s (mouse-controlled). Select slot 3, 4 or 5 (throwable / medkit / relic), then press G." % [_active_slot + 1, str(item.get("type", "?"))])
+				print("[Item] Used: %s" % _debug_item_name(item))
 
 
 func _throw_active(item: Dictionary) -> void:
@@ -485,6 +488,23 @@ func _get_or_create_consumable(slot: int, item_class: int) -> ConsumableBase:
 			return null
 		_consumable_cache[slot] = c
 	return _consumable_cache[slot]
+
+
+func _debug_item_name(item: Dictionary) -> String:
+	var type_str: String = item.get("type", "")
+	var cls_id: int = item.get("item_class", -1)
+	var tier: int = item.get("tier", Constants.Tier.COMMON)
+	var tier_name: String = Constants.TIER_NAMES.get(tier, "Common")
+	var item_name: String
+	match type_str:
+		"drill":      item_name = Constants.DRILL_CLASS_NAMES.get(cls_id, "?")
+		"weapon":     item_name = Constants.WEAPON_CLASS_NAMES.get(cls_id, "?")
+		"armor":      item_name = Constants.ARMOR_CLASS_NAMES.get(cls_id, "?")
+		"relic":      item_name = Constants.RELIC_NAMES.get(cls_id, "?")
+		"throwable":  item_name = Constants.THROWABLE_NAMES.get(cls_id, "?")
+		"consumable": item_name = "Consumable"
+		_:            item_name = type_str.capitalize()
+	return "%s %s" % [tier_name, item_name]
 
 
 func _make_consumable(item_class: int) -> ConsumableBase:
@@ -514,15 +534,9 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_handle_movement(delta)
-<<<<<<< HEAD
 	_handle_tool_toggle()
 	_handle_tool_use(delta)
 	_handle_item_use(delta)
-=======
-	_handle_tool_toggle()       # right-click toggles drill <-> sword (persists)
-	_handle_tool_use(delta)     # left-click uses the equipped tool
-	_handle_item_use(delta)     # G-key uses the active throwable / consumable / relic
->>>>>>> ed334df6b21d17624928b72f413d2ec1d23c0cdc
 	_update_held_visual()
 	move_and_slide()
 	_wrap_horizontal()
@@ -715,6 +729,8 @@ func _try_attack() -> void:
 	if _relic_manager != null:
 		total_dmg *= _relic_manager.damage_mult()
 	target_stats.take_damage(total_dmg)
+	if target_stats.is_dead:
+		stats.add_kill()
 	_equipped_weapon.consume_durability(1.0)
 
 

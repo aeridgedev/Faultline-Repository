@@ -5,6 +5,7 @@
 class_name HUD
 extends CanvasLayer
 
+@onready var _fps_label: Label = $Control/FPSLabel
 @onready var _health_bar: ProgressBar = $Control/BottomHUD/HealthSection/HealthBar
 @onready var _armor_label: Label = $Control/BottomHUD/HealthSection/ArmorLabel
 @onready var _hp_label: Label = $Control/BottomHUD/HealthSection/HPLabel
@@ -15,6 +16,7 @@ extends CanvasLayer
 @onready var _death_screen: DeathScreen = $Control/DeathScreen
 @onready var _spectator_view: SpectatorView = $Control/SpectatorView
 @onready var _kill_counter: KillCounter = $Control/KillCounter
+@onready var _minimap: Minimap = $Control/Minimap
 
 var _slot_panels: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
@@ -39,7 +41,7 @@ const _COLOR_SLOT_BORDER_NORMAL := Color(0.55, 0.58, 0.65, 0.90)
 const _COLOR_SLOT_BORDER_ACTIVE := Color(0.08, 0.88, 0.96, 1.00)
 
 
-func init(player: PlayerController, storm: StormSystem) -> void:
+func init(player: PlayerController, storm: StormSystem, layer_manager: LayerManager) -> void:
 	print("[HUD] init started")
 	_player = player
 	var stats: PlayerStats = player.get_node("PlayerStats")
@@ -54,6 +56,8 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 	_hp_label.add_theme_font_size_override("font_size", 8)
 	_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hp_label.add_theme_color_override("font_color", Color(0.75, 0.80, 0.85))
+	_fps_label.add_theme_font_size_override("font_size", 9)
+	_fps_label.add_theme_color_override("font_color", Color(0.70, 0.70, 0.70, 0.65))
 
 	stats.health_changed.connect(_on_health_changed)
 	stats.player_died.connect(_on_player_died)
@@ -74,6 +78,11 @@ func init(player: PlayerController, storm: StormSystem) -> void:
 	_layer_indicator.init(stats)
 	_storm_timer.init(storm)
 	_kill_counter.init(stats)
+	_minimap.init(player, storm, layer_manager)
+
+
+func _process(_delta: float) -> void:
+	_fps_label.text = str(Engine.get_frames_per_second()) + " fps"
 
 
 func _style_health_bar() -> void:

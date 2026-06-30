@@ -58,6 +58,15 @@ const LAYER_NAMES := {
 #   - anyone NOT inside it by 17:30 dies to the storm
 const CORE_HOLLOW_DEADLINE_SECONDS := 17 * 60 + 30  # 1050
 
+# Kills required to descend FROM each layer (cumulative across the match).
+# Crust needs 1 kill before entering Mantle, Mantle needs 2 before Outer Core, etc.
+const LAYER_KILL_REQUIREMENTS := {
+	Layer.CRUST:      1,
+	Layer.MANTLE:     2,
+	Layer.OUTER_CORE: 3,
+	Layer.INNER_CORE: 4,
+}
+
 # Used in the chest spawn formula: depthFactor per layer (0 = surface).
 # Crust=0.0, Mantle=0.2, Outer Core=0.4, Inner Core=0.6 (Core Hollow has no loot).
 const LAYER_DEPTH_FACTOR := {

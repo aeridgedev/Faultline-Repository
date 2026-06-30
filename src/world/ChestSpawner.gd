@@ -22,29 +22,36 @@ static func spawn(
 		layer_manager: LayerManager,
 		chest_parent: Node2D
 ) -> void:
-	var registry: Dictionary = terrain_manager.get_tile_registry()
+	# Scan the canonical world by column. Working directly on the nested
+	# { col -> { row -> type } } index avoids allocating a 360k-element keys()
+	# array and a Vector2i per tile — surface tiles (the only ones we keep) are
+	# a tiny fraction of the world.
+	var by_col: Dictionary = terrain_manager.get_canonical_by_col()
 
 	# Collect candidate surface tiles grouped by 6×6 slot.
 	# slot key = Vector2i(col / SLOT_SIZE, row / SLOT_SIZE)
 	var slots: Dictionary = {}   # slot_key -> Array of {cell, layer}
+	var tile_total := 0
 
-	for cell in registry.keys():
-		# Surface check: tile directly above must be empty air.
-		var above := Vector2i(cell.x, cell.y - 1)
-		if registry.has(above):
-			continue
+	for col in by_col:
+		var col_data: Dictionary = by_col[col]
+		tile_total += col_data.size()
+		for row in col_data:
+			# Surface check: tile directly above must be empty air (absent here).
+			if col_data.has(row - 1):
+				continue
 
-		var world_y: float = terrain_manager.cell_to_world(cell).y
-		var layer: Constants.Layer = layer_manager.layer_at_y(world_y)
-		if layer == Constants.Layer.CORE_HOLLOW:
-			continue  # no loot in Core Hollow
+			var world_y: float = float(row * Constants.TILE_SIZE)
+			var layer: Constants.Layer = layer_manager.layer_at_y(world_y)
+			if layer == Constants.Layer.CORE_HOLLOW:
+				continue  # no loot in Core Hollow
 
-		var slot_key := Vector2i(cell.x / SLOT_SIZE, cell.y / SLOT_SIZE)
-		if not slots.has(slot_key):
-			slots[slot_key] = []
-		slots[slot_key].append({"cell": cell, "layer": layer})
+			var slot_key := Vector2i(col / SLOT_SIZE, row / SLOT_SIZE)
+			if not slots.has(slot_key):
+				slots[slot_key] = []
+			slots[slot_key].append({"cell": Vector2i(col, row), "layer": layer})
 
-	print("[ChestSpawner] registry=%d tiles, slots=%d" % [registry.size(), slots.size()])
+	print("[ChestSpawner] registry=%d tiles, slots=%d" % [tile_total, slots.size()])
 
 	# One roll per slot — pick a random candidate from the slot, then apply
 	# the layer spawn-chance formula. This distributes chests evenly without

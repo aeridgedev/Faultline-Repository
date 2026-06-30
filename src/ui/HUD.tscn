@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://flt_hud"]
+[gd_scene load_steps=8 format=3 uid="uid://flt_hud"]
 
 [ext_resource type="Script" path="res://src/ui/HUD.gd" id="1_hud"]
 [ext_resource type="PackedScene" path="res://src/ui/StormTimer.tscn" id="2_stormtimer"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/DeathScreen.tscn" id="4_deathscreen"]
 [ext_resource type="PackedScene" path="res://src/ui/SpectatorView.tscn" id="5_spectatorview"]
 [ext_resource type="PackedScene" path="res://src/ui/KillCounter.tscn" id="6_killcounter"]
+[ext_resource type="PackedScene" path="res://src/ui/Minimap.tscn" id="7_minimap"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
@@ -102,6 +103,32 @@ text = "ARMOR: —"
 [node name="HotbarSection" type="HBoxContainer" parent="Control/BottomHUD"]
 layout_mode = 2
 size_flags_horizontal = 4
+
+[node name="FPSLabel" type="Label" parent="Control"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -40.0
+offset_top = 4.0
+offset_right = 40.0
+offset_bottom = 18.0
+horizontal_alignment = 1
+text = "-- fps"
+
+[node name="Minimap" parent="Control" instance=ExtResource("7_minimap")]
+layout_mode = 1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -88.0
+offset_top = -194.0
+offset_right = -8.0
+offset_bottom = -64.0
+grow_horizontal = 0
+grow_vertical = 0
 
 [node name="DeathScreen" parent="Control" instance=ExtResource("4_deathscreen")]
 layout_mode = 1
