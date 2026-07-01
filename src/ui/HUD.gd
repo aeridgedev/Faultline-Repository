@@ -27,6 +27,7 @@ var _slot_labels: Array[Label] = []
 var _slot_dur_bars: Array[ProgressBar] = []
 var _slot_dur_fills: Array[StyleBoxFlat] = []
 var _slot_dur_resources: Array = []   # DrillBase|WeaponBase|null per hotbar slot
+var _slot_cooldown_overlays: Array[ColorRect] = []   # weapon swing-cooldown dim, per slot
 var _inventory: InventoryManager = null
 var _player: PlayerController = null
 
@@ -83,21 +84,53 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 	_storm_timer.init(storm)
 	_kill_counter.init(stats)
 
-	_kill_progress_label.add_theme_font_size_override("font_size", 8)
-	_kill_progress_label.add_theme_color_override("font_color", Color(0.75, 0.80, 0.85))
+	# Prominent descent-gate display: large gold text + thick gold bar + gold-bordered
+	# panel so the kill requirement for the next layer stands out from the cyan HUD.
+	_kill_progress_label.add_theme_font_size_override("font_size", 14)
+	_kill_progress_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28))
+	_kill_progress_label.add_theme_color_override("font_outline_color", Color(0.10, 0.06, 0.0, 0.9))
+	_kill_progress_label.add_theme_constant_override("outline_size", 3)
+	_kill_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var kp_fill := StyleBoxFlat.new()
-	kp_fill.bg_color = Color(0.08, 0.88, 0.96)
-	kp_fill.set_corner_radius_all(1)
+	kp_fill.bg_color = Color(1.0, 0.74, 0.16)
+	kp_fill.set_corner_radius_all(2)
 	_kill_progress_bar.add_theme_stylebox_override("fill", kp_fill)
 	var kp_bg := StyleBoxFlat.new()
-	kp_bg.bg_color = Color(0.06, 0.05, 0.05, 0.85)
+	kp_bg.bg_color = Color(0.10, 0.08, 0.04, 0.92)
+	kp_bg.set_corner_radius_all(2)
+	kp_bg.set_border_width_all(1)
+	kp_bg.border_color = Color(0.45, 0.34, 0.12, 0.9)
 	_kill_progress_bar.add_theme_stylebox_override("background", kp_bg)
+	var kp_panel := StyleBoxFlat.new()
+	kp_panel.bg_color = Color(0.13, 0.10, 0.04, 0.94)
+	kp_panel.set_corner_radius_all(5)
+	kp_panel.set_border_width_all(2)
+	kp_panel.border_color = Color(1.0, 0.78, 0.22, 0.95)
+	kp_panel.set_content_margin_all(6)
+	_kill_progress_panel.add_theme_stylebox_override("panel", kp_panel)
 	var descent_tracker: DescentTracker = player.get_node("DescentTracker")
 	descent_tracker.kill_progress_changed.connect(_on_kill_progress_changed)
 
 
 func _process(_delta: float) -> void:
 	_fps_label.text = str(Engine.get_frames_per_second()) + " fps"
+	_update_weapon_cooldown_overlay()
+
+
+# Dims the hotbar slot holding the weapon while its swing is on cooldown.
+func _update_weapon_cooldown_overlay() -> void:
+	if _player == null or _slot_cooldown_overlays.is_empty():
+		return
+	var ratio := _player.get_attack_cooldown_ratio()
+	# The weapon occupies whichever hotbar slot holds a WeaponBase resource.
+	var weapon_slot := -1
+	for i in _slot_dur_resources.size():
+		if _slot_dur_resources[i] is WeaponBase:
+			weapon_slot = i
+			break
+	for i in _slot_cooldown_overlays.size():
+		var a := (ratio * 0.65) if (i == weapon_slot and ratio > 0.0) else 0.0
+		_slot_cooldown_overlays[i].color = Color(0.02, 0.03, 0.05, a)
 
 
 func _style_health_bar() -> void:
@@ -125,7 +158,7 @@ func _style_panels() -> void:
 	var ctrl := get_node_or_null("Control")
 	if ctrl == null:
 		return
-	for panel_name in ["LayerPanel", "StormPanel", "KillCounter", "KillProgressPanel", "EffectsPanel"]:
+	for panel_name in ["LayerPanel", "StormPanel", "KillCounter", "EffectsPanel"]:
 		var panel := ctrl.get_node_or_null(panel_name)
 		if panel != null:
 			panel.add_theme_stylebox_override("panel", s.duplicate())
@@ -184,11 +217,21 @@ func _build_hotbar_slots() -> void:
 		col.add_child(inner)
 		col.add_child(dur_bar)
 		panel.add_child(col)
+
+		# Swing-cooldown overlay: a full-slot dim that fades from dark (just swung)
+		# to clear (ready). PanelContainer stretches it across the slot; added last
+		# so it draws on top of the slot contents. Ignores mouse so it never blocks.
+		var cd := ColorRect.new()
+		cd.color = Color(0.02, 0.03, 0.05, 0.0)
+		cd.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(cd)
+
 		_hotbar_row.add_child(panel)
 		_slot_panels.append(panel)
 		_slot_labels.append(label)
 		_slot_dur_bars.append(dur_bar)
 		_slot_dur_fills.append(dur_fill)
+		_slot_cooldown_overlays.append(cd)
 
 	_highlight_slot(0)
 

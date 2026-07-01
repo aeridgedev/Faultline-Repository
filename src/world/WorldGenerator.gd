@@ -16,8 +16,14 @@ var _terrain_manager: TerrainManager
 var _layer_manager: LayerManager
 var _rng: RandomNumberGenerator
 
+# DEV-ONLY: number of TestDummy combat targets placed per non-Core-Hollow layer,
+# spread across the layer for kill-count testing. Remove with the dummies once
+# networked players exist.
+const DUMMIES_PER_LAYER := 6
 
-## Returns an Array of Vector2 world-space positions for TestDummy spawning (2 per layer).
+
+## Returns an Array of Vector2 world-space positions for TestDummy spawning
+## (DUMMIES_PER_LAYER per non-Core-Hollow layer).
 func generate(terrain_manager: TerrainManager, layer_manager: LayerManager, seed_value: int) -> Array:
 	_terrain_manager = terrain_manager
 	_layer_manager   = layer_manager
@@ -115,10 +121,11 @@ func _compute_core_hollow(world_data: Dictionary) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Dummy spawn positions — 2 floor positions per layer for TestDummy placement.
-# A floor position is an air cell (carved by caves) that has a solid tile directly
-# below it in world_data. Picks at 1/3 and 2/3 of the candidate list to spread
-# spawns across the layer rather than clustering at one end.
+# Dummy spawn positions — DUMMIES_PER_LAYER floor positions per layer for
+# TestDummy placement. A floor position is an air cell (carved by caves) that
+# has a solid tile directly below it in world_data. Picks are spread evenly
+# across the candidate list so dummies scatter across the layer instead of
+# clustering at one end.
 # ---------------------------------------------------------------------------
 func _append_dummy_positions(air_cells: Dictionary, world_data: Dictionary, top_tile: int, bottom_tile: int, out: Array) -> void:
 	# air_cells is column-keyed: { col -> { row -> true } }.
@@ -134,9 +141,21 @@ func _append_dummy_positions(air_cells: Dictionary, world_data: Dictionary, top_
 				candidates.append(Vector2i(col, row))
 	if candidates.is_empty():
 		return
-	for frac: int in [3, 6]:  # picks at ~1/3 and ~2/3 of the list
-		var idx := candidates.size() * frac / 9
+	# Spread up to DUMMIES_PER_LAYER picks evenly across the candidate list.
+	# Sorting by column first keeps the even spacing meaningful across the width.
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x)
+	var count := mini(DUMMIES_PER_LAYER, candidates.size())
+	var used := {}
+	for i in range(count):
+		# Even fractions of the list: (i+1)/(count+1) avoids both extreme ends.
+		var idx := int(round(float(i + 1) / float(count + 1) * float(candidates.size() - 1)))
 		idx = clampi(idx, 0, candidates.size() - 1)
+		# If two picks land on the same index (short list), nudge to the next free one.
+		while used.has(idx) and idx < candidates.size() - 1:
+			idx += 1
+		if used.has(idx):
+			continue
+		used[idx] = true
 		var cell: Vector2i = candidates[idx]
 		out.append(Vector2(
 			(cell.x + 0.5) * float(Constants.TILE_SIZE),

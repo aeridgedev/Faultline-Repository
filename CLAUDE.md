@@ -2,6 +2,15 @@
 
 Working brief for Claude when building this project. Read this first every session.
 
+> **NEXT SESSION PRIORITY (when the user opens a new session and asks "what should
+> I do" / "what's next", lead with this):** Deal with **inventory drill switching
+> and sword switching.** Today combat swings a single `_equipped_drill` /
+> `_equipped_weapon` toggled by right-click (`PlayerController._active_tool`),
+> independent of which hotbar slot is selected. The drill/weapon you use should
+> come from the **selected inventory/hotbar slot** instead — switching the active
+> drill or weapon via the hotbar (and inventory swaps) should change what is
+> equipped and swung. Recommend this first; then proceed once the user confirms.
+
 ## Game overview
 
 Faultline is a competitive **2D multiplayer survival Battle Royale**. Up to
@@ -162,11 +171,11 @@ Build systems in this exact sequence. **Do not start any system without asking
 the user first.** The user works in **separate sessions per aspect**, so confirm
 which item this session targets before writing code.
 
-1. **Player movement + terrain**  ✓ complete
+1. **Player movement + terrain**  ✓ complete (incl. single-block step-up: walk onto 1-tile-high ledges; taller ledges stay blocked; does not affect the descend-only gate)
 2. **Drill system**  ✓ complete
 3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker, zero-gravity flag for Core Hollow — physics not yet applied)
 4. **Inventory + loot**  ✓ complete (InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest interactive UI, discard-to-world-drop)
-5. Weapons + combat
+5. **Weapons + combat**  ◑ melee complete (Area2D hitbox swing + cooldown + HUD cooldown overlay; all 5 classes / 4 tiers, base stats are TBD placeholders). Ranged/throwable combat not built here.
 6. Relics + throwables + consumables
 7. Storm system
 8. UI (HUD partially done; DeathScreen, SpectatorView, StormTimer stubs exist)

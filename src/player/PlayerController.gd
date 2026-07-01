@@ -24,7 +24,17 @@ var _equipped_weapon: WeaponBase = null
 var _dig_target: Vector2i = Vector2i(-1, -1)
 var _dig_timer: float = 0.0
 var _dig_duration: float = 0.0  # total time for the current dig (for progress display)
-var _attack_timer: float = 0.0  # counts down while swing is active
+var _attack_timer: float = 0.0  # counts down while the swing is on cooldown
+var _attack_duration: float = 0.0  # full cooldown of the current swing (HUD ratio)
+
+# Melee hitbox: a persistent Area2D child enabled briefly at the start of each
+# swing. Bodies overlapping while it is live take the weapon's damage (once each).
+var _attack_hitbox: Area2D = null
+var _attack_collision: CollisionShape2D = null
+var _attack_shape: RectangleShape2D = null
+var _hitbox_active_timer: float = 0.0   # how long the hitbox stays live this swing
+var _swing_hit_bodies: Array = []       # bodies already damaged this swing
+var _swing_consumed: bool = false       # durability spent once per connecting swing
 
 var _dig_highlight: Node2D = null   # world-space drill target indicator
 var _dig_fill: Sprite2D = null      # fills up as the tile is mined
@@ -67,6 +77,7 @@ func _ready() -> void:
 	_build_held_visual()
 	_build_notify_label()
 	_build_resonance_overlay()
+	_build_attack_hitbox()
 	var dt := get_node_or_null("DescentTracker") as DescentTracker
 	if dt != null:
 		dt.descent_blocked.connect(_on_descent_blocked)
@@ -526,6 +537,10 @@ func _physics_process(delta: float) -> void:
 		if _notify_timer <= 0.0:
 			_notify_label.visible = false
 
+	# Advance swing cooldown / hitbox here so they keep ticking regardless of which
+	# tool is in hand or whether the inventory panel is open.
+	_tick_attack_hitbox(delta)
+
 	_apply_gravity(delta)
 
 	if _inv_open:
@@ -539,6 +554,7 @@ func _physics_process(delta: float) -> void:
 	_handle_item_use(delta)
 	_update_held_visual()
 	move_and_slide()
+	_try_step_up()
 	_wrap_horizontal()
 	_stream_terrain()
 
@@ -546,6 +562,44 @@ func _physics_process(delta: float) -> void:
 func _apply_gravity(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += _gravity * delta
+
+
+# Single-block step-up: when the player walks horizontally into a ledge exactly
+# one tile high, lift the body onto it instead of being stopped flat. This is a
+# standard platformer step (no jump, no extra height) and only runs while grounded.
+#
+# It is purely LOCAL navigation over dug terrain: it only ever nudges the player
+# UP by a single tile and never touches the descend-only layer gate. DescentTracker
+# runs after this (child processes after parent) and still clamps any attempt to
+# cross a layer boundary, so re-entering upper layers remains fully blocked.
+func _try_step_up() -> void:
+	# Only step while standing on the ground and actually pressed against a wall.
+	if not is_on_floor() or not is_on_wall():
+		return
+	var direction := Input.get_axis("move_left", "move_right")
+	if direction == 0.0:
+		return
+
+	var step := float(Constants.TILE_SIZE)
+	var forward := Vector2(signf(direction) * step, 0.0)
+	var up := Vector2(0.0, -step)
+	var from := global_transform
+
+	# Must be genuinely blocked moving forward at foot level (a real ledge ahead).
+	if not test_move(from, forward):
+		return
+	# Need a full tile of headroom to rise; abort if a ceiling is in the way.
+	if test_move(from, up):
+		return
+	# After rising one tile the path forward must be clear. If it is still blocked
+	# the obstacle is taller than one tile, so this is NOT a single-block step —
+	# leave the player blocked rather than climbing it.
+	if test_move(from.translated(up), forward):
+		return
+
+	# Clear single-tile ledge: lift exactly one tile onto it. Existing horizontal
+	# velocity carries the body across and floor snapping settles it on the surface.
+	global_position.y -= step
 
 
 func _handle_movement(delta: float) -> void:
@@ -681,57 +735,123 @@ func _handle_tool_use(delta: float) -> void:
 		_handle_drill(delta)
 
 
-func _handle_sword(delta: float) -> void:
+func _handle_sword(_delta: float) -> void:
+	# The cooldown is advanced centrally in _tick_attack_hitbox so it keeps
+	# counting even if the player switches tools mid-swing. Here we only gate
+	# new swings: blocked while still on cooldown.
 	if _attack_timer > 0.0:
-		_attack_timer -= delta
 		return
-	if Input.is_action_just_pressed("drill"):  # left-click swings the equipped sword
+	if Input.is_action_just_pressed("drill"):  # left-click swings the equipped weapon
 		_try_attack()
 
 
 func _try_attack() -> void:
 	if _equipped_weapon == null or _equipped_weapon.is_broken:
 		return
-	# Swing duration = 1 / swing_speed; falls back to 0.5s while TBD.
+	# Swing cooldown = 1 / swing_speed; falls back to 0.5s while swing_speed is TBD.
 	var swing_spd: Variant = _equipped_weapon.swing_speed
 	_attack_timer = (1.0 / float(swing_spd)) if swing_spd != null else 0.5
 	# Haste relic reduces the cooldown between swings (mult > 1 = faster).
 	if _relic_manager != null:
 		_attack_timer /= _relic_manager.attack_speed_mult()
+	_attack_duration = _attack_timer
+	_activate_attack_hitbox()
 
-	# Raycast toward mouse to find the nearest hittable PlayerStats in range.
-	var attack_dir := (get_global_mouse_position() - global_position).normalized()
+
+# Persistent melee hitbox: an Area2D child positioned in front of the player and
+# enabled only at the start of a swing. collision_mask bit 1 covers player bodies
+# and the test dummy (terrain is filtered out by the PlayerStats lookup).
+func _build_attack_hitbox() -> void:
+	_attack_hitbox = Area2D.new()
+	_attack_hitbox.collision_layer = 0   # the hitbox itself is not detectable
+	_attack_hitbox.collision_mask = 1    # detect bodies on layer bit 1 (players + dummy)
+	_attack_hitbox.monitoring = false
+	_attack_hitbox.monitorable = false
+	add_child(_attack_hitbox)
+
+	_attack_shape = RectangleShape2D.new()
+	_attack_shape.size = Vector2(float(Constants.TILE_SIZE) * 3.0, float(Constants.TILE_SIZE) * 2.0)
+	_attack_collision = CollisionShape2D.new()
+	_attack_collision.shape = _attack_shape
+	_attack_collision.disabled = true
+	_attack_hitbox.add_child(_attack_collision)
+
+
+# Places and enables the hitbox for a short active window aimed at the cursor.
+# The rectangle spans from the player outward to the weapon's reach.
+func _activate_attack_hitbox() -> void:
+	if _attack_hitbox == null:
+		return
+	var aim := get_global_mouse_position() - global_position
+	if aim.length_squared() < 0.0001:
+		aim = Vector2.RIGHT
+	aim = aim.normalized()
 	var reach: Variant = _equipped_weapon.attack_range
 	var reach_px := float(reach) if reach != null else float(Constants.TILE_SIZE * 3)
 
-	var space := get_world_2d().direct_space_state
-	var query := PhysicsRayQueryParameters2D.create(
-			global_position,
-			global_position + attack_dir * reach_px,
-			0xFFFFFFFF,
-			[get_rid()]
-	)
-	var result := space.intersect_ray(query)
-	if result.is_empty():
-		return
-	var target_body = result.get("collider")
-	if target_body == null:
-		return
-	var target_stats: PlayerStats = target_body.get_node_or_null("PlayerStats")
-	if target_stats == null or target_stats == stats:
-		return
+	_attack_shape.size = Vector2(reach_px, float(Constants.TILE_SIZE) * 2.0)
+	_attack_hitbox.position = aim * (reach_px * 0.5)
+	_attack_hitbox.rotation = aim.angle()
+	_attack_collision.disabled = false
+	_attack_hitbox.monitoring = true
+	# Live for a brief slice of the swing (capped by the cooldown for very fast weapons).
+	_hitbox_active_timer = minf(0.12, _attack_duration)
+	_swing_hit_bodies.clear()
+	_swing_consumed = false
 
-	var dmg: Variant = _equipped_weapon.damage
-	if dmg == null:
-		return  # TBD: no base damage value yet
-	var total_dmg := float(dmg)
-	# Strength relic multiplies outgoing damage.
-	if _relic_manager != null:
-		total_dmg *= _relic_manager.damage_mult()
-	target_stats.take_damage(total_dmg)
-	if target_stats.is_dead:
-		stats.add_kill()
-	_equipped_weapon.consume_durability(1.0)
+
+# Ticks the swing cooldown and, while the hitbox is live, damages overlapping
+# targets. Polling get_overlapping_bodies() across the active window absorbs the
+# one-physics-frame delay before Area2D overlaps register.
+func _tick_attack_hitbox(delta: float) -> void:
+	if _attack_timer > 0.0:
+		_attack_timer = maxf(0.0, _attack_timer - delta)
+	if _hitbox_active_timer > 0.0:
+		_process_hitbox_overlaps()
+		_hitbox_active_timer -= delta
+		if _hitbox_active_timer <= 0.0:
+			_deactivate_attack_hitbox()
+
+
+func _deactivate_attack_hitbox() -> void:
+	_hitbox_active_timer = 0.0
+	if _attack_hitbox != null:
+		_attack_hitbox.monitoring = false
+	if _attack_collision != null:
+		_attack_collision.disabled = true
+
+
+func _process_hitbox_overlaps() -> void:
+	if _attack_hitbox == null or not _attack_hitbox.monitoring:
+		return
+	var dmg: Variant = _equipped_weapon.damage if _equipped_weapon != null else null
+	for body in _attack_hitbox.get_overlapping_bodies():
+		if body == self or _swing_hit_bodies.has(body):
+			continue
+		var target_stats := body.get_node_or_null("PlayerStats") as PlayerStats
+		if target_stats == null or target_stats == stats or target_stats.is_dead:
+			continue
+		_swing_hit_bodies.append(body)
+		if dmg == null:
+			continue  # TBD: no base damage value yet
+		var total_dmg := float(dmg)
+		# Strength relic multiplies outgoing damage.
+		if _relic_manager != null:
+			total_dmg *= _relic_manager.damage_mult()
+		target_stats.take_damage(total_dmg)
+		if target_stats.is_dead:
+			stats.add_kill()
+		# Durability is spent once per swing that actually connects.
+		if not _swing_consumed:
+			_swing_consumed = true
+			_equipped_weapon.consume_durability(1.0)
+
+
+# 0.0 = ready, >0.0 = fraction of the swing cooldown still remaining (for the HUD).
+func get_attack_cooldown_ratio() -> float:
+	if _attack_duration <= 0.0:
+		return 0.0
+	return clampf(_attack_timer / _attack_duration, 0.0, 1.0)
 
 
 func _wrap_horizontal() -> void:
