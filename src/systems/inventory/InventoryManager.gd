@@ -1,9 +1,12 @@
 ## Faultline — manages all 8 carry slots for one player.
-## Layout: slots 0–4 = hotbar (drill + weapon live here too),
+## Layout: slot  0   = reserved DRILL slot  (hotbar slot 1, drills only),
+##         slot  1   = reserved WEAPON slot (hotbar slot 2, melee weapons only),
+##         slots 2–4 = free hotbar          (hotbar slots 3–5: consumables/throwables/…),
 ##         slot  5   = armor sidebar (armor items only),
-##         slots 6–7 = backpack.
+##         slots 6–7 = backpack (overflow for the free-hotbar item types).
+## The drill/weapon slots are FIXED: a picked-up drill always replaces slot 0 and a
+## picked-up melee weapon always replaces slot 1, dropping the old one to the world.
 ## Each item is a Dictionary {type, item_class, tier} from LootTable.
-## Full Resource-based items arrive in Step 5 (weapons) and are slotted the same way.
 class_name InventoryManager
 extends Node
 
@@ -13,6 +16,9 @@ signal inventory_closed
 
 const HOTBAR_START   := 0
 const HOTBAR_END     := 4   # HOTBAR_SLOTS - 1
+const DRILL_SLOT     := 0   # reserved: drills only (hotbar slot 1, 1-based)
+const WEAPON_SLOT    := 1   # reserved: melee weapons only (hotbar slot 2, 1-based)
+const FREE_HOTBAR_START := 2   # slots 3–5 (1-based): free for other item types
 const ARMOR_SLOT     := 5   # HOTBAR_SLOTS
 const BACKPACK_START := 6   # HOTBAR_SLOTS + 1
 const BACKPACK_END   := 7   # TOTAL_CARRY_SLOTS - 1
@@ -187,7 +193,9 @@ func _refresh_panel() -> void:
 			var cls_id: int        = item.get("item_class", -1)
 			lbl.text = "%s %s" % [tier_name, _item_display_name(type_str, cls_id)]
 			lbl.add_theme_color_override("font_color", tier_col)
-			btn.disabled = false
+			# Reserved drill/weapon slots keep the Drop button disabled — the loadout
+			# is fixed; you replace them by picking up a new drill/weapon.
+			btn.disabled = (idx == DRILL_SLOT or idx == WEAPON_SLOT)
 
 
 func _slot_key_name(slot_idx: int) -> String:
@@ -215,6 +223,10 @@ func _item_display_name(type_str: String, cls_id: int) -> String:
 
 
 func _on_discard_pressed(slot_idx: int) -> void:
+	# Reserved drill/weapon slots are fixed — they can't be emptied by hand; swap
+	# them by picking up a replacement instead.
+	if slot_idx == DRILL_SLOT or slot_idx == WEAPON_SLOT:
+		return
 	var item = _slots[slot_idx]
 	if item == null:
 		return
@@ -238,14 +250,24 @@ func _spawn_loot_drop(item_data_dict: Dictionary) -> void:
 
 # --- Slot operations ---
 
-## Attempt to add item_data (Dictionary from LootTable) to the first available slot.
-## Returns the slot index used, or -1 if no space.
+## Add item_data (Dictionary from LootTable) to the correct slot; returns the slot
+## index used, or -1 if it can't be placed. Slot rules:
+##   drill  → always the reserved DRILL_SLOT  (replaces + drops any existing drill)
+##   weapon → always the reserved WEAPON_SLOT (replaces + drops any existing weapon)
+##   armor  → the armor sidebar slot (only if empty)
+##   else   → first free hotbar slot 3–5, then a backpack slot
 func add_item(item_data: Dictionary) -> int:
-	if item_data.get("type", "") == "armor":
-		if _slots[ARMOR_SLOT] == null:
-			_set_slot(ARMOR_SLOT, item_data)
-			return ARMOR_SLOT
-	for i in range(HOTBAR_START, HOTBAR_END + 1):
+	match item_data.get("type", ""):
+		"drill":
+			return _place_reserved(DRILL_SLOT, item_data)
+		"weapon":
+			return _place_reserved(WEAPON_SLOT, item_data)
+		"armor":
+			if _slots[ARMOR_SLOT] == null:
+				_set_slot(ARMOR_SLOT, item_data)
+				return ARMOR_SLOT
+			return -1
+	for i in range(FREE_HOTBAR_START, HOTBAR_END + 1):
 		if _slots[i] == null:
 			_set_slot(i, item_data)
 			return i
@@ -253,7 +275,53 @@ func add_item(item_data: Dictionary) -> int:
 		if _slots[i] == null:
 			_set_slot(i, item_data)
 			return i
-	return -1  # inventory full
+	return -1  # free hotbar + backpack full
+
+
+## Places a drill/weapon into its reserved slot, replacing whatever is there. The
+## replaced item (if any) is dropped as a LootDrop at the player's position. The
+## in-hand Resource is re-equipped BEFORE slot_changed fires, so every listener
+## (HUD durability bar, player active tool) sees the new drill/weapon consistently.
+func _place_reserved(slot_idx: int, item_data: Dictionary) -> int:
+	var old = _slots[slot_idx]
+	if old != null:
+		# Preserve the outgoing drill/weapon's live current durability on the dropped
+		# item, so re-picking it up restores its wear instead of a full-durability copy.
+		# Read now — _reequip_player below replaces the equipped Resource.
+		_spawn_loot_drop(_with_current_durability(slot_idx, old))
+	_reequip_player(slot_idx, item_data)
+	_set_slot(slot_idx, item_data)
+	return slot_idx
+
+
+## Returns a copy of a reserved slot's item dict annotated with the currently
+## equipped drill/weapon's live current_durability (so a dropped drill/weapon keeps
+## its wear). No annotation if there's no equipped Resource or its durability is TBD.
+func _with_current_durability(slot_idx: int, item_dict: Dictionary) -> Dictionary:
+	var out := item_dict.duplicate()
+	var player := get_parent()
+	if player == null:
+		return out
+	if slot_idx == DRILL_SLOT and player.has_method("get_equipped_drill"):
+		var d = player.get_equipped_drill()
+		if d != null and d.max_durability != null:
+			out["durability"] = d.current_durability
+	elif slot_idx == WEAPON_SLOT and player.has_method("get_equipped_weapon"):
+		var w = player.get_equipped_weapon()
+		if w != null and w.max_durability != null:
+			out["durability"] = w.current_durability
+	return out
+
+
+## Rebuilds the player's in-hand drill/weapon Resource to match a reserved slot.
+func _reequip_player(slot_idx: int, item_data: Dictionary) -> void:
+	var player := get_parent()
+	if player == null:
+		return
+	if slot_idx == DRILL_SLOT and player.has_method("equip_drill_from_item"):
+		player.equip_drill_from_item(item_data)
+	elif slot_idx == WEAPON_SLOT and player.has_method("equip_weapon_from_item"):
+		player.equip_weapon_from_item(item_data)
 
 
 func remove_item(slot_idx: int) -> void:
@@ -276,8 +344,10 @@ func swap_slots(a: int, b: int) -> void:
 	_set_slot(b, tmp)
 
 
+## Room for a generic (non-drill/weapon/armor) item: a free hotbar slot 3–5 or a
+## backpack slot. The reserved drill/weapon slots (0–1) never count as free.
 func has_space() -> bool:
-	for i in range(HOTBAR_START, HOTBAR_END + 1):
+	for i in range(FREE_HOTBAR_START, HOTBAR_END + 1):
 		if _slots[i] == null:
 			return true
 	for i in range(BACKPACK_START, BACKPACK_END + 1):
@@ -286,11 +356,15 @@ func has_space() -> bool:
 	return false
 
 
-## True if item_data can be accepted — armor items check the dedicated armor slot
-## separately from the hotbar/backpack has_space() check.
+## True if item_data can be accepted. Drills and weapons always fit (they replace
+## their reserved slot). Armor needs its dedicated slot free. Everything else needs
+## a free hotbar (3–5) or backpack slot.
 func can_add(item_data: Dictionary) -> bool:
-	if item_data.get("type", "") == "armor" and _slots[ARMOR_SLOT] == null:
-		return true
+	match item_data.get("type", ""):
+		"drill", "weapon":
+			return true
+		"armor":
+			return _slots[ARMOR_SLOT] == null
 	return has_space()
 
 

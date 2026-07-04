@@ -12,6 +12,7 @@ const ThrowableScene := preload("res://src/systems/throwables/ThrowableBase.tscn
 var _move_speed: float = 0.0    # TBD: loaded from GameManager.data["player_move_speed"]
 var _gravity: float = 0.0       # TBD: loaded from GameManager.data["player_gravity"]
 var _gravity_default: float = 0.0
+var _zero_gravity: bool = false  # true inside the Core Hollow: free movement, no gravity, no step-up
 var _sprint_mult: float = 1.0   # TBD: loaded from GameManager.data["sprint_speed_mult"]
 var _sprint_cost: float = 0.0   # TBD: stamina/sec while sprinting
 
@@ -24,6 +25,7 @@ var _equipped_weapon: WeaponBase = null
 var _dig_target: Vector2i = Vector2i(-1, -1)
 var _dig_timer: float = 0.0
 var _dig_duration: float = 0.0  # total time for the current dig (for progress display)
+var _body_half: Vector2 = Vector2(7.0, 14.0)  # collision-box half-extents (read in _ready)
 var _attack_timer: float = 0.0  # counts down while the swing is on cooldown
 var _attack_duration: float = 0.0  # full cooldown of the current swing (HUD ratio)
 
@@ -46,11 +48,14 @@ var _held_sprite: Sprite2D = null   # the in-hand drill / sword visual
 var _drill_tex: Texture2D = null
 var _sword_tex: Texture2D = null
 
-# Active in-hand tool: right-click toggles drill <-> sword and it PERSISTS;
-# left-click uses whichever is equipped. The held visual always shows this tool.
+# Active in-hand tool: derived from the SELECTED hotbar slot (keys 1-5 / scroll).
+# A drill slot -> TOOL_DRILL, a weapon slot -> TOOL_SWORD, anything else (empty,
+# throwable, consumable, relic) -> TOOL_NONE. Left-click acts on this tool; a
+# TOOL_NONE slot does nothing on left-click. The held visual mirrors this tool.
 const TOOL_DRILL := 0
 const TOOL_SWORD := 1
-var _active_tool: int = TOOL_DRILL
+const TOOL_NONE  := 2
+var _active_tool: int = TOOL_NONE
 
 var _active_slot: int = 0
 var _consumable_cache: Dictionary = {}  # slot_index -> ConsumableBase instance
@@ -78,6 +83,11 @@ func _ready() -> void:
 	_build_notify_label()
 	_build_resonance_overlay()
 	_build_attack_hitbox()
+	# Cache the collision-box half-extents so drill targeting can probe from the body
+	# surface (not the centre) — the player is 1.75 tiles tall, which matters for reach.
+	var col := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if col != null and col.shape is RectangleShape2D:
+		_body_half = (col.shape as RectangleShape2D).size * 0.5
 	var dt := get_node_or_null("DescentTracker") as DescentTracker
 	if dt != null:
 		dt.descent_blocked.connect(_on_descent_blocked)
@@ -230,11 +240,15 @@ func _build_held_visual() -> void:
 func _update_held_visual() -> void:
 	if _held_sprite == null:
 		return
+	# A non-tool slot (empty / throwable / consumable / relic) shows nothing in hand.
+	if _active_tool == TOOL_NONE:
+		_held_sprite.visible = false
+		return
 	var aim := get_global_mouse_position() - _held_pivot.global_position
 	_held_pivot.rotation = aim.angle()
 	# Flip vertically when aiming left so the tool reads right-side up, not mirrored.
 	_held_sprite.scale.y = -1.0 if aim.x < 0.0 else 1.0
-	# Show whichever tool is equipped; it stays until the player toggles (right-click).
+	# Show whichever tool the selected hotbar slot holds (drill or weapon).
 	_held_sprite.visible = true
 	if _active_tool == TOOL_SWORD:
 		_held_sprite.texture = _sword_tex
@@ -374,14 +388,25 @@ func init_storm(storm: StormSystem) -> void:
 	stats.init_storm(storm)
 
 
-func equip_starter_drill() -> void:
-	_equipped_drill = DrillBase.new()
-	_equipped_drill.drill_class = Constants.DrillClass.PRECISION
-	_equipped_drill.tier = Constants.Tier.COMMON
-	_equipped_drill.init_from_data()
-	_equipped_drill.drill_broken.connect(_on_drill_broken)
-	_equipped_drill.equip()
-	_update_resonance_visibility()
+# Rebuilds the in-hand drill Resource from a reserved-slot item dict — the loadout
+# drill at spawn, or a replacement picked up via Q. Called by InventoryManager when
+# slot 1 (idx 0) is (re)filled, BEFORE slot_changed fires, so the HUD durability bar
+# and active tool see the new drill. Passing null (slot emptied) unequips.
+func equip_drill_from_item(item: Variant) -> void:
+	if item == null:
+		if _equipped_drill != null:
+			_equipped_drill.unequip()
+		_equipped_drill = null
+		_reset_dig()
+		_update_resonance_visibility()
+		return
+	var d := DrillBase.new()
+	d.drill_class = item.get("item_class", Constants.DrillClass.PRECISION)
+	d.tier = item.get("tier", Constants.Tier.COMMON)
+	d.init_from_data()
+	_restore_saved_durability(d, item)   # a dropped drill keeps its wear
+	equip_drill(d)   # unequips old, wires drill_broken, equips, updates resonance
+	_reset_dig()
 
 
 func _on_drill_broken() -> void:
@@ -401,18 +426,44 @@ func equip_drill(drill: DrillBase) -> void:
 	_update_resonance_visibility()
 
 
-func equip_starter_weapon() -> void:
-	_equipped_weapon = WeaponBase.new()
-	_equipped_weapon.weapon_class = Constants.WeaponClass.SWORDS
-	_equipped_weapon.tier = Constants.Tier.COMMON
-	_equipped_weapon.init_from_data()
+# Rebuilds the in-hand melee weapon Resource from a reserved-slot item dict — the
+# loadout sword at spawn, or a replacement picked up via Q. Called by
+# InventoryManager when slot 2 (idx 1) is (re)filled, BEFORE slot_changed fires.
+# Passing null (slot emptied) clears the weapon.
+func equip_weapon_from_item(item: Variant) -> void:
+	if item == null:
+		_equipped_weapon = null
+		return
+	var w := WeaponBase.new()
+	w.weapon_class = item.get("item_class", Constants.WeaponClass.SWORDS)
+	w.tier = item.get("tier", Constants.Tier.COMMON)
+	w.init_from_data()
+	_restore_saved_durability(w, item)   # a dropped weapon keeps its wear
+	_equipped_weapon = w
 
 
-# Wires the 5 hotbar slots to actual usable items and follows slot selection.
-# Call AFTER the starter drill/weapon are equipped and AFTER the HUD is init'd
-# (so the HUD receives the inventory slot_changed signals for its labels).
-# The throwable/consumable/relic entries are DEV test items so every item-use
-# path is reachable offline; real loadouts will come from the loot system.
+# If item carries a saved "durability" (a drill/weapon dropped mid-use), restore it
+# onto the freshly-built Resource so wear persists across drop → re-pickup.
+# init_from_data() already set current = max; this overrides it (clamped) and
+# re-flags is_broken when the saved value is 0. Works for DrillBase and WeaponBase.
+func _restore_saved_durability(res: Variant, item: Variant) -> void:
+	if not (item is Dictionary and item.has("durability")):
+		return
+	if res.max_durability == null:
+		return
+	var saved := clampf(float(item["durability"]), 0.0, float(res.max_durability))
+	res.current_durability = saved
+	res.is_broken = (saved <= 0.0)
+	res.durability_changed.emit(saved, float(res.max_durability))
+
+
+# Populates the hotbar loadout and follows slot selection. Call AFTER the HUD is
+# init'd (so the HUD receives the inventory slot_changed signals for its labels).
+# Fixed loadout (enforced by InventoryManager's reserved slots): slot 1 (idx 0) =
+# Common Precision Drill, slot 2 (idx 1) = Common Sword — adding them also builds the
+# in-hand drill/weapon Resources via equip_drill_from_item / equip_weapon_from_item.
+# The throwable/consumable/relic entries are DEV test items in the free slots 3–5 so
+# every item-use path is reachable offline; real loadouts come from the loot system.
 func setup_hotbar() -> void:
 	_relic_manager = get_node_or_null("RelicManager")
 	_hotbar = get_node_or_null("Hotbar") as Hotbar
@@ -425,7 +476,11 @@ func setup_hotbar() -> void:
 		inv.add_item({"type": "consumable", "item_class": 1,                              "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "relic",      "item_class": Constants.Relic.SPEED,          "tier": Constants.Tier.COMMON})
 		inv.slot_changed.connect(func(slot: int, _item: Variant) -> void:
-			_consumable_cache.erase(slot))
+			_consumable_cache.erase(slot)
+			# If the item in the active slot changed (swap / drop / pickup), the
+			# active tool must follow the new contents of that slot.
+			if slot == _active_slot:
+				_refresh_active_tool())
 		inv.inventory_opened.connect(func() -> void:
 			_inv_open = true
 			_reset_dig())
@@ -433,14 +488,34 @@ func setup_hotbar() -> void:
 			_inv_open = false)
 
 	if _hotbar != null:
-		_hotbar.active_slot_changed.connect(func(idx: int) -> void: _active_slot = idx)
-		_active_slot = _hotbar.get_active_slot()
+		_hotbar.active_slot_changed.connect(_on_active_slot_changed)
+		_on_active_slot_changed(_hotbar.get_active_slot())
 
 
 func _active_item() -> Variant:
 	if _hotbar == null:
 		return null
 	return _hotbar.get_active_item()
+
+
+# Keys 1-5 (and scroll) switch the selected hotbar slot. The tool in hand — and
+# therefore what left-click does — updates immediately to the new slot's item.
+func _on_active_slot_changed(idx: int) -> void:
+	_active_slot = idx
+	_reset_dig()  # drop any in-progress dig when switching slots
+	_refresh_active_tool()
+
+
+# Sets _active_tool from the currently selected hotbar slot's item type.
+func _refresh_active_tool() -> void:
+	var item: Variant = _active_item()
+	if item == null:
+		_active_tool = TOOL_NONE
+		return
+	match item.get("type"):
+		"drill":  _active_tool = TOOL_DRILL
+		"weapon": _active_tool = TOOL_SWORD
+		_:        _active_tool = TOOL_NONE
 
 
 # G key (use_item action) uses whatever non-weapon item is in the active hotbar slot.
@@ -549,7 +624,6 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_handle_movement(delta)
-	_handle_tool_toggle()
 	_handle_tool_use(delta)
 	_handle_item_use(delta)
 	_update_held_visual()
@@ -560,6 +634,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _apply_gravity(delta: float) -> void:
+	if _zero_gravity:
+		return
 	if not is_on_floor():
 		velocity.y += _gravity * delta
 
@@ -569,12 +645,16 @@ func _apply_gravity(delta: float) -> void:
 # standard platformer step (no jump, no extra height) and only runs while grounded.
 #
 # It is purely LOCAL navigation over dug terrain: it only ever nudges the player
-# UP by a single tile and never touches the descend-only layer gate. DescentTracker
-# runs after this (child processes after parent) and still clamps any attempt to
-# cross a layer boundary, so re-entering upper layers remains fully blocked.
+# UP-and-forward by a single tile and never touches the descend-only layer gate.
+# DescentTracker runs after this (child processes after parent) and still clamps any
+# attempt to cross a layer boundary, so re-entering upper layers remains fully blocked.
 func _try_step_up() -> void:
-	# Only step while standing on the ground and actually pressed against a wall.
-	if not is_on_floor() or not is_on_wall():
+	# Never applies in zero-gravity (Core Hollow interior): there is no floor to stand
+	# on there, and free flight makes the ledge-climb irrelevant.
+	if _zero_gravity:
+		return
+	# Only step while standing on the ground and actually holding into a direction.
+	if not is_on_floor():
 		return
 	var direction := Input.get_axis("move_left", "move_right")
 	if direction == 0.0:
@@ -586,6 +666,14 @@ func _try_step_up() -> void:
 	var from := global_transform
 
 	# Must be genuinely blocked moving forward at foot level (a real ledge ahead).
+	# This test_move is the sole "is something in the way" check — deliberately not
+	# gated on is_on_wall(): Godot classifies a collision as floor/wall/ceiling by the
+	# contact normal's angle against up_direction, and a crisp 90° AABB corner (exactly
+	# what a dug-out 1-tile ledge produces) can resolve to a normal that misses the
+	# wall bucket. That silently disabled this whole function forever on legitimate
+	# 1-tile ledges — a permanent soft-lock, since there's no jump to escape otherwise.
+	# test_move() checks actual shape overlap directly, so it isn't subject to that
+	# classification at all.
 	if not test_move(from, forward):
 		return
 	# Need a full tile of headroom to rise; abort if a ceiling is in the way.
@@ -597,23 +685,35 @@ func _try_step_up() -> void:
 	if test_move(from.translated(up), forward):
 		return
 
-	# Clear single-tile ledge: lift exactly one tile onto it. Existing horizontal
-	# velocity carries the body across and floor snapping settles it on the surface.
-	global_position.y -= step
+	# Clear single-tile ledge: place the body directly onto it — up AND forward one
+	# tile. The up+forward destination was just proven collision-free by the two probes
+	# above (headroom clear, then forward clear from the raised position). Moving
+	# forward as well as up (rather than lifting straight up and relying on horizontal
+	# velocity) means gravity can't drag the player back into the pit before they clear
+	# the ledge edge — the lift-only version failed exactly this way at lower move
+	# speeds / higher gravity. Zero any residual downward velocity so the landing sticks.
+	global_position += up + forward
+	if velocity.y > 0.0:
+		velocity.y = 0.0
 
 
 func _handle_movement(delta: float) -> void:
 	var direction := Input.get_axis("move_left", "move_right")
+	# Core Hollow interior: semi-fluid substance, free movement on every axis (no
+	# gravity, no terrain to walk on). Outside it, vertical motion is gravity-only.
+	var vertical := Input.get_axis("move_up", "move_down") if _zero_gravity else 0.0
 	var speed := _move_speed
 	# Sprint: hold sprint while moving to go faster, draining stamina. Blocked while
 	# depleted so the player must let it recover (recovery threshold in Stamina).
-	if direction != 0.0 and Input.is_action_pressed("sprint") and not stamina.is_depleted:
+	if (direction != 0.0 or vertical != 0.0) and Input.is_action_pressed("sprint") and not stamina.is_depleted:
 		if stamina.drain(_sprint_cost * delta):
 			speed *= _sprint_mult
 	# Active Speed relic multiplies movement (1.0 when no relic / not active).
 	if _relic_manager != null:
 		speed *= _relic_manager.move_speed_mult()
 	velocity.x = direction * speed
+	if _zero_gravity:
+		velocity.y = vertical * speed
 
 
 func _handle_drill(delta: float) -> void:
@@ -690,9 +790,36 @@ func _reset_dig() -> void:
 		_dig_highlight.visible = false
 
 
+# The tile the drill mines: the first solid cell along the aim ray, probed from the
+# player's body SURFACE outward ~1 tile. Anchoring at the box edge (not the centre) is
+# what makes tiles beside the head, the feet, and the diagonals reachable — the player
+# box is 1.75 tiles tall, so a fixed 1-tile reach from the centre landed inside the
+# player's own (air) cells for those blocks and they never registered as a target.
 func _get_dig_target() -> Vector2i:
-	var dir := (get_global_mouse_position() - global_position).normalized()
-	return _terrain_manager.world_to_cell(global_position + dir * float(Constants.TILE_SIZE))
+	var center_cell := _terrain_manager.world_to_cell(global_position)
+	var aim := get_global_mouse_position() - global_position
+	if aim.length_squared() < 0.0001:
+		return center_cell
+	var dir := aim.normalized()
+	var edge := _box_exit_distance(dir)             # centre -> body surface along the aim
+	var reach := edge + float(Constants.TILE_SIZE)  # ~1 tile past the surface
+	var last_cell := center_cell
+	var dist := edge
+	while dist <= reach:
+		var cell := _terrain_manager.world_to_cell(global_position + dir * dist)
+		if cell != last_cell:
+			last_cell = cell
+			if _terrain_manager.has_tile(cell):
+				return cell
+		dist += 3.0
+	return last_cell
+
+
+# Distance from the player centre to the collision-box edge along a unit direction.
+func _box_exit_distance(dir: Vector2) -> float:
+	var tx := (_body_half.x / absf(dir.x)) if absf(dir.x) > 0.0001 else INF
+	var ty := (_body_half.y / absf(dir.y)) if absf(dir.y) > 0.0001 else INF
+	return minf(tx, ty)
 
 
 func _calc_dig_duration(cell: Vector2i) -> float:
@@ -718,21 +845,17 @@ func _calc_dig_duration(cell: Vector2i) -> float:
 	return duration
 
 
-# Right-click toggles which tool is in hand. It stays toggled until pressed again,
-# so the sword no longer snaps back to the drill on its own.
-func _handle_tool_toggle() -> void:
-	if Input.is_action_just_pressed("attack"):
-		_active_tool = TOOL_SWORD if _active_tool == TOOL_DRILL else TOOL_DRILL
-		_reset_dig()  # drop any in-progress dig when switching tools
-
-
-# Left-click uses the equipped tool: the drill mines, the sword swings.
+# Left-click acts on whatever the selected hotbar slot holds: a drill mines, a
+# weapon swings, and an empty / non-tool slot does nothing. Right-click is unused.
 func _handle_tool_use(delta: float) -> void:
-	if _active_tool == TOOL_SWORD:
-		_reset_dig()
-		_handle_sword(delta)
-	else:
-		_handle_drill(delta)
+	match _active_tool:
+		TOOL_SWORD:
+			_reset_dig()
+			_handle_sword(delta)
+		TOOL_DRILL:
+			_handle_drill(delta)
+		_:
+			_reset_dig()  # empty / non-tool slot: left-click does nothing
 
 
 func _handle_sword(_delta: float) -> void:
@@ -888,6 +1011,7 @@ func get_equipped_weapon() -> WeaponBase:
 
 
 func set_zero_gravity(enabled: bool) -> void:
+	_zero_gravity = enabled
 	_gravity = 0.0 if enabled else _gravity_default
 	if enabled:
 		velocity.y = 0.0

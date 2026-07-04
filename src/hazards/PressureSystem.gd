@@ -1,6 +1,7 @@
 ## Faultline — pressure damage scaling with depth factor + zero-gravity flag for Core Hollow.
 ## Damage formula: pressure_dps_base * depth_factor — deeper = more pressure.
-## Core Hollow zero-gravity is flagged here; physics implementation is TODO(step 1 ext / step 8).
+## Core Hollow zero-gravity is flagged here; PlayerController.set_zero_gravity() (connected
+## in Main.gd) applies the actual physics: gravity off, free movement on every axis.
 class_name PressureSystem
 extends Node
 

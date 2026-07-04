@@ -3,13 +3,25 @@
 Working brief for Claude when building this project. Read this first every session.
 
 > **NEXT SESSION PRIORITY (when the user opens a new session and asks "what should
-> I do" / "what's next", lead with this):** Deal with **inventory drill switching
-> and sword switching.** Today combat swings a single `_equipped_drill` /
-> `_equipped_weapon` toggled by right-click (`PlayerController._active_tool`),
-> independent of which hotbar slot is selected. The drill/weapon you use should
-> come from the **selected inventory/hotbar slot** instead — switching the active
-> drill or weapon via the hotbar (and inventory swaps) should change what is
-> equipped and swung. Recommend this first; then proceed once the user confirms.
+> I do" / "what's next", lead with this):** Both the **Core Hollow shell terrain** and
+> **zero-gravity / semi-fluid Core Hollow physics** threads are now **complete**. The
+> shell uses a dedicated `CORE_HOLLOW_SHELL` terrain type (Constants enum value 11,
+> distinct from indestructible `BEDROCK`), hardest **drillable** terrain in the game
+> (`base_dig_time` 8.0 in `terrain_stats.json`, a TBD placeholder deliberately >2× Ultra
+> Dense's 3.5) — players must breach it to enter and win. Inside it, `PlayerController`
+> now gives free movement on every axis (no gravity, no terrain to walk on): entering
+> the layer calls `set_zero_gravity(true)`, which zeroes the player's custom fall
+> acceleration (`_gravity` — this project never used Godot's built-in `gravity_scale`)
+> and wires the previously-unused `move_up`/`move_down` inputs into `velocity.y`; the
+> single-block step-up is disabled while inside since there's no floor to climb onto.
+> Also fixed this session: single-block step-up (`_try_step_up()`) could permanently
+> soft-lock the player on legitimate 1-tile ledges because it gated on `is_on_wall()`,
+> which Godot can fail to set on a crisp 90° AABB corner — removed that gate in favor of
+> the `test_move()` check that was already right below it. Recommended next:
+> **throwables + consumables** (build step 6) — relics and two consumables (Lytes,
+> Medkit) work, but all 7 throwables are console-print stubs and Bloodstim/
+> ThermalCapsule/FaultBeacon fire signals with no mechanical effect (GAME_STATE known
+> issues #5–#6). Recommend this next; then proceed once the user confirms.
 
 ## Game overview
 
@@ -109,6 +121,12 @@ Unique Passive.
 **Inventory:** 5 hotbar slots (drill + weapon counted within these 5) + 1 armor
 sidebar slot + 2 backpack slots. **Each item = exactly 1 slot.**
 
+**Loot pickup — manual only (LOCKED design).** Loot is **not** auto-collected.
+The player presses **Q** (`pickup` input action) while in range of a `LootDrop`
+to collect it; when several drops are in range, the **closest is picked up first**
+(one item per press). If it can't fit, a brief **"Inventory full"** message shows
+and nothing is collected. Do not reintroduce automatic pickup.
+
 **Chest / loot:** spawn chance `= 0.8 × (1 − depthFactor)²` →
 Crust 80% / Mantle 51.2% / Outer Core 28.8% / Inner Core 12.8%. Independent of
 terrain type; no terrain-specific loot pools. Upgrade Template = **10% weight in
@@ -118,8 +136,9 @@ the relevant rarity pool** (not a flat per-chest roll). Use
 **Terrain:** tile-based, fully destructible, persistent per match, procedural
 (different every match). Affects movement speed (TBD) and drill dig time (by
 class + tier). Does **not** affect chest spawns. No terrain-specific loot pools
-(loot pool decided separately). Bedrock = hardest, bounds the playfield.
-**10+ terrain types spread across layers** (distribution per layer TBD).
+(loot pool decided separately). Bedrock = indestructible, bounds the playfield
+(bottom border only). `CORE_HOLLOW_SHELL` = hardest **drillable** terrain, walls
+the Core Hollow. **10+ terrain types spread across layers** (distribution per layer TBD).
 
 **Relics — exactly 4:** Haste / Speed / Strength / Toughness. **Cannot be
 dropped after pickup.** Toughness is permanent; the rest last ~3–4s.
@@ -171,9 +190,9 @@ Build systems in this exact sequence. **Do not start any system without asking
 the user first.** The user works in **separate sessions per aspect**, so confirm
 which item this session targets before writing code.
 
-1. **Player movement + terrain**  ✓ complete (incl. single-block step-up: walk onto 1-tile-high ledges; taller ledges stay blocked; does not affect the descend-only gate)
+1. **Player movement + terrain**  ✓ complete (incl. single-block step-up: walk onto 1-tile-high ledges; taller ledges stay blocked; does not affect the descend-only gate; zero-gravity free flight on every axis inside the Core Hollow)
 2. **Drill system**  ✓ complete
-3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker, zero-gravity flag for Core Hollow — physics not yet applied)
+3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker; Core Hollow zero-gravity physics implemented — free movement, no fall acceleration)
 4. **Inventory + loot**  ✓ complete (InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest interactive UI, discard-to-world-drop)
 5. **Weapons + combat**  ◑ melee complete (Area2D hitbox swing + cooldown + HUD cooldown overlay; all 5 classes / 4 tiers, base stats are TBD placeholders). Ranged/throwable combat not built here.
 6. Relics + throwables + consumables
@@ -188,11 +207,31 @@ which item this session targets before writing code.
 - Pixel art, 16px tile grid; keep the world on the TileMap.
 - Removed and must never reappear: Uncommon tier, Mythic tier, Team modes,
   Sudden Death, Bunker Breaker.
-- **FLAG — Core Hollow shell terrain (needs its own session):** The Core Hollow
-  boundary wall currently uses `BEDROCK` (indestructible), which means players
-  can never breach it. It needs a dedicated terrain type — drillable but harder
-  than Ultra Dense. Add it to `Constants.TerrainType`, `terrain_stats.json`,
-  and update `WorldGenerator` to use it for the shell wall.
+- **RESOLVED — Core Hollow shell terrain:** The Core Hollow boundary wall now
+  uses the dedicated `CORE_HOLLOW_SHELL` terrain type (Constants enum value 11),
+  drillable but the hardest terrain in the game (`terrain_stats.json` `base_dig_time`
+  8.0, TBD placeholder, >2× Ultra Dense). `WorldGenerator._compute_core_hollow`
+  builds the boundary from it; `TerrainManager` gives it a tileset source + dev art
+  and it destroys like any non-Bedrock tile. Bedrock now remains only at the absolute
+  bottom border. **Locked rule going forward:** the Core Hollow wall must always be
+  `CORE_HOLLOW_SHELL` (never `BEDROCK`), and the shell must always stay the hardest
+  drillable terrain — do not let any destructible terrain exceed its dig resistance.
+- **RESOLVED — Core Hollow zero-gravity physics:** `PlayerController.set_zero_gravity()`
+  (called via `PressureSystem.zero_gravity_changed`, wired in `Main.gd`) now implements
+  the semi-fluid interior for real: no fall acceleration, and `move_up`/`move_down`
+  drive `velocity.y` directly so movement is free on every axis, matching `move_left`/
+  `move_right`. Single-block step-up is disabled while zero-gravity is active. **Locked
+  rule going forward:** any future movement-affecting system (new hazard, relic, etc.)
+  that touches vertical velocity must check the zero-gravity flag first — the Core
+  Hollow interior must stay gravity-free and fully free-directional per the design doc.
+- **RESOLVED — single-block step-up soft-lock:** `_try_step_up()` used to gate on
+  `is_on_floor() and is_on_wall()`. Godot classifies a collision as floor/wall/ceiling by
+  the contact normal's angle, and a crisp 90° AABB corner (exactly what a dug 1-tile
+  ledge produces) can fail to register as "wall," permanently disabling the step and
+  soft-locking the player (no jump exists to escape). Fixed by dropping `is_on_wall()`
+  — the immediately-following `test_move(from, forward)` already proves "grounded and
+  genuinely blocked ahead" via direct shape overlap, which isn't subject to that
+  classification.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

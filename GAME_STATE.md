@@ -4,7 +4,7 @@
 > and CLAUDE.md before finishing. Treat any discrepancy between this file and the
 > actual code as a bug in this file — fix it immediately.
 
-**Last updated:** 2026-06-30 · **Build:** functional offline single-player. All
+**Last updated:** 2026-07-02 · **Build:** functional offline single-player. All
 balance numbers are provisional dev-placeholders pending a formal balance pass.
 
 ### Legend
@@ -36,9 +36,9 @@ balance numbers are provisional dev-placeholders pending a formal balance pass.
 
 | # | Build Step | Status | Notes |
 |---|---|---|---|
-| 1 | Player movement + terrain | **Done** | WASD + gravity, sprint/stamina, cylindrical wrap, single-block step-up |
+| 1 | Player movement + terrain | **Done** | WASD + gravity, sprint/stamina, cylindrical wrap, single-block step-up, zero-gravity free flight in Core Hollow |
 | 2 | Drill system | **Done** | All 4 classes × 4 tiers; balance values are `TBD` |
-| 3 | Layer/depth + hazards | **Done** | LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker |
+| 3 | Layer/depth + hazards | **Done** | LayerManager, DepthHazard, PressureSystem (incl. zero-gravity physics), StormSystem, DescentTracker |
 | 4 | Inventory + loot | **Done** | InventoryManager, Hotbar, AutoCollect, LootTable/Drop/Restriction, Chest UI |
 | 5 | Weapons + combat | **Partial** — melee done | Area2D hitbox swing + cooldown + HUD indicator; 5 classes × 4 tiers, base stats `TBD`. Ranged/throwables out of scope here |
 | 6 | Relics + throwables + consumables | **Partial** | Relics + Lytes/Medkit work; throwables and the other consumables are stubs |
@@ -76,9 +76,30 @@ Reads all `data/*.json` files and returns a consolidated Dictionary into `GameMa
 **Movement:** WASD, sprint (Shift) with stamina drain, gravity-based vertical movement.
 Horizontal world wrap (cylindrical world).
 
-**Single-block step-up:** `_try_step_up()` runs each frame immediately after `move_and_slide()`. When the player is grounded (`is_on_floor()`) and pressed against a wall (`is_on_wall()`) in the input direction, it uses three `test_move()` probes — forward-blocked at foot level, one tile of clear headroom, and forward-clear after rising one tile — to confirm the ledge is **exactly one tile** high, then lifts `global_position.y` up by one `TILE_SIZE`. If the obstacle is taller than one tile the third probe stays blocked and the player is left stopped (no climbing). It is not a jump: no extra height, only runs while grounded, and never triggers in zero-gravity (Core Hollow), where `is_on_floor()` is false. Purely local navigation — it only moves the player UP and never alters the descend-only gate; `DescentTracker` still runs after the parent and clamps any layer-boundary crossing.
+**Single-block step-up:** `_try_step_up()` runs each frame immediately after `move_and_slide()`. When the player is grounded (`is_on_floor()`) and holding a direction that is genuinely blocked (`test_move()` forward from the current position), it uses two further `test_move()` probes — one tile of clear headroom, and forward-clear after rising one tile — to confirm the ledge is **exactly one tile** high, then places the body directly onto the ledge by moving `global_position` **up AND forward one `TILE_SIZE`** (the up+forward destination is exactly what the second and third probes proved clear) and zeroes any residual downward velocity. Earlier it lifted straight up and relied on horizontal momentum to carry the body across, which let gravity drag the player back into the pit before they cleared the edge (it failed on genuine 1-tile ledges at lower move speeds / higher gravity) — the up-and-forward placement fixes that. If the obstacle is taller than one tile the third probe stays blocked and the player is left stopped (no climbing). It is not a jump: fixed one-tile lift, only runs while grounded, and never triggers in zero-gravity (Core Hollow), where `is_on_floor()` is false. There is **no jump** (the `jump`/`move_up` input actions exist but are unwired) and the game is **descend-only**, so a vertical shaft dug straight down cannot be climbed back up — step-up only clears 1-tile bumps during horizontal traversal. Purely local navigation — it only moves the player up/forward and never alters the descend-only gate; `DescentTracker` still runs after the parent and clamps any layer-boundary crossing.
 
-**Active-tool toggle:** Right-click cycles between TOOL_DRILL and TOOL_SWORD (persists between frames).
+**Bugfix 2026-07-02 — permanent soft-lock on 1-tile ledges (`is_on_wall()` removed from the gate).** The guard used to require `is_on_floor() and is_on_wall()` before attempting a step. Godot classifies a `move_and_slide()` collision as floor/wall/ceiling purely by the contact normal's angle against `up_direction`; a crisp 90° AABB corner — exactly the geometry a dug-out 1-tile ledge produces — can resolve to a normal that lands outside the "wall" bucket, so `is_on_wall()` intermittently (in practice: reliably, for this exact geometry) reads `false` even while the body is squarely blocked. Because the whole function short-circuited on that check, this silently disabled step-up forever for the player that hit it, leaving them permanently walled in with no jump to escape (reported via a debug capture: player stuck at a dug ledge for the full clip). Fix: drop the `is_on_wall()` term entirely — `is_on_floor()` plus the very next line's `test_move(from, forward)` (a direct shape-overlap test, not an angle classification) already prove "grounded and genuinely blocked ahead," so the wall-angle check was both redundant and the point of failure. No behavior change for the success path; only removes a false-negative gate.
+
+**Active tool = selected hotbar slot.** The in-hand tool is derived from the
+currently selected hotbar slot (keys 1–5 / scroll), NOT from right-click. `_active_tool`
+is one of `TOOL_DRILL` / `TOOL_SWORD` / `TOOL_NONE`, set by `_refresh_active_tool()`:
+a `drill` slot → TOOL_DRILL, a `weapon` slot → TOOL_SWORD, anything else (empty,
+throwable, consumable, relic) → TOOL_NONE. It updates on `Hotbar.active_slot_changed`
+(`_on_active_slot_changed`, which also `_reset_dig()`s) and on `InventoryManager.slot_changed`
+when the changed slot is the active one (swap/drop/pickup). The held visual mirrors it
+(hidden for TOOL_NONE). **Right-click does nothing** — the old right-click toggle
+(`_handle_tool_toggle`) was removed. Left-click is the sole action trigger: TOOL_DRILL
+digs, TOOL_SWORD swings, TOOL_NONE does nothing. The `attack` input action is now unused.
+
+**Equipped drill/weapon mirror the reserved slots.** `_equipped_drill` follows the
+reserved DRILL slot (idx 0) and `_equipped_weapon` the reserved WEAPON slot (idx 1).
+`equip_drill_from_item(item)` / `equip_weapon_from_item(item)` (called by
+`InventoryManager._reequip_player()` on spawn and on every replacement) rebuild the
+in-hand Resource from the slot's item dict — these replaced the old
+`equip_starter_drill()` / `equip_starter_weapon()` (removed; `Main.gd` no longer
+calls them). So the drill/weapon in the reserved slot is the exact Resource dug/swung,
+and a Q-pickup that replaces it takes effect immediately (active when its slot is
+selected). `equip_drill(drill)` remains the low-level unequip-old → wire → equip helper.
 
 **Drill (left-click, TOOL_DRILL):**
 - Targets tile under cursor.
@@ -164,7 +185,7 @@ Called once per match with a random seed. Pre-computes all tile data into a per-
 2. Carve caves: wrapping horizontal tunnels + vertical shafts.
 3. Horizontal rock bands every 8–14 rows within each layer (harder terrain variety).
 4. After filling each layer, scan air cells for valid floor positions (air cell with solid tile directly below); collect `DUMMIES_PER_LAYER` (currently 6) positions per layer for TestDummy spawning, spread evenly across the layer width (candidates sorted by column, picked at even fractions). DEV-ONLY kill-count testing.
-5. Core Hollow: generates as a circular bedrock-walled chamber with an open interior void. **The shell (boundary wall) must be the hardest terrain in the game** — currently it uses generic Bedrock but may need a dedicated "Core Shell" terrain type that is drillable (unlike Bedrock) but far harder than Ultra Dense. The **interior remains open/void** — this is intentional: once inside, players move through a semi-fluid substance (free movement, no terrain tiles, no gravity). The current open-void interior is correct in spirit but the physics (zero-gravity, fluid movement feel) are not yet implemented.
+5. Core Hollow: generates as a circular chamber walled by `CORE_HOLLOW_SHELL` with an open interior void. **The shell (boundary wall) is the hardest terrain in the game** — a dedicated drillable terrain type (`Constants.TerrainType.CORE_HOLLOW_SHELL`, enum value 11), NOT Bedrock, with `base_dig_time` 8.0 (TBD placeholder, >2× Ultra Dense's 3.5). It forms a complete boundary around the interior: thin at the poles (the circle nearly fills the layer height, so a central descent breaches only ~2 shell tiles) and thicker toward the equator, but drillable everywhere given enough time. It destroys like any non-Bedrock tile. The **interior remains open/void** — intentional: once inside, players move through a semi-fluid substance (free movement, no terrain tiles, no gravity). The open-void interior is correct in spirit but the physics (zero-gravity, fluid movement feel) are not yet implemented (deviation #3).
 6. Bedrock border: bottom row only; world wraps horizontally.
 7. Calls `terrain_manager.init_streaming_lazy(world_data, width)` — passes all data to TerrainManager without placing tiles.
 8. Calls `terrain_manager.stream_columns(width / 2, 48)` — places only the ~97 columns around spawn into TileMap at startup. PlayerController streams the rest on demand as the player moves.
@@ -177,7 +198,7 @@ Called once per match with a random seed. Pre-computes all tile data into a per-
 | Mantle | 10% Clay, 25% Limestone, 33% Rock, 20% Basalt, 12% Granite |
 | Outer Core | 8% Rock, 14% Basalt, 20% Granite, 18% Obsidian, 18% Iron Formation, 22% Dense Crystal |
 | Inner Core | 6% Granite, 14% Obsidian, 18% Iron Formation, 17% Dense Crystal, 45% Ultra Dense |
-| Core Hollow | Open void interior (correct — semi-fluid, no tiles). Shell wall must be hardest drillable terrain (TBD type; harder than Ultra Dense but destructible unlike Bedrock) |
+| Core Hollow | Open void interior (correct — semi-fluid, no tiles). Shell wall = `CORE_HOLLOW_SHELL`, the hardest drillable terrain (`base_dig_time` 8.0 TBD; harder than Ultra Dense, destructible unlike Bedrock) |
 
 ### TerrainManager (`src/world/TerrainManager.gd`)
 Owns and mutates the Godot `TileMap`. Single interface for all terrain reads/writes.
@@ -192,7 +213,7 @@ Owns and mutates the Godot `TileMap`. Single interface for all terrain reads/wri
 - **`get_canonical_by_col()`** — returns the nested `{col → {row → TerrainType}}` index by reference; used by ChestSpawner at startup to scan the full world without requiring all tiles to be placed (replaces the old `get_canonical_registry_flat()`, which allocated a 360k Vector2i-keyed dict every startup).
 - **`init_streaming(world_width)`** — legacy path (not called in current flow; kept for reference).
 
-Dev tileset built in code (no external asset needed): all 11 terrain types as pixel-art 16×16 images.
+Dev tileset built in code (no external asset needed): all 12 terrain types as pixel-art 16×16 images (incl. `CORE_HOLLOW_SHELL` — armored blue-black plate with molten-cyan energy seams, visually distinct from dull-gray Bedrock). Source IDs are keyed by the `TerrainType` enum value in `add_source(source, terrain_type)`, so the new type gets source ID 11 and `place_tile`/`destroy_tile` handle it with no special-casing.
 
 ### LayerManager (`src/world/LayerManager.gd`)
 Maps world-space pixel Y coordinates to `Constants.Layer` enum values.
@@ -214,11 +235,13 @@ World bounds: `world_width_px()`, `world_height_px()`.
 ### TerrainTypes (`src/world/TerrainTypes.gd`)
 Reads `terrain_stats.json` per type. Provides: `base_dig_time`, `move_speed_mod`, `class_effectiveness(type, drill_class)`.
 
-`is_destructible(type)` — false only for BEDROCK.
-`is_structurally_weak(type)` — true for SOIL, CLAY, ROCK (shown by Resonance overlay).
+**`class_effectiveness` filled (`TBD` placeholders, range 0.60–1.40; lower = that class digs this terrain faster).** Soft/organic (Soil, Clay): Thermal 0.60 best. Medium (Rock, Limestone, Basalt): Burst 0.60 best. Hard/dense (Granite, Iron Formation, Obsidian, Dense Crystal, Ultra Dense): Precision 0.60 best. Resonance sits at 0.90 on every destructible terrain (balanced generalist). Bedrock all 1.0 (indestructible, irrelevant). See the Thermal runtime caveat under DrillClass.
+
+`is_destructible(type)` — false only for BEDROCK, so `CORE_HOLLOW_SHELL` is destructible (drills and is removed like any other tile). `hardness_order()` is currently unused (definition only) and was left as-is; it does not yet list `CORE_HOLLOW_SHELL`.
+`is_structurally_weak(type)` — true for SOIL, CLAY, ROCK (shown by Resonance overlay); `CORE_HOLLOW_SHELL` is not weak, so the Resonance overlay never highlights it.
 
 **Terrain types and hardness order (softest → hardest):**
-Soil (0.4s) → Clay (0.5s) → Rock (0.8s) → Limestone (0.9s) → Basalt (1.3s) → Granite (1.7s) → Iron Formation (2.0s) → Obsidian (2.2s) → Dense Crystal (2.5s) → Ultra Dense (3.5s) → Bedrock (indestructible)
+Soil (0.4s) → Clay (0.5s) → Rock (0.8s) → Limestone (0.9s) → Basalt (1.3s) → Granite (1.7s) → Iron Formation (2.0s) → Obsidian (2.2s) → Dense Crystal (2.5s) → Ultra Dense (3.5s) → **Core Hollow Shell (8.0s — hardest drillable)** → Bedrock (indestructible)
 
 All values above are provisional dev placeholders.
 
@@ -238,7 +261,7 @@ Spawn chances: Crust 80% / Mantle ~51% / Outer Core ~29% / Inner Core ~13% / Cor
 
 ## Terrain Types Detail
 
-11 types defined in `Constants.TerrainType`: SOIL, CLAY, LIMESTONE, ROCK, BASALT, GRANITE, IRON_FORMATION, OBSIDIAN, DENSE_CRYSTAL, ULTRA_DENSE, BEDROCK.
+12 types defined in `Constants.TerrainType`: SOIL, CLAY, LIMESTONE, ROCK, BASALT, GRANITE, IRON_FORMATION, OBSIDIAN, DENSE_CRYSTAL, ULTRA_DENSE, BEDROCK, CORE_HOLLOW_SHELL (enum value 11 — the hardest drillable terrain; walls the Core Hollow and must be breached to win).
 
 Pixel art renders for each are built in code inside `TerrainManager._build_dev_tileset()`. No external tileset asset required yet.
 
@@ -252,9 +275,13 @@ Tick-based (1s interval). Applies ambient DPS and stamina (oxygen) drain scaling
 Data keys (all TBD): `{layer}_dps`, `{layer}_oxygen_drain`, `{layer}_visibility_alpha`.
 
 ### PressureSystem (`src/hazards/PressureSystem.gd`)
-Tick-based pressure damage = `pressure_dps_base × depth_factor`. When player enters Core Hollow, emits `zero_gravity_changed(true)`.
+Tick-based pressure damage = `pressure_dps_base × depth_factor`. When player enters Core Hollow, emits `zero_gravity_changed(true)`, wired in `Main.gd` to `PlayerController.set_zero_gravity()`.
 
-**Deviation:** `zero_gravity_changed` signal fires but Godot physics `gravity_scale` is not yet modified — zero-gravity physics are not implemented.
+**Zero-gravity / semi-fluid physics (deviation #3 resolved).** `set_zero_gravity(enabled)` sets a `_zero_gravity` flag on the player plus zeroes `_gravity` (the player's own custom fall-speed var, not the Godot `gravity_scale` property — this project never used `gravity_scale`; downward acceleration is applied manually in `_apply_gravity()`). Effects while active:
+- `_apply_gravity()` returns immediately — no downward acceleration.
+- `_handle_movement()` reads `move_up`/`move_down` (previously-unwired input actions) and drives `velocity.y` directly, in addition to the existing `move_left`/`move_right` → `velocity.x`, giving free movement on every axis. Sprint applies uniformly to whichever axes are held.
+- `_try_step_up()` returns immediately (no floor to stand on inside the void, and flight makes ledge-climbing moot).
+- Re-entering gravity (`enabled = false`, were that ever to happen) restores `_gravity_default` and movement falls back to walk + fall as normal.
 
 Data key: `pressure_dps_base` (currently 2.0, provisional).
 
@@ -303,18 +330,20 @@ Static accessors for class-specific behaviours:
 - **THERMAL** — `ignores_terrain_effectiveness()` returns true; uniform speed regardless of terrain type.
 - **RESONANCE** — `reveals_weak_terrain()` returns true; triggers `ResonanceOverlay`.
 
-Spawn weights (provisional): Precision 40 / Burst 28 / Thermal 18 / Resonance 14.
+**Spawn weights (`spawn_weight` per class in `drill_stats.json` — NOT in `spawn_rates.json`; read by `DrillClassData.spawn_weight()`).** Sum to exactly 100, Precision most common → Resonance rarest: Precision 40 / Burst 28 / Thermal 18 / Resonance 14. All `TBD`.
+
+**Class-vs-terrain effectiveness** lives in `terrain_stats.json` (`class_effectiveness`), read by `TerrainTypes.class_effectiveness()` / `DrillClassData.terrain_effectiveness()` — NOT in `drill_stats.json`. Filled `TBD` (lower mult = faster/stronger, range 0.60–1.40): **Precision** excels at hard/dense (0.60), **Burst** at medium (0.60), **Thermal** at soft/organic (0.60), **Resonance** balanced (0.90 everywhere — never best, never worst). ⚠️ The dig calc *skips* `class_effectiveness` for **Thermal** (`DrillClassData.ignores_terrain_effectiveness` → uniform speed), so Thermal's soft-terrain values are stored **intent-only / inert at runtime** until that behaviour is revisited.
 
 ### DrillTier (`src/systems/drill/DrillTier.gd`)
 Reads class × tier matrix from `drill_stats.json`. Returns `dig_time_mult` and `max_durability`.
 
-Provisional values:
-| Tier | dig_time_mult | durability |
+Provisional `TBD` values (filled for testable feel; Precision/Thermal/Resonance share the base curve, Burst is slightly slower + less durable since it breaks 2 tiles/dig):
+| Tier | dig_time_mult (Prec/Therm/Reso · Burst) | durability (Prec/Therm/Reso · Burst) |
 |---|---|---|
-| Common | 1.00× | ~200 |
-| Rare | ~0.85× | ~310–320 |
-| Epic | ~0.70× | ~460–480 |
-| Legendary | ~0.55× | ~760–800 |
+| Common | 1.00× · 1.08× | 200 · 180 |
+| Rare | 0.80× · 0.88× | 400 · 360 |
+| Epic | 0.62× · 0.70× | 700 · 640 |
+| Legendary | 0.45× · 0.52× | 1200 · 1100 |
 
 ### DrillUpgrade (`src/systems/drill/DrillUpgrade.gd`)
 `apply(drill)` — increments tier (max Legendary), calls `init_from_data()`, restores durability.
@@ -366,19 +395,30 @@ Mirror the drill equivalents. Passives are "TBD" strings in JSON; no mechanical 
 ## Inventory System
 
 ### InventoryManager (`src/systems/inventory/InventoryManager.gd`)
-8 carry slots: indices 0–4 = hotbar, 5 = armor sidebar, 6–7 = backpack. Each slot holds one item (Dictionary `{type, item_class, tier}`) or null.
+8 carry slots: index **0 = reserved DRILL slot** (hotbar slot 1), **1 = reserved WEAPON slot** (hotbar slot 2), **2–4 = free hotbar** (slots 3–5), 5 = armor sidebar, 6–7 = backpack. Each slot holds one item (Dictionary `{type, item_class, tier}`) or null.
 
-F-key toggles panel UI (built in code). Drop buttons call `remove_item()` and spawn a `LootDrop` at player position.
+**Reserved drill/weapon slots (fixed loadout rule).** `add_item()` routes by type:
+- `drill` → **always** slot 0 (`DRILL_SLOT`), `weapon` → **always** slot 1 (`WEAPON_SLOT`), via `_place_reserved()`. Any item already there is dropped as a `LootDrop` at the player's position (replace-and-drop), then the new one is placed. On the initial spawn adds the slots are empty, so nothing is dropped.
+- `armor` → armor sidebar slot (only if empty; no hotbar overflow).
+- everything else (consumable/throwable/relic/…) → first free hotbar slot **2–4**, then backpack **6–7**. Reserved slots 0–1 are never used for other types.
+
+`_place_reserved()` calls `_reequip_player()` **before** emitting `slot_changed`, which invokes the player's `equip_drill_from_item()` / `equip_weapon_from_item()` to rebuild the in-hand `_equipped_drill` / `_equipped_weapon` Resource. Doing it before the signal means every listener (HUD durability bar, active-tool dispatch) sees the new drill/weapon consistently regardless of signal-connection order. So a picked-up drill/weapon is the one actually dug/swung (closes the old single-`_equipped_*` gap).
+
+`can_add()`: drills/weapons → always `true` (they replace their reserved slot); armor → armor slot free; else → `has_space()` (a free hotbar 2–4 or backpack slot). `has_space()` no longer counts the reserved slots.
+
+F-key toggles panel UI (built in code). Drop buttons spawn a `LootDrop` and call `remove_item()` — **except** the reserved drill/weapon slots, whose Drop buttons stay disabled (`_on_discard_pressed()` also guards them): the loadout is fixed, so you always carry a drill + weapon and swap them only by picking up replacements.
 
 Signals: `slot_changed(slot_idx, item)`, `inventory_opened`, `inventory_closed`.
 
-Key methods: `add_item()`, `remove_item()`, `swap_slots()`, `get_armor()`, `can_add()`, `all_items()`.
+Key methods: `add_item()`, `_place_reserved()`, `remove_item()`, `swap_slots()`, `get_armor()`, `can_add()`, `has_space()`, `all_items()`.
+
+**Durability persistence across drop → re-pickup.** Although the inventory stores item dicts (not the Resource), a dropped drill/weapon keeps its wear: `_place_reserved()` stamps the outgoing item with the live equipped `current_durability` via `_with_current_durability()` (read from `PlayerController.get_equipped_drill()`/`get_equipped_weapon()` before re-equip) onto the `LootDrop`'s `item_data["durability"]`. On re-equip, `PlayerController._restore_saved_durability()` clamps that value onto the rebuilt Resource and re-flags `is_broken` at 0. Fresh loot (chest/LootTable) and the spawn loadout carry no `durability` key, so they build at full durability. The slot dict's stamped value is only read at equip time; the equipped Resource stays authoritative afterward (a later drop re-reads the live value), so stale dict values are never used.
 
 ### Hotbar (`src/systems/inventory/Hotbar.gd`)
 Tracks `_active_slot` (0–4). Input: keys 1–5 and scroll wheel. Emits `active_slot_changed(slot_idx)`. `get_active_item()` queries InventoryManager.
 
 ### AutoCollect (`src/systems/inventory/AutoCollect.gd`)
-Scans scene tree every 0.1s for `LootDrop` nodes within `pickup_radius` (48px = 3 tiles). Calls `InventoryManager.add_item()` if `LootRestriction.can_loot()` passes (blocked while drilling or attacking).
+**Manual Q pickup (automatic collection disabled).** Despite the class name, pickup is no longer automatic. On `pickup` input (Q, added to `project.godot`), `_try_pickup()` finds all `loot_drops`-group `LootDrop` nodes within `_pickup_radius` (from `data["pickup_radius"]`, 32px fallback = 2 tiles) whose `pickup_delay` has elapsed, selects the **closest** one, and adds it to the inventory (one item per press). If the closest in-range drop cannot be accepted (`InventoryManager.can_add()` false — inventory/relevant slot full), it shows a brief **"Inventory full"** message via the player's floating notify label (`PlayerController._show_notify`, 1.5s) instead of collecting. `LootRestriction` is no longer consulted — pressing Q is an explicit action, so pickup works regardless of drilling/attacking state.
 
 ---
 
@@ -490,7 +530,7 @@ Built entirely in code. Contains:
 - **Health bar** — gradient green → amber → red by threshold.
 - **FPS counter** (`FPSLabel` in `HUD.tscn`) — top-centre, small text (9px), semi-transparent gray. Updated every frame in `_process()` via `Engine.get_frames_per_second()`. Dev aid; always visible during testing.
 - **HP label** (`HPLabel` in `HUD.tscn`) — shows exact `"current / max"` integer HP (e.g. `80 / 100`); updated every `health_changed` signal via `_on_health_changed()`.
-- **5 hotbar slots** (40×40) — item label + tier-coloured border + durability bar (visible for drill/weapon only; connected to Resource signals). Each slot also carries a full-slot **cooldown overlay** `ColorRect` (added last so it draws on top, mouse-ignored): `_update_weapon_cooldown_overlay()` runs each frame, finds the slot holding a `WeaponBase` resource, and sets that overlay's alpha to `get_attack_cooldown_ratio() × 0.65` (dim right after a swing, fading to clear when ready); all other slots stay transparent.
+- **5 hotbar slots** (58×58, 5px separation) — deliberately the largest, most prominent bottom-HUD element (see "Prominent hotbar" in the change log). Item label + tier-coloured border + durability bar (visible for drill/weapon only; connected to Resource signals). The **active slot** (`_highlight_slot`) gets a 4px cyan border + cyan drop-shadow glow + brighter bg/label; inactive slots use a 2px gray border. Each slot also carries a full-slot **cooldown overlay** `ColorRect` (added last so it draws on top, mouse-ignored): `_update_weapon_cooldown_overlay()` runs each frame, finds the slot holding a `WeaponBase` resource, and sets that overlay's alpha to `get_attack_cooldown_ratio() × 0.65` (dim right after a swing, fading to clear when ready); all other slots stay transparent. `BottomHUD` height was raised (offset_top −52→−72) to fit the taller slots; `HealthSection`, the armor slot, and the backpack section are `SHRINK_CENTER` vertically so the hotbar stays the tallest element.
 - **Armor slot** (48×40) — tier-coloured.
 - **Backpack** (2 × 46×16).
 - **LayerIndicator** — current layer name; updates on `layer_changed`.
@@ -544,7 +584,7 @@ Combined effective DPS per layer (depth_hazard DPS + pressure DPS at 0.5 base ×
 | Core Hollow | 0.0 | 0.4 | ~0.4 | ~250s |
 
 ### `data/terrain_stats.json`
-Per-terrain-type `{base_dig_time, move_speed_mod, class_effectiveness}`. All values are **[TBD]** dev values.
+Per-terrain-type `{base_dig_time, move_speed_mod, class_effectiveness}` for all 12 types. All values are **[TBD]** dev values. `Core Hollow Shell` `base_dig_time` 8.0 is the highest of any drillable terrain (>2× Ultra Dense) — flagged TBD via `_meta.core_hollow_shell_status`; it must always remain the hardest drillable tile (Bedrock's 999.0 is the indestructible sentinel and is not counted).
 
 ### `data/spawn_rates.json`
 Chest formula (`0.8 × (1−depthFactor)²`) locked. Special-item spawn rates all `null`.
@@ -559,8 +599,8 @@ Phase schedule locked. Damage values TBD.
 | # | File(s) | Issue | Severity |
 |---|---|---|---|
 | 1 | `PlayerController.gd:517–525` | ~~Merge conflict marker~~ — **resolved**. HEAD version (no inline comments) kept. | Fixed |
-| 2 | `WorldGenerator.gd` | Core Hollow shell currently uses generic Bedrock (indestructible). Design requires the shell to be the **hardest drillable terrain** — a dedicated terrain type harder than Ultra Dense but still destructible. The open interior is correct (semi-fluid; no terrain tiles inside). Shell terrain type is TBD. | **High** |
-| 3 | `PressureSystem.gd` | `zero_gravity_changed` signal fires when entering Core Hollow but `gravity_scale` is never modified. Zero-gravity physics are unimplemented. | Medium |
+| 2 | `WorldGenerator.gd` | ~~Core Hollow shell uses generic Bedrock (indestructible), so players can never breach it.~~ **Resolved** — dedicated `CORE_HOLLOW_SHELL` type (Constants value 11) walls the Core Hollow: hardest drillable terrain (`base_dig_time` 8.0 TBD, >2× Ultra Dense), destructible like any non-Bedrock tile, with its own dev art. Bedrock now only at the absolute bottom border. Open interior unchanged. | Fixed |
+| 3 | `PressureSystem.gd`, `PlayerController.gd` | ~~`zero_gravity_changed` signal fires when entering Core Hollow but gravity physics are never modified.~~ **Resolved** — `PlayerController.set_zero_gravity()` now zeroes the player's custom fall acceleration and wires `move_up`/`move_down` into free movement on every axis; `_try_step_up()` is disabled while active. | Fixed |
 | 4 | `armor_stats.json` / armor files | Armor system is entirely non-functional. `ArmorBase`, `ArmorClass`, `ArmorTier` are stubs; no armor mechanics wired. | Medium (step 5) |
 | 5 | All throwable files | All 7 throwable effects print to console only. No actual game effect. | Medium (step 6) |
 | 6 | `Bloodstim.gd`, `ThermalCapsule.gd`, `FaultBeacon.gd` | Signals fire but multiplier/rendering hookups not implemented. | Medium (step 6) |
@@ -570,12 +610,220 @@ Phase schedule locked. Damage values TBD.
 | 10 | `GameManager.gd` | POST_MATCH state has no UI or logic (no win screen, no leaderboard). | Low (step 8) |
 | 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (6 per layer) must be removed when networked players exist. | Low (step 9) |
 | 12 | `Main.gd` | Player always spawns at world centre X. Needs per-player scatter for 100-player drops. | Low (step 9) |
+| 13 | `DrillClass.gd`, `terrain_stats.json` | Thermal's `class_effectiveness` (now set to excel at soft/organic terrain) is inert at runtime: `ignores_terrain_effectiveness(THERMAL)` makes the dig calc use uniform speed, ignoring the JSON values. Data reflects intent; runtime does not. Decide later whether Thermal keeps uniform speed or honours its terrain values. | Low |
+| 14 | `InventoryManager.gd`, `PlayerController.gd` | ~~Drill/weapon current durability lost on drop → re-pickup.~~ **Resolved** — dropped items carry live `current_durability` (`_with_current_durability`), restored on re-equip (`_restore_saved_durability`), broken re-flagged at 0. | Fixed |
 
 ---
 
 ## Session Change Log
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
+
+### 2026-07-02
+
+**Zero-gravity / semi-fluid physics for the Core Hollow interior (deviation #3 resolved).**
+`PressureSystem` already fired `zero_gravity_changed(true/false)` on layer transition,
+wired in `Main.gd` to `PlayerController.set_zero_gravity()` — but that handler only
+zeroed the player's fall acceleration; nothing let the player actually move once
+gravity stopped pulling them, so they'd just hang motionless in the void.
+- `PlayerController.gd`: added `_zero_gravity: bool` flag, set by `set_zero_gravity()`
+  alongside the existing `_gravity` zeroing. `_apply_gravity()` now returns immediately
+  while the flag is set (previously relied on `_gravity == 0.0` alone, which was
+  already a no-op — the early return just makes the intent explicit). `_handle_movement()`
+  reads the previously-unwired `move_up`/`move_down` input actions when `_zero_gravity`
+  is true and drives `velocity.y` directly (alongside the existing `move_left`/
+  `move_right` → `velocity.x`), giving free movement on every axis — "semi-fluid" per
+  CLAUDE.md. Sprint's stamina-drain check now triggers on horizontal *or* vertical
+  input. `_try_step_up()` returns immediately when `_zero_gravity` is true (no floor to
+  climb onto in an open void; also avoids acting on stale `is_on_floor()` state).
+- `PressureSystem.gd`: updated the file-header comment — it previously said the physics
+  were TODO; now points at `PlayerController.set_zero_gravity()` as the implementation.
+- No data/JSON changes; this is pure physics wiring, no new tunables.
+- **Correction to a prior doc claim:** this project's fall speed was never driven by
+  Godot's built-in `gravity_scale` property — `_gravity` is a custom float applied
+  manually in `_apply_gravity()`. The old "gravity_scale is never modified" phrasing
+  (CLAUDE.md, this file) was imprecise; corrected here and in CLAUDE.md.
+
+**Fixed: permanent soft-lock at 1-tile ledges (single-block step-up never fired).**
+Diagnosed from a user-supplied debug capture (`Faultline (DEBUG) 2026-07-02
+20-57-12.mp4`) showing the player permanently stuck mid-Mantle, unable to move off
+one spot for the entire clip.
+- `PlayerController.gd` — `_try_step_up()`: removed `is_on_wall()` from the entry
+  guard (was `if not is_on_floor() or not is_on_wall(): return`, now just
+  `if not is_on_floor(): return`). Godot's floor/wall/ceiling classification is based
+  on the collision normal's angle vs. `up_direction`; a crisp 90° AABB corner — exactly
+  what a dug-out 1-tile ledge is — can produce a normal that Godot doesn't bucket as
+  "wall," so `is_on_wall()` reads `false` even when the body is squarely blocked against
+  a genuine one-tile step. Since the function returned immediately in that case, step-up
+  silently never fired for that geometry, and with no jump in this game, the player had
+  no way off that tile — a permanent soft-lock. The very next line, `test_move(from,
+  forward)`, already proves "grounded and genuinely blocked ahead" via direct shape
+  overlap rather than angle classification, making `is_on_wall()` both redundant and the
+  actual point of failure. See "Bugfix 2026-07-02" under PlayerController above for
+  full detail.
+
+### 2026-07-01
+
+**Core Hollow shell terrain (deviation #2 resolved / CLAUDE.md FLAG closed).** The
+Core Hollow boundary is now a dedicated drillable terrain, so players can finally
+breach it and win.
+- `Constants.gd`: added `TerrainType.CORE_HOLLOW_SHELL` (enum value **11**, appended
+  after `BEDROCK` so existing values don't shift) + its `TERRAIN_NAMES` entry
+  ("Core Hollow Shell"). Distinct from indestructible `BEDROCK`.
+- `data/terrain_stats.json`: added the `Core Hollow Shell` entry with `base_dig_time`
+  **8.0** — the highest of any drillable terrain (>2× Ultra Dense's 3.5), `move_speed_mod`
+  0.80, `class_effectiveness` `{Precision 0.80, Burst 1.25, Thermal 1.35, Resonance 0.90}`.
+  Even the best class/tier can't dig it faster than any other tile. Flagged TBD via new
+  `_meta.core_hollow_shell_status`.
+- `WorldGenerator.gd`: `_compute_core_hollow()` now walls the chamber with
+  `CORE_HOLLOW_SHELL` instead of `BEDROCK`. Geometry unchanged (circular chamber, open
+  interior void). Bedrock now survives only at the absolute bottom border
+  (`_compute_bedrock_border`, which overwrites the shell on the world's last row).
+- `TerrainManager.gd`: registered `CORE_HOLLOW_SHELL` in `_TILE_TYPES` (creates tileset
+  source ID 11 so `place_tile` renders + collides it) and added `_make_tile` case +
+  `_tile_core_hollow_shell()` dev art (armored blue-black plate with molten-cyan energy
+  seams). No change needed to `destroy_tile` / `TerrainTypes.is_destructible` — they
+  already treat every non-Bedrock type as destructible, so the shell loses tiles per
+  completed dig and is removed at zero exactly like all other terrain, with dig time
+  scaled by drill class × tier as usual.
+
+**Durability persists across drop → re-pickup (deviation #14 resolved).** A dropped
+drill/weapon now keeps its wear instead of returning full.
+- `InventoryManager.gd`: `_place_reserved()` now drops the outgoing item via new
+  `_with_current_durability(slot_idx, dict)`, which duplicates the slot dict and stamps
+  `["durability"]` with the live equipped `current_durability` (read from the player's
+  `get_equipped_drill()`/`get_equipped_weapon()` **before** `_reequip_player` swaps it).
+- `PlayerController.gd`: `equip_drill_from_item`/`equip_weapon_from_item` call new
+  `_restore_saved_durability(res, item)` after `init_from_data()` — if the item dict
+  carries `"durability"`, it clamps that onto `current_durability` and sets `is_broken`
+  at 0 (else leaves it full). Duck-typed, works for DrillBase and WeaponBase.
+- Fresh loot (chest/LootTable) and the spawn loadout have no `"durability"` key → build
+  at full. The stamped dict value is only read at equip time; the Resource stays
+  authoritative afterward (a later drop re-reads the live value).
+
+**Reserved drill/weapon hotbar slots + spawn loadout.** Slot 1 (idx 0) is now a
+fixed DRILL slot and slot 2 (idx 1) a fixed MELEE slot. Changes:
+- `InventoryManager.gd`: added `DRILL_SLOT`/`WEAPON_SLOT`/`FREE_HOTBAR_START` consts.
+  `add_item()` routes drills → slot 0 and weapons → slot 1 via new `_place_reserved()`
+  (drops the old item as a `LootDrop`, then places the new one); all other non-armor
+  items go to free hotbar 2–4 then backpack 6–7; armor → armor slot. `_place_reserved()`
+  calls new `_reequip_player()` **before** emitting `slot_changed`, invoking the player's
+  `equip_drill_from_item()`/`equip_weapon_from_item()` so the in-hand Resource is fresh
+  for every listener (fixes HUD-durability/active-tool ordering). `can_add()` returns
+  true for drills/weapons (they always replace); `has_space()` now excludes reserved
+  slots. Reserved slots' Drop buttons are disabled and `_on_discard_pressed()` guards
+  them, so the loadout can't be emptied — you swap by picking up a replacement.
+- `PlayerController.gd`: replaced `equip_starter_drill()`/`equip_starter_weapon()` with
+  `equip_drill_from_item(item)`/`equip_weapon_from_item(item)` (build the Resource from a
+  slot dict; null unequips). `setup_hotbar()` comment updated; the DEV throwable/
+  consumable/relic test items now populate the free slots 3–5.
+- `Main.gd`: removed the `equip_starter_drill()`/`equip_starter_weapon()` calls — the
+  loadout Resources are now built through `setup_hotbar()`'s reserved-slot adds.
+- Result: picking up a drill/weapon via Q always replaces its reserved slot, drops the
+  old one, and immediately becomes the dug/swung Resource (active when its slot is
+  selected). Closes the old single-`_equipped_*` gap for drills/weapons. Known
+  limitation (deviation #14): current durability isn't preserved across drop/re-pickup.
+
+**Drill TBD values filled (dig time, durability, spawn weight, class effectiveness).**
+All remaining drill placeholders were populated with testable `TBD` dev values via
+two parallel sub-agents (one per data file, to avoid clobbering a shared file), then
+verified (JSON parses; constraints checked programmatically). Nothing hardcoded in
+`.gd`; every value flagged `TBD` in the JSON.
+- `data/drill_stats.json` — per class×tier `dig_time_mult` (Common slowest → Legendary
+  fastest, ~0.18–0.20 steps: 1.00/0.80/0.62/0.45; Burst +~0.08 slower) and `durability`
+  (Common lowest → Legendary highest, ~doubling: 200/400/700/1200; Burst slightly lower)
+  filled and strictly monotonic. `spawn_weight` per class kept at 40/28/18/14 = **exactly
+  100** (Precision most common → Resonance rarest). Added `_meta.status` TBD banner,
+  `"_tbd": true` per class, and `_meta._note_spawn_weight` clarifying spawn rates are read
+  from **this** file (not `spawn_rates.json`).
+- `data/terrain_stats.json` — `class_effectiveness` filled for all 11 terrains (range
+  0.60–1.40): Precision→hard/dense, Burst→medium, Thermal→soft/organic, Resonance→balanced
+  (0.90 everywhere). `base_dig_time`/`move_speed_mod` left untouched. Added
+  `_meta.class_effectiveness_status` TBD note incl. the Thermal caveat.
+- **Filename deviations from the request (values placed where the code actually reads
+  them, else they'd be dead data):** class-vs-terrain effectiveness lives in
+  `terrain_stats.json` (not `drill_stats.json`); drill class spawn rates live in
+  `drill_stats.json` `spawn_weight` (not `spawn_rates.json`). `spawn_rates.json` was left
+  unchanged (it holds only the chest formula + special-item rates).
+- **Known caveat:** the dig calc skips `class_effectiveness` for Thermal
+  (`DrillClassData.ignores_terrain_effectiveness` → uniform speed), so Thermal's
+  soft-terrain multipliers are intent-only/inert at runtime until that design is revisited.
+
+**Manual Q pickup replaces auto-collect.** `AutoCollect.gd` no longer collects
+loot automatically. Automatic scanning-and-collecting each 0.1s was removed;
+instead `_physics_process` watches for the new `pickup` input action and, on Q
+press, calls `_try_pickup()`: it scans the `loot_drops` group for drops within
+`_pickup_radius` (past their `pickup_delay`), picks the **closest** one, and adds
+it to the inventory — one item per press. If the closest in-range drop can't be
+accepted (`InventoryManager.can_add()` false), it shows a brief **"Inventory
+full"** message via `PlayerController._show_notify()` (1.5s) rather than
+collecting. The old `LootRestriction.can_loot()` / drilling-attacking gate and
+the `_SCAN_INTERVAL`/`_scan_timer` were dropped — manual pickup is an explicit
+action that works regardless of tool state. `project.godot`: added a `pickup`
+input action mapped to **Q** (physical keycode 81). Only `AutoCollect.gd` and
+`project.godot` changed.
+
+**Drill reach fix — tiles beside head / feet / diagonals now mineable.**
+`PlayerController._get_dig_target()` used to target the cell exactly one `TILE_SIZE`
+(16px) out from the player **centre**. The player box is 28px tall (1.75 tiles), so that
+16px reach landed inside the player's own (air) cells for any tile beside the head, the
+feet, or on a diagonal — `has_tile()` returned false and the drill silently targeted
+nothing (reported: blocks right next to the player wouldn't mine). Rewrote targeting to
+probe from the **body surface** outward ~1 tile and return the first solid cell along the
+aim ray: cached collision half-extents `_body_half` (read from `CollisionShape2D` in
+`_ready`); new `_box_exit_distance(dir)` gives centre→edge distance; `_get_dig_target()`
+marches from that edge to `edge + TILE_SIZE` in 3px steps, returning the first `has_tile`
+cell (or the last air cell if none, preserving the old no-dig-on-empty behaviour). Reach
+is now uniform relative to the body, so all 8 neighbours (incl. the taller head/feet
+tiles) are reachable while the 2nd ring stays out of range. Only `PlayerController.gd`
+changed.
+
+**Vertical-escape design reaffirmed (no code change).** A player who drills straight
+down into a pit deeper than one tile cannot walk out — no jump, and step-up only clears
+1-tile ledges. This is **intended, not a bug**: vertical escape is manual via the drill.
+To climb one level, open an L-shaped notch — drill the tile directly above the head
+(headroom, required or the step-up's headroom probe fails) plus the tile diagonally
+up-and-forward, leave the foot-level tile ahead solid as the step, then walk into it to
+be lifted up. Repeat to carve a staircase to the surface. Considered adding a jump or a
+debug fly toggle; user chose to keep drilling as the sole vertical-navigation tool. Do
+not re-file "player gets stuck in self-dug pits" as a movement bug.
+
+**Step-up reliability fix.** `PlayerController._try_step_up()`: the final placement
+changed from lifting straight up one tile (`global_position.y -= step`) to moving the
+body **up AND forward one tile** (`global_position += up + forward`) plus zeroing residual
+downward velocity. The three `test_move()` probes are unchanged, so it still only acts on
+ledges exactly one tile high; but the old lift-only version relied on horizontal momentum
+to carry the player onto the ledge, letting gravity pull them back into the pit before
+they cleared the edge (it could fail on legitimate 1-tile ledges at lower move speed /
+higher gravity). The up+forward destination is exactly what the headroom + forward-clear
+probes already verified collision-free, so placing the body there directly is safe.
+Confirmed there is **no jump** (the `jump`/`move_up` input actions are defined but never
+read by `_handle_movement`); combined with descend-only, dug vertical shafts remain
+un-climbable by design — step-up is only for 1-tile bumps during horizontal movement.
+
+**Prominent hotbar.** Made the hotbar the visual anchor of the bottom HUD. `HUD.gd`:
+hotbar slots enlarged 40×40 → 58×58 with 5px `separation`; slot number font 7→10 and
+item-name font 8→9 (label min-width 36→52); durability strip 2→4px. `_highlight_slot()`
+now gives the active slot a **4px cyan border + cyan drop-shadow glow** (`shadow_size 7`)
+and brighter bg/label, vs a 2px gray border when inactive. `HUD.tscn`: `BottomHUD`
+`offset_top` −52 → −72 so the taller slots fit on screen, and `HealthSection` set to
+`size_flags_vertical = 4` (shrink-center); the code-built armor panel and backpack
+section are likewise `SIZE_SHRINK_CENTER`, keeping the hotbar slots the tallest element.
+Highlight still follows `active_slot_changed`, so it tracks keys 1–5 unchanged.
+
+**Hotbar-driven equip switching (drill/weapon via keys 1–5).** Combat now uses the
+tool in the **selected hotbar slot** instead of a right-click toggle. `PlayerController`:
+added `TOOL_NONE`; `_active_tool` now derives from the active slot via new
+`_refresh_active_tool()` (drill→TOOL_DRILL, weapon→TOOL_SWORD, else→TOOL_NONE). New
+`_on_active_slot_changed()` (wired to `Hotbar.active_slot_changed`, also called once at
+setup) updates the tool and `_reset_dig()`s; the `InventoryManager.slot_changed` lambda
+also refreshes when the active slot's contents change (swap/drop/pickup). Removed
+`_handle_tool_toggle()` and its call — **right-click no longer does anything**;
+left-click is the sole trigger. `_handle_tool_use()` is a `match` on `_active_tool`
+(TOOL_NONE → nothing). `_update_held_visual()` hides the held sprite for TOOL_NONE.
+The `attack` input action is now unused. HUD hotbar highlight already follows
+`active_slot_changed`, so it tracks keys 1–5 unchanged. Only `PlayerController.gd`
+changed (Hotbar/InventoryManager already emitted the needed signals).
 
 ### 2026-06-30
 

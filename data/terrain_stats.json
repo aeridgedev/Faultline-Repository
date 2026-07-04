@@ -1,7 +1,9 @@
 {
   "_meta": {
-    "description": "Per-terrain-type properties. 11 types across 5 layers; hardness increases with depth. Drill class effectiveness: lower value = class is stronger vs this terrain (faster dig). Bedrock is indestructible.",
-    "status": "DEV PLACEHOLDERS — provisional numbers so digging has feel. NOT final; pending balance pass.",
+    "description": "Per-terrain-type properties. 12 types across 5 layers; hardness increases with depth. Drill class effectiveness: lower value = class is stronger vs this terrain (faster dig). Bedrock is indestructible; Core Hollow Shell is the hardest DRILLABLE terrain (walls the Core Hollow, must be breached).",
+    "status": "DEV PLACEHOLDERS — base_dig_time/move_speed_mod and ALL drill class_effectiveness multipliers are provisional TBD values chosen for testable feel. NOT final; pending the AI balance pass.",
+    "class_effectiveness_status": "TBD DEV PLACEHOLDERS — every Precision/Burst/Thermal/Resonance multiplier is provisional. Direction: Precision→hard/dense, Burst→medium, Thermal→soft/organic, Resonance→balanced. Note: the dig calc currently SKIPS class_effectiveness for Thermal (DrillClassData.ignores_terrain_effectiveness), so Thermal's values are intent-only until that is revisited.",
+    "core_hollow_shell_status": "TBD — base_dig_time 8.0 is a PLACEHOLDER, deliberately the highest of any drillable terrain (>2x Ultra Dense's 3.5) so breaching the Core Hollow takes noticeably longer than any other tile even for the best class/tier. Final resistance pending the AI balance pass; it must always remain the hardest drillable terrain (Bedrock stays indestructible and is not counted).",
     "fields": {
       "base_dig_time": "seconds for a Common drill of a neutral class to break one tile",
       "move_speed_mod": "movement multiplier when traversing/adjacent (1.0 = none)",
@@ -9,16 +11,17 @@
     }
   },
   "terrain": {
-    "Soil":           { "base_dig_time": 0.4,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.0,  "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 1.0  } },
-    "Clay":           { "base_dig_time": 0.5,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 1.0,  "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 0.9  } },
-    "Limestone":      { "base_dig_time": 0.9,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 0.85, "Burst": 1.0,  "Thermal": 1.05, "Resonance": 1.0  } },
-    "Rock":           { "base_dig_time": 0.8,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 0.9,  "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 0.95 } },
-    "Basalt":         { "base_dig_time": 1.3,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 1.0,  "Burst": 0.95, "Thermal": 1.0,  "Resonance": 0.7  } },
-    "Granite":        { "base_dig_time": 1.7,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 1.0,  "Burst": 0.9,  "Thermal": 1.1,  "Resonance": 0.85 } },
-    "Obsidian":       { "base_dig_time": 2.2,   "move_speed_mod": 0.9,  "class_effectiveness": { "Precision": 1.1,  "Burst": 1.1,  "Thermal": 0.6,  "Resonance": 1.15 } },
-    "Iron Formation": { "base_dig_time": 2.0,   "move_speed_mod": 0.9,  "class_effectiveness": { "Precision": 0.8,  "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 0.75 } },
-    "Dense Crystal":  { "base_dig_time": 2.5,   "move_speed_mod": 0.9,  "class_effectiveness": { "Precision": 1.15, "Burst": 0.8,  "Thermal": 0.55, "Resonance": 1.1  } },
-    "Ultra Dense":    { "base_dig_time": 3.5,   "move_speed_mod": 0.85, "class_effectiveness": { "Precision": 0.9,  "Burst": 0.95, "Thermal": 0.85, "Resonance": 0.8  } },
-    "Bedrock":        { "base_dig_time": 999.0, "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.0,  "Burst": 1.0,  "Thermal": 1.0,  "Resonance": 1.0  } }
+    "Soil":           { "base_dig_time": 0.4,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.40, "Burst": 1.10, "Thermal": 0.60, "Resonance": 0.90 } },
+    "Clay":           { "base_dig_time": 0.5,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 1.40, "Burst": 1.10, "Thermal": 0.60, "Resonance": 0.90 } },
+    "Limestone":      { "base_dig_time": 0.9,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.00, "Burst": 0.60, "Thermal": 1.00, "Resonance": 0.90 } },
+    "Rock":           { "base_dig_time": 0.8,   "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.00, "Burst": 0.60, "Thermal": 1.00, "Resonance": 0.90 } },
+    "Basalt":         { "base_dig_time": 1.3,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 1.00, "Burst": 0.60, "Thermal": 1.00, "Resonance": 0.90 } },
+    "Granite":        { "base_dig_time": 1.7,   "move_speed_mod": 0.95, "class_effectiveness": { "Precision": 0.60, "Burst": 1.30, "Thermal": 1.40, "Resonance": 0.90 } },
+    "Obsidian":       { "base_dig_time": 2.2,   "move_speed_mod": 0.9,  "class_effectiveness": { "Precision": 0.60, "Burst": 1.30, "Thermal": 1.40, "Resonance": 0.90 } },
+    "Iron Formation": { "base_dig_time": 2.0,   "move_speed_mod": 0.9,  "class_effectiveness": { "Precision": 0.60, "Burst": 1.30, "Thermal": 1.40, "Resonance": 0.90 } },
+    "Dense Crystal":  { "base_dig_time": 2.5,   "move_speed_mod": 0.9,  "class_effectiveness": { "Precision": 0.60, "Burst": 1.30, "Thermal": 1.40, "Resonance": 0.90 } },
+    "Ultra Dense":       { "base_dig_time": 3.5,   "move_speed_mod": 0.85, "class_effectiveness": { "Precision": 0.60, "Burst": 1.30, "Thermal": 1.40, "Resonance": 0.90 } },
+    "Core Hollow Shell": { "base_dig_time": 8.0,   "move_speed_mod": 0.80, "class_effectiveness": { "Precision": 0.80, "Burst": 1.25, "Thermal": 1.35, "Resonance": 0.90 } },
+    "Bedrock":           { "base_dig_time": 999.0, "move_speed_mod": 1.0,  "class_effectiveness": { "Precision": 1.00, "Burst": 1.00, "Thermal": 1.00, "Resonance": 1.00 } }
   }
 }

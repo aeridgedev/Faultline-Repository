@@ -214,8 +214,10 @@ const STORM_PHASES := [
 
 # ---------------------------------------------------------------------------
 # TERRAIN — tile-based, fully destructible, persistent, procedural.
-# 11 types spread across 5 layers. Hardness increases with depth.
-# Bedrock is indestructible and bounds the playfield.
+# 12 types spread across 5 layers. Hardness increases with depth.
+# Bedrock is indestructible and bounds the playfield. CORE_HOLLOW_SHELL is the
+# hardest *drillable* terrain — it walls off the Core Hollow and MUST be
+# breached (unlike Bedrock, which never can be).
 # ---------------------------------------------------------------------------
 enum TerrainType {
 	# Crust
@@ -233,21 +235,23 @@ enum TerrainType {
 	# Inner Core
 	ULTRA_DENSE,    # 9 — extreme
 	# Special
-	BEDROCK,        # 10 — indestructible boundary
+	BEDROCK,           # 10 — indestructible boundary (playfield bounds only)
+	CORE_HOLLOW_SHELL, # 11 — hardest DRILLABLE terrain; walls the Core Hollow, must be breached to win
 }
 
 const TERRAIN_NAMES := {
-	TerrainType.SOIL:           "Soil",
-	TerrainType.CLAY:           "Clay",
-	TerrainType.LIMESTONE:      "Limestone",
-	TerrainType.ROCK:           "Rock",
-	TerrainType.BASALT:         "Basalt",
-	TerrainType.GRANITE:        "Granite",
-	TerrainType.OBSIDIAN:       "Obsidian",
-	TerrainType.IRON_FORMATION: "Iron Formation",
-	TerrainType.DENSE_CRYSTAL:  "Dense Crystal",
-	TerrainType.ULTRA_DENSE:    "Ultra Dense",
-	TerrainType.BEDROCK:        "Bedrock",
+	TerrainType.SOIL:              "Soil",
+	TerrainType.CLAY:              "Clay",
+	TerrainType.LIMESTONE:         "Limestone",
+	TerrainType.ROCK:              "Rock",
+	TerrainType.BASALT:            "Basalt",
+	TerrainType.GRANITE:           "Granite",
+	TerrainType.OBSIDIAN:          "Obsidian",
+	TerrainType.IRON_FORMATION:    "Iron Formation",
+	TerrainType.DENSE_CRYSTAL:     "Dense Crystal",
+	TerrainType.ULTRA_DENSE:       "Ultra Dense",
+	TerrainType.BEDROCK:           "Bedrock",
+	TerrainType.CORE_HOLLOW_SHELL: "Core Hollow Shell",
 }
 
 const TILE_SIZE := 16  # pixels per terrain cell (pixel-art grid)

@@ -23,8 +23,10 @@ func _ready() -> void:
 	# gap caused by the camera starting at (0,0) and smoothly panning to spawn.
 	(player.get_node("Camera2D") as Camera2D).reset_smoothing()
 	player.init_world(terrain_manager)
-	player.equip_starter_drill()
-	player.equip_starter_weapon()
+	# Starting loadout (Common Precision Drill in hotbar slot 1, Common Sword in slot 2)
+	# is populated by setup_hotbar() below: its add_item calls route through
+	# InventoryManager's reserved-slot rules, which also build the in-hand drill/weapon
+	# Resources. No separate equip-starter step is needed.
 	player.get_node("DescentTracker").init(layer_manager)
 
 	var stamina := player.get_node("Stamina") as Stamina

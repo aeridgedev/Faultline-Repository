@@ -29,6 +29,7 @@ const _TILE_TYPES: Array[Constants.TerrainType] = [
 	Constants.TerrainType.DENSE_CRYSTAL,
 	Constants.TerrainType.ULTRA_DENSE,
 	Constants.TerrainType.BEDROCK,
+	Constants.TerrainType.CORE_HOLLOW_SHELL,
 ]
 
 
@@ -75,6 +76,7 @@ func _make_tile(type: Constants.TerrainType) -> Image:
 		Constants.TerrainType.DENSE_CRYSTAL:  return _tile_dense_crystal()
 		Constants.TerrainType.ULTRA_DENSE:    return _tile_ultra_dense()
 		Constants.TerrainType.BEDROCK:        return _tile_bedrock()
+		Constants.TerrainType.CORE_HOLLOW_SHELL: return _tile_core_hollow_shell()
 		_:                                    return _tile_fallback()
 
 
@@ -368,6 +370,43 @@ func _tile_bedrock() -> Image:
 				img.set_pixel(x, y, HL)
 			else:
 				img.set_pixel(x, y, B)
+	return img
+
+
+func _tile_core_hollow_shell() -> Image:
+	# Core Hollow boundary wall — the hardest DRILLABLE terrain. Reads as an
+	# armored obsidian-black plate laced with molten cyan energy seams, so it is
+	# visually distinct from indestructible Bedrock (dull blue-gray) while
+	# signalling "hardest tile in the game."
+	const S := 16
+	var K  := Color(0.01, 0.02, 0.03)   # near-black outline
+	var B  := Color(0.04, 0.06, 0.09)   # deep blue-black plate
+	var M  := Color(0.07, 0.10, 0.15)   # mid plate
+	var PL := Color(0.11, 0.15, 0.22)   # raised plate facet (top-left light)
+	var SM := Color(0.10, 0.55, 0.62)   # cyan energy seam
+	var HI := Color(0.55, 0.95, 1.00)   # hot seam highlight
+	var img := _blank(S)
+	for y in S:
+		for x in S:
+			if x == 0 or y == 0 or x == S-1 or y == S-1:
+				img.set_pixel(x, y, K)
+			elif x < 6 and y < 6:
+				img.set_pixel(x, y, PL)   # catch-light plate corner
+			elif (x + y * 2) % 6 == 0:
+				img.set_pixel(x, y, M)
+			else:
+				img.set_pixel(x, y, B)
+	# Diagonal molten energy seams criss-crossing the plate.
+	for i in range(1, S - 1):
+		img.set_pixel(i, i, SM)
+		var j := (S - 1) - i
+		if j > 0 and j < S - 1:
+			img.set_pixel(i, j, SM)
+	# Hot seam nodes where the diagonals cross / brightest points.
+	for p in [[7,7],[8,8],[4,11],[11,4]]:
+		if p[0] > 0 and p[1] > 0 and p[0] < S-1 and p[1] < S-1:
+			img.set_pixel(p[0], p[1], HI)
+	img.set_pixel(2, 2, HI)
 	return img
 
 

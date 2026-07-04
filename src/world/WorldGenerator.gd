@@ -90,7 +90,12 @@ func _compute_layer(layer: Constants.Layer, rng: RandomNumberGenerator, world_da
 
 
 # ---------------------------------------------------------------------------
-# Core Hollow — circular bedrock-walled chamber, open interior, zero gravity.
+# Core Hollow — circular chamber walled by CORE_HOLLOW_SHELL, open interior,
+# zero gravity. The shell is the hardest DRILLABLE terrain in the game (NOT
+# Bedrock): it forms a complete boundary around the open interior that players
+# must breach to enter and win — thin at the poles, thicker toward the equator,
+# but drillable everywhere given enough time. The only Bedrock left is the
+# absolute bottom border (added later by _compute_bedrock_border).
 # ---------------------------------------------------------------------------
 func _compute_core_hollow(world_data: Dictionary) -> void:
 	var top_y    = _layer_manager.get_layer_top_y(Constants.Layer.CORE_HOLLOW)
@@ -117,7 +122,7 @@ func _compute_core_hollow(world_data: Dictionary) -> void:
 			if dx * dx + dy * dy > hollow_r * hollow_r:
 				if not world_data.has(col):
 					world_data[col] = {}
-				world_data[col][row] = Constants.TerrainType.BEDROCK
+				world_data[col][row] = Constants.TerrainType.CORE_HOLLOW_SHELL
 
 
 # ---------------------------------------------------------------------------

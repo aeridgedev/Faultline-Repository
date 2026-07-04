@@ -167,10 +167,12 @@ func _style_panels() -> void:
 # --- Hotbar construction ---
 
 func _build_hotbar_slots() -> void:
+	# Give the hotbar breathing room so it reads as the primary HUD element.
+	_hotbar_row.add_theme_constant_override("separation", 5)
 	_slot_dur_resources.resize(Constants.HOTBAR_SLOTS)
 	for i in Constants.HOTBAR_SLOTS:
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(40, 40)
+		panel.custom_minimum_size = Vector2(58, 58)
 
 		# Outer column: inner content expands to fill, bar sits at the very bottom.
 		var col := VBoxContainer.new()
@@ -183,16 +185,16 @@ func _build_hotbar_slots() -> void:
 		var num := Label.new()
 		num.text = str(i + 1)
 		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		num.add_theme_font_size_override("font_size", 7)
-		num.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
+		num.add_theme_font_size_override("font_size", 10)
+		num.add_theme_color_override("font_color", Color(0.60, 0.66, 0.76))
 
 		var label := Label.new()
 		label.text = ""
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 8)
+		label.add_theme_font_size_override("font_size", 9)
 		label.add_theme_color_override("font_color", Color(0.82, 0.86, 0.92))
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.custom_minimum_size = Vector2(36, 0)
+		label.custom_minimum_size = Vector2(52, 0)
 
 		inner.add_child(num)
 		inner.add_child(label)
@@ -200,7 +202,7 @@ func _build_hotbar_slots() -> void:
 		# Durability bar: 3px strip pinned to the slot bottom; hidden until a
 		# drill or weapon occupies the slot.
 		var dur_bar := ProgressBar.new()
-		dur_bar.custom_minimum_size = Vector2(0, 2)
+		dur_bar.custom_minimum_size = Vector2(0, 4)
 		dur_bar.max_value = 1.0
 		dur_bar.value = 1.0
 		dur_bar.show_percentage = false
@@ -243,6 +245,8 @@ func _build_armor_slot() -> void:
 
 	_armor_panel = PanelContainer.new()
 	_armor_panel.custom_minimum_size = Vector2(48, 40)
+	# Stay centered in the taller BottomHUD so the hotbar slots remain the tallest element.
+	_armor_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	var col := VBoxContainer.new()
 
@@ -287,6 +291,7 @@ func _build_backpack_slots() -> void:
 
 	var section := VBoxContainer.new()
 	section.add_theme_constant_override("separation", 2)
+	section.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	var hdr := Label.new()
 	hdr.text = "PACK"
@@ -399,14 +404,19 @@ func _on_inventory_slot_changed(slot_idx: int, item) -> void:
 func _highlight_slot(active: int) -> void:
 	for i in _slot_panels.size():
 		var is_active := (i == active)
+		var panel := _slot_panels[i]
 		var style := StyleBoxFlat.new()
-		style.bg_color = _COLOR_SLOT_ACTIVE.darkened(0.72) if is_active else _COLOR_SLOT_NORMAL
+		style.bg_color = _COLOR_SLOT_ACTIVE.darkened(0.68) if is_active else _COLOR_SLOT_NORMAL
 		style.set_corner_radius_all(4)
-		style.set_border_width_all(2 if not is_active else 3)
+		# Active slot: thick cyan border + a soft cyan glow that lifts it above the row.
+		style.set_border_width_all(4 if is_active else 2)
 		style.border_color = _COLOR_SLOT_BORDER_ACTIVE if is_active else _COLOR_SLOT_BORDER_NORMAL
-		_slot_panels[i].add_theme_stylebox_override("panel", style)
+		if is_active:
+			style.shadow_color = Color(0.08, 0.88, 0.96, 0.55)
+			style.shadow_size = 7
+		panel.add_theme_stylebox_override("panel", style)
 		if i < _slot_labels.size():
-			var fc := Color(0.08, 0.90, 0.96) if is_active else Color(0.82, 0.86, 0.92)
+			var fc := Color(0.10, 0.94, 1.00) if is_active else Color(0.82, 0.86, 0.92)
 			_slot_labels[i].add_theme_color_override("font_color", fc)
 
 

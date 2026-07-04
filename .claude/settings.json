@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ffmpeg -y -i frame_001_big.png -i frame_010_big.png -i frame_015_big.png -i frame_020_big.png -i frame_025_big.png -i frame_029_big.png -filter_complex \"vstack=inputs=6\" -update 1 -frames:v 1 contact_sheet2.png)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(where godot *)",
+      "Bash(where godot.exe)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/SRISUHAAS/AppData/Local/Godot/**)"
+    ]
+  }
+}
