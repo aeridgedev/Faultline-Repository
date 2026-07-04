@@ -2,8 +2,6 @@
 class_name PlayerController
 extends CharacterBody2D
 
-const ThrowableScene := preload("res://src/systems/throwables/ThrowableBase.tscn")
-
 @export var player_id: int = 0
 
 @onready var stats: PlayerStats = $PlayerStats
@@ -61,6 +59,7 @@ var _active_slot: int = 0
 var _consumable_cache: Dictionary = {}  # slot_index -> ConsumableBase instance
 var _hotbar: Hotbar = null
 var _relic_manager: RelicManager = null
+var _inventory: InventoryManager = null
 var _inv_open: bool = false          # true while InventoryManager panel is visible
 
 # Floating status label — shows transient messages (drill broken, etc.) above the player.
@@ -442,6 +441,26 @@ func equip_weapon_from_item(item: Variant) -> void:
 	_equipped_weapon = w
 
 
+# Rebuilds the armor Resource from the armor-slot item dict and hands it to PlayerStats
+# (which applies its flat/percent reduction + class passive on every hit). Called by
+# InventoryManager when the armor sidebar slot is (re)filled, BEFORE slot_changed fires.
+# Passing null (slot emptied) unequips. A dropped-then-repicked piece keeps its wear.
+func equip_armor_from_item(item: Variant) -> void:
+	if item == null:
+		stats.equip_armor(null)
+		return
+	var a := ArmorBase.new()
+	a.armor_class = item.get("item_class", Constants.ArmorClass.TITAN)
+	a.tier = item.get("tier", Constants.Tier.COMMON)
+	a.init_from_data()
+	_restore_saved_durability(a, item)   # a dropped armor keeps its wear
+	stats.equip_armor(a)
+
+
+func get_equipped_armor() -> ArmorBase:
+	return stats.equipped_armor
+
+
 # If item carries a saved "durability" (a drill/weapon dropped mid-use), restore it
 # onto the freshly-built Resource so wear persists across drop → re-pickup.
 # init_from_data() already set current = max; this overrides it (clamped) and
@@ -468,6 +487,7 @@ func setup_hotbar() -> void:
 	_relic_manager = get_node_or_null("RelicManager")
 	_hotbar = get_node_or_null("Hotbar") as Hotbar
 	var inv := get_node_or_null("InventoryManager") as InventoryManager
+	_inventory = inv
 
 	if inv != null:
 		inv.add_item({"type": "drill",      "item_class": Constants.DrillClass.PRECISION, "tier": Constants.Tier.COMMON})
@@ -501,6 +521,10 @@ func _active_item() -> Variant:
 # Keys 1-5 (and scroll) switch the selected hotbar slot. The tool in hand — and
 # therefore what left-click does — updates immediately to the new slot's item.
 func _on_active_slot_changed(idx: int) -> void:
+	# Switching away cancels any consumable channel in progress on the old slot.
+	var prev: ConsumableBase = _consumable_cache.get(_active_slot)
+	if prev != null:
+		prev.interrupt_use()
 	_active_slot = idx
 	_reset_dig()  # drop any in-progress dig when switching slots
 	_refresh_active_tool()
@@ -537,7 +561,7 @@ func _handle_item_use(delta: float) -> void:
 			var c: ConsumableBase = _get_or_create_consumable(_active_slot, item.get("item_class", 0))
 			if c != null:
 				if use_just:
-					print("[Item] Using consumable — hold F to channel.")
+					print("[Item] Using consumable — hold G to channel.")
 				if use_held:
 					c.tick_use(delta, stats)
 				elif use_released:
@@ -551,13 +575,36 @@ func _handle_item_use(delta: float) -> void:
 				print("[Item] Used: %s" % _debug_item_name(item))
 
 
+# Launches the active throwable in an arc toward the cursor and consumes it from
+# the hotbar slot (one item per throw).
 func _throw_active(item: Dictionary) -> void:
-	var t := ThrowableScene.instantiate() as ThrowableBase
+	var type: int = item.get("item_class", Constants.Throwable.SMOKE_BOMB)
+	var t := _make_throwable(type)
+	if t == null:
+		return
 	get_parent().add_child(t)
 	t.add_collision_exception_with(self)  # don't detonate on the thrower
-	t.setup(item.get("item_class"), player_id)
-	var dir := (get_global_mouse_position() - global_position).normalized()
-	t.throw(global_position + dir * 18.0, dir, 320.0)
+	t.setup(type, player_id, _terrain_manager)
+	var target := get_global_mouse_position()
+	var dir := (target - global_position).normalized()
+	if dir.length_squared() < 0.0001:
+		dir = Vector2.RIGHT
+	t.throw_at(global_position + dir * 18.0, target)
+	if _inventory != null:
+		_inventory.remove_item(_active_slot)   # thrown = consumed
+
+
+# Each throwable is its own ThrowableBase subclass (src/systems/throwables/).
+func _make_throwable(type: int) -> ThrowableBase:
+	match type:
+		Constants.Throwable.SMOKE_BOMB:     return SmokeBomb.new()
+		Constants.Throwable.PARALYSIS_BOMB: return ParalysisBomb.new()
+		Constants.Throwable.WEAKNESS_BOMB:  return WeaknessBomb.new()
+		Constants.Throwable.HEAT_CHARGE:    return HeatCharge.new()
+		Constants.Throwable.DUST_CAPSULE:   return DustCapsule.new()
+		Constants.Throwable.ECHO_CHARGE:    return EchoCharge.new()
+		Constants.Throwable.SEISMIC_CHARGE: return SeismicCharge.new()
+	return null
 
 
 func _use_relic(item: Dictionary) -> void:
@@ -572,8 +619,27 @@ func _get_or_create_consumable(slot: int, item_class: int) -> ConsumableBase:
 		var c := _make_consumable(item_class)
 		if c == null:
 			return null
+		c.use_completed.connect(_on_consumable_completed.bind(slot))
 		_consumable_cache[slot] = c
 	return _consumable_cache[slot]
+
+
+# A consumable's channel finished: run any world-side completion (FaultBeacon
+# placement needs the player's position) and consume the item from its slot.
+func _on_consumable_completed(slot: int) -> void:
+	var c: ConsumableBase = _consumable_cache.get(slot)
+	if c is FaultBeacon:
+		(c as FaultBeacon).place_beacon(get_parent(), global_position)
+	_consumable_cache.erase(slot)
+	if _inventory != null:
+		_inventory.remove_item(slot)   # used up = consumed
+
+
+## 0.0–1.0 channel progress of the ACTIVE slot's consumable (0 when not channeling).
+## Drives the HUD hold-progress overlay on the active hotbar slot.
+func get_use_progress() -> float:
+	var c: ConsumableBase = _consumable_cache.get(_active_slot)
+	return c.use_progress() if c != null else 0.0
 
 
 func _debug_item_name(item: Dictionary) -> String:
@@ -588,16 +654,19 @@ func _debug_item_name(item: Dictionary) -> String:
 		"armor":      item_name = Constants.ARMOR_CLASS_NAMES.get(cls_id, "?")
 		"relic":      item_name = Constants.RELIC_NAMES.get(cls_id, "?")
 		"throwable":  item_name = Constants.THROWABLE_NAMES.get(cls_id, "?")
-		"consumable": item_name = "Consumable"
+		"consumable": item_name = Constants.CONSUMABLE_NAMES.get(cls_id, "Consumable")
 		_:            item_name = type_str.capitalize()
 	return "%s %s" % [tier_name, item_name]
 
 
 func _make_consumable(item_class: int) -> ConsumableBase:
 	match item_class:
-		0: return Lytes.new()
-		1: return Medkit.new()
-		_: return null  # TBD: ThermalCapsule / Bloodstim / FaultBeacon (step 6)
+		Constants.Consumable.LYTES:           return Lytes.new()
+		Constants.Consumable.MEDKIT:          return Medkit.new()
+		Constants.Consumable.BLOODSTIM:       return Bloodstim.new()
+		Constants.Consumable.THERMAL_CAPSULE: return ThermalCapsule.new()
+		Constants.Consumable.FAULT_BEACON:    return FaultBeacon.new()
+		_: return null
 
 
 func _physics_process(delta: float) -> void:
@@ -617,6 +686,16 @@ func _physics_process(delta: float) -> void:
 	_tick_attack_hitbox(delta)
 
 	_apply_gravity(delta)
+
+	# Paralysis (frozen status): all movement and actions blocked while active.
+	# Gravity still applies (a frozen player falls); zero-gravity holds them in place.
+	if stats.is_frozen():
+		velocity.x = 0.0
+		if _zero_gravity:
+			velocity.y = 0.0
+		_reset_dig()
+		move_and_slide()
+		return
 
 	if _inv_open:
 		velocity.x = 0.0
@@ -711,6 +790,10 @@ func _handle_movement(delta: float) -> void:
 	# Active Speed relic multiplies movement (1.0 when no relic / not active).
 	if _relic_manager != null:
 		speed *= _relic_manager.move_speed_mult()
+	# Status effects: Dust Capsule slow (< 1.0), Bloodstim boost (> 1.0).
+	speed *= stats.status_move_speed_mult()
+	# Tempest armor passive: movement bonus while worn (1.0 when no/broken armor or TBD).
+	speed *= stats.armor_move_speed_mult()
 	velocity.x = direction * speed
 	if _zero_gravity:
 		velocity.y = vertical * speed
@@ -961,6 +1044,8 @@ func _process_hitbox_overlaps() -> void:
 		# Strength relic multiplies outgoing damage.
 		if _relic_manager != null:
 			total_dmg *= _relic_manager.damage_mult()
+		# Status effects: Weakness Bomb (< 1.0), Bloodstim (> 1.0).
+		total_dmg *= stats.status_damage_output_mult()
 		target_stats.take_damage(total_dmg)
 		if target_stats.is_dead:
 			stats.add_kill()

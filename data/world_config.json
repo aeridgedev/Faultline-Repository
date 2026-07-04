@@ -66,7 +66,39 @@
   "deep_radar_range": 400.0,
 
   "consumables": {
+    "_meta": "TBD — every use time / duration / strength below is a testable dev placeholder pending the balance pass. Not final.",
+    "lytes_use_time": 0.8,
+    "lytes_heal": 25.0,
     "medkit_use_time": 2.0,
-    "medkit_heal_total": 50.0
+    "medkit_heal_total": 50.0,
+    "bloodstim_use_time": 1.2,
+    "bloodstim_duration": 6.0,
+    "bloodstim_speed_mult": 1.30,
+    "bloodstim_damage_mult": 1.30,
+    "thermal_capsule_use_time": 1.5,
+    "thermal_capsule_duration": 20.0,
+    "thermal_capsule_resist": 0.75,
+    "fault_beacon_use_time": 1.0,
+    "fault_beacon_duration": 30.0
+  },
+
+  "throwables": {
+    "_meta": "TBD — every radius / duration / strength below is a testable dev placeholder pending the balance pass. Not final. seismic_radius_tiles is in TILES; all other radii in PIXELS.",
+    "smoke_radius": 56.0,
+    "smoke_duration": 6.0,
+    "paralysis_radius": 44.0,
+    "paralysis_duration": 1.5,
+    "weakness_radius": 48.0,
+    "weakness_duration": 6.0,
+    "weakness_damage_mult": 0.60,
+    "heat_radius": 48.0,
+    "heat_duration": 5.0,
+    "heat_dps": 4.0,
+    "dust_radius": 56.0,
+    "dust_duration": 5.0,
+    "dust_slow_mult": 0.65,
+    "echo_radius": 220.0,
+    "echo_duration": 8.0,
+    "seismic_radius_tiles": 3
   }
 }

@@ -3,25 +3,24 @@
 Working brief for Claude when building this project. Read this first every session.
 
 > **NEXT SESSION PRIORITY (when the user opens a new session and asks "what should
-> I do" / "what's next", lead with this):** Both the **Core Hollow shell terrain** and
-> **zero-gravity / semi-fluid Core Hollow physics** threads are now **complete**. The
-> shell uses a dedicated `CORE_HOLLOW_SHELL` terrain type (Constants enum value 11,
-> distinct from indestructible `BEDROCK`), hardest **drillable** terrain in the game
-> (`base_dig_time` 8.0 in `terrain_stats.json`, a TBD placeholder deliberately >2× Ultra
-> Dense's 3.5) — players must breach it to enter and win. Inside it, `PlayerController`
-> now gives free movement on every axis (no gravity, no terrain to walk on): entering
-> the layer calls `set_zero_gravity(true)`, which zeroes the player's custom fall
-> acceleration (`_gravity` — this project never used Godot's built-in `gravity_scale`)
-> and wires the previously-unused `move_up`/`move_down` inputs into `velocity.y`; the
-> single-block step-up is disabled while inside since there's no floor to climb onto.
-> Also fixed this session: single-block step-up (`_try_step_up()`) could permanently
-> soft-lock the player on legitimate 1-tile ledges because it gated on `is_on_wall()`,
-> which Godot can fail to set on a crisp 90° AABB corner — removed that gate in favor of
-> the `test_move()` check that was already right below it. Recommended next:
-> **throwables + consumables** (build step 6) — relics and two consumables (Lytes,
-> Medkit) work, but all 7 throwables are console-print stubs and Bloodstim/
-> ThermalCapsule/FaultBeacon fire signals with no mechanical effect (GAME_STATE known
-> issues #5–#6). Recommend this next; then proceed once the user confirms.
+> I do" / "what's next", lead with this):** **Build step 6 (throwables + consumables)
+> is now complete.** All 7 throwables arc toward the cursor on G and trigger real
+> Area2D-based effects on impact (Smoke/Dust vision clouds, Paralysis freeze, Weakness
+> damage debuff, Heat burn DoT, Echo through-terrain reveal, Seismic terrain
+> destruction — which is barred from BEDROCK and CORE_HOLLOW_SHELL by the locked
+> drill-only rule); Bloodstim/ThermalCapsule/FaultBeacon consumables now apply real
+> effects on G-hold with a hotbar progress overlay; thrown/consumed items are removed
+> from inventory. Effects run through a new **status-effect payload system in
+> `PlayerStats`** (`apply_status(name, dur, is_buff, params)` with `move_speed_mult`/
+> `damage_output_mult`/`frozen`/`dot_dps`/`hazard_resist`/`revealed`), surfaced on the
+> existing HUD buff/debuff panel and read by PlayerController (move/damage/freeze) and
+> DepthHazard/PressureSystem (thermal resist). All throwable/consumable numbers are TBD
+> dev placeholders in `data/world_config.json` (`throwables`/`consumables`).
+> Recommended next: **Armor system (build step 5 remainder)** — armor files/stats were
+> stubs; a parallel thread has begun wiring `ArmorBase` into `PlayerStats` (see the
+> `equipped_armor` integration), so finish that. After that, **Storm/UI polish** (step
+> 7–8: DeathScreen/SpectatorView/POST_MATCH are still stubs). Confirm target with the
+> user before writing code.
 
 ## Game overview
 
@@ -195,7 +194,7 @@ which item this session targets before writing code.
 3. **Layer/depth system + hazards**  ✓ complete (LayerManager, DepthHazard, PressureSystem, StormSystem, DescentTracker; Core Hollow zero-gravity physics implemented — free movement, no fall acceleration)
 4. **Inventory + loot**  ✓ complete (InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest interactive UI, discard-to-world-drop)
 5. **Weapons + combat**  ◑ melee complete (Area2D hitbox swing + cooldown + HUD cooldown overlay; all 5 classes / 4 tiers, base stats are TBD placeholders). Ranged/throwable combat not built here.
-6. Relics + throwables + consumables
+6. **Relics + throwables + consumables**  ✓ complete (relics; all 7 throwables arc + Area2D impact effects; Lytes/Medkit/Bloodstim/ThermalCapsule/FaultBeacon all functional; effects flow through `PlayerStats.apply_status()` + HUD panel; items consumed on use). All effect magnitudes are TBD in `data/world_config.json`.
 7. Storm system
 8. UI (HUD partially done; DeathScreen, SpectatorView, StormTimer stubs exist)
 9. **Network (last)** — retrofit authoritative server onto proven offline systems
@@ -232,6 +231,62 @@ which item this session targets before writing code.
   — the immediately-following `test_move(from, forward)` already proves "grounded and
   genuinely blocked ahead" via direct shape overlap, which isn't subject to that
   classification.
+- **RESOLVED — throwable/consumable effects (step 6):** All 7 throwables are
+  `ThrowableBase` subclasses (`src/systems/throwables/`), instantiated via `.new()`
+  by `PlayerController._make_throwable()` (no scene). `throw_at(origin, target)`
+  solves a ballistic arc to the cursor; `body_entered` → deferred `_on_impact()`
+  (deferred so shape queries / tile edits don't run while the physics space is
+  locked). Effects: Smoke/Dust spawn world-space occlusion clouds (Dust also slows
+  via status); Paralysis/Weakness/Heat/Echo apply statuses to everyone in radius via
+  `targets_in_radius()`; Seismic destroys terrain in a radius. **Locked rule:** Seismic
+  (and any future area terrain-destroyer) must never destroy `BEDROCK` or
+  `CORE_HOLLOW_SHELL` — the shell is drill-only. Consumables Bloodstim/ThermalCapsule/
+  FaultBeacon apply real effects on G-hold completion; thrown/consumed items are
+  removed from inventory. All effect magnitudes are TBD in `data/world_config.json`
+  (`throwables`/`consumables`).
+- **RESOLVED — status-effect payload system:** `PlayerStats.apply_status(name,
+  duration, is_buff, params)` carries a mechanical payload (`move_speed_mult`,
+  `damage_output_mult`, `frozen`, `dot_dps`/`dot_interval`, `hazard_resist`,
+  `revealed`) ticked in `_process`. PlayerController reads move/damage/freeze;
+  DepthHazard + PressureSystem multiply tick damage by `(1 - hazard_resist())`; the
+  HUD buff/debuff panel shows every effect via `active_effects_changed`.
+  `apply_effect(name, dur, is_buff)` remains as a display-only shim. **Locked rule:**
+  new timed player effects should flow through `apply_status` so the HUD and the
+  mult/DoT/freeze consumers stay in one place.
+- **RESOLVED — armor system (step 5 remainder):** 5 classes (Titan/Hellforge/Tempest/
+  Echo/Expedition) × 4 tiers. `ArmorBase` (`src/systems/armor/`) reads
+  `armor_stats.json` → `classes.<Class>.tiers.<Tier>` for `flat_reduction` /
+  `percent_reduction` / `durability`, plus a per-class `passive` block.
+  `PlayerStats.take_damage()` applies **armor flat → armor percent → `register_hit()`
+  (−1 durability, breaks at 0 → neutral) → Toughness relic → HP**. Class passives:
+  Titan bonus flat, Hellforge burn-resist (scales incoming `dot_dps`), Tempest move-speed
+  (`armor_move_speed_mult()` in `_handle_movement`), Echo debuff-duration shorten (in
+  `apply_status`), Expedition durability mult. Pickup auto-equips and drops the old piece
+  (`_place_reserved(ARMOR_SLOT,…)`); the HUD armor slot shows a live durability bar.
+  **Locked rule:** every armor tier stat is a TBD placeholder and **every class passive
+  strength stays `null`** in `armor_stats.json` until the balance pass — do not invent
+  passive numbers; the code already treats null as a neutral no-op.
+- **RESOLVED (2026-07-04) — InventoryManager parse error from the armor thread:**
+  `InventoryManager._reequip_player()` was typed `item_data: Dictionary`, but
+  `remove_item()` needs to pass `null` there to unequip the armor slot. Dictionary is
+  a non-nullable value type in GDScript 4's static typing, so passing `null` to a
+  `Dictionary`-typed parameter is a compile-time error — this broke the whole script
+  (and cascaded to every file that references `InventoryManager`, e.g. `Hotbar.gd`,
+  `PlayerController.gd`, which had no actual errors of their own). Fixed by widening
+  the parameter to `Variant` (the `equip_*_from_item()` methods it calls already
+  handle `null` as "unequip"), not by skipping the call on null — skipping would have
+  left `PlayerStats.equipped_armor` stale after a discard, which is the exact bug the
+  surrounding comment was written to prevent. **Locked rule going forward:** any
+  helper that must accept "no item" alongside a real item dict should be typed
+  `Variant`, not `Dictionary` — GDScript's built-in value types (Dictionary, Array,
+  String, etc.) cannot hold `null`.
+- **RESOLVED (2026-07-04) — DEV throwable/consumable test keys replaced.** The F6/F7
+  type-cycling DEV keys (and the `InventoryManager.dev_replace_slot()` helper that
+  only existed to support them) are removed. In their place, **R** is a real (non-DEV)
+  `cycle_throwable` input action: `Hotbar._cycle_throwable()` selects the next
+  throwable-type item among the free hotbar slots (3–5), wrapping around, and is a
+  no-op if the player carries no throwable. Lives in `Hotbar.gd` (not
+  `PlayerController.gd`) because slot selection is already Hotbar's job.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

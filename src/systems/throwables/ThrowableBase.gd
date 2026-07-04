@@ -1,28 +1,68 @@
-## Faultline — base for all 7 throwables. Each type is set via throwable_type.
-## Effect strengths, durations, and radii are TBD — stubbed in _apply_effect().
-## Physics: RigidBody2D so gravity handles the arc automatically.
+## Faultline — base for all 7 throwables. Each throwable is a subclass overriding
+## _on_impact() (Smoke.gd, ParalysisBomb.gd, …). PlayerController._make_throwable()
+## instantiates the right subclass; no scene is required — collision shape and dev
+## sprite are built in code if absent.
+## Physics: RigidBody2D so gravity handles the arc automatically. throw_at() solves
+## the launch velocity ballistically so the projectile lands at the aimed point.
+## Effect strengths, durations, and radii are TBD in data/world_config.json
+## "throwables" (read via _data()).
 class_name ThrowableBase
 extends RigidBody2D
 
 var throwable_type: Constants.Throwable = Constants.Throwable.SMOKE_BOMB
-var _owner_id: int = -1   # player_id that threw this; used to skip self-damage checks
+var _owner_id: int = -1   # player_id that threw this; FFA: the thrower is never affected
+var _terrain_manager: TerrainManager = null   # for Seismic Charge tile destruction
+var _impacted: bool = false
 
 
-func setup(type: Constants.Throwable, owner_id: int) -> void:
+func setup(type: Constants.Throwable, owner_id: int, terrain_manager: TerrainManager = null) -> void:
 	throwable_type = type
 	_owner_id = owner_id
+	_terrain_manager = terrain_manager
 
 
-## Call to launch the throwable in a direction with a given speed.
-func throw(origin: Vector2, direction: Vector2, speed: float) -> void:
+## Launch in an arc that lands at `target` (the aimed cursor position). Flight time
+## scales with distance (clamped) and the vertical velocity compensates for gravity,
+## so short throws are flat and long throws loft.
+func throw_at(origin: Vector2, target: Vector2) -> void:
 	global_position = origin
-	linear_velocity = direction.normalized() * speed
+	var to := target - origin
+	var flight_time := clampf(to.length() / 260.0, 0.30, 0.90)
+	var v := to / flight_time
+	var g := _gravity_magnitude()
+	v.y -= 0.5 * g * flight_time
+	linear_velocity = v
+
+
+func _gravity_magnitude() -> float:
+	return float(ProjectSettings.get_setting("physics/2d/default_gravity", 980.0)) * gravity_scale
 
 
 func _ready() -> void:
+	collision_layer = 0   # nothing detects the projectile itself (keeps chests etc. quiet)
+	collision_mask = 1    # collide with terrain + player bodies (layer bit 1)
+	contact_monitor = true
+	max_contacts_reported = 4
+	_ensure_children()
 	body_entered.connect(_on_body_entered)
 	get_tree().create_timer(10.0).timeout.connect(func(): if is_instance_valid(self): queue_free())
 	_build_dev_sprite()
+
+
+# Collision shape + sprite are created here when the node is built via .new()
+# (the legacy ThrowableBase.tscn provides them already; both paths work).
+func _ensure_children() -> void:
+	if get_node_or_null("CollisionShape2D") == null:
+		var col := CollisionShape2D.new()
+		col.name = "CollisionShape2D"
+		var shape := CircleShape2D.new()
+		shape.radius = 4.0
+		col.shape = shape
+		add_child(col)
+	if get_node_or_null("Sprite2D") == null:
+		var spr := Sprite2D.new()
+		spr.name = "Sprite2D"
+		add_child(spr)
 
 
 func _build_dev_sprite() -> void:
@@ -55,44 +95,71 @@ func _build_dev_sprite() -> void:
 	img.set_pixel(4, 0, PN)
 	img.set_pixel(5, 0, PN)
 	spr.texture = ImageTexture.create_from_image(img)
+	spr.modulate = _dev_tint()
+
+
+## Subclasses override to tint the shared grenade sprite (quick visual telling-apart).
+func _dev_tint() -> Color:
+	return Color.WHITE
 
 
 func _on_body_entered(body: Node) -> void:
-	_apply_effect(body)
+	if _impacted:
+		return
+	_impacted = true
+	# Deferred: body_entered fires while the physics space is locked, so subclass
+	# effects (shape queries, tile destruction) would error if run synchronously.
+	_do_impact.call_deferred(global_position, body)
+
+
+func _do_impact(impact_point: Vector2, hit_body: Node) -> void:
+	_on_impact(impact_point, hit_body)
 	queue_free()
 
 
-func _apply_effect(hit_body: Node) -> void:
-	# All effect values are TBD. Stubs emit prints so behavior can be verified in logs.
-	match throwable_type:
-		Constants.Throwable.SMOKE_BOMB:
-			# TODO(step 6 balance): obscure vision in radius for TBD seconds.
-			print("[Throwable] Smoke Bomb detonated")
-		Constants.Throwable.PARALYSIS_BOMB:
-			# TODO(step 6 balance): freeze hit player's input for TBD seconds.
-			_try_apply_to_stats(hit_body, func(_s): print("[Throwable] Paralysis on player"))
-		Constants.Throwable.WEAKNESS_BOMB:
-			# TODO(step 6 balance): reduce hit player's damage dealt for TBD seconds.
-			_try_apply_to_stats(hit_body, func(_s): print("[Throwable] Weakness on player"))
-		Constants.Throwable.HEAT_CHARGE:
-			# TODO(step 6 balance): deal fire damage over TBD seconds in radius.
-			_try_apply_to_stats(hit_body, func(_s): print("[Throwable] Heat Charge on player"))
-		Constants.Throwable.DUST_CAPSULE:
-			# TODO(step 6 balance): obscure drill targeting in radius for TBD seconds.
-			print("[Throwable] Dust Capsule detonated")
-		Constants.Throwable.ECHO_CHARGE:
-			# TODO(step 6 balance): reveal all players in radius for TBD seconds.
-			print("[Throwable] Echo Charge detonated")
-		Constants.Throwable.SEISMIC_CHARGE:
-			# TODO(step 6 balance): destroy terrain tiles in radius.
-			print("[Throwable] Seismic Charge detonated")
+## Override in each throwable subclass: apply the area effect at the impact point.
+## hit_body is whatever the projectile struck first (terrain TileMap or a body).
+func _on_impact(_impact_point: Vector2, _hit_body: Node) -> void:
+	push_warning("ThrowableBase._on_impact not overridden for type %d" % throwable_type)
 
 
-func _try_apply_to_stats(body: Node, callback: Callable) -> void:
-	# FFA: no friendly fire concept (CLAUDE.md); skip if same player.
-	var target_ctrl = body as PlayerController
-	if target_ctrl == null:
-		return
-	if target_ctrl.player_id == _owner_id:
-		return
-	callback.call(target_ctrl.stats)
+# --- Shared helpers for subclasses ---
+
+## Tunable value from data/world_config.json "throwables" (all TBD placeholders).
+func _data(key: String, fallback: Variant) -> Variant:
+	var v: Variant = (GameManager.data.get("throwables", {}) as Dictionary).get(key, null)
+	return v if v != null else fallback
+
+
+## All damageable bodies within `radius` of the impact point, as an Array of
+## { "body": Node2D, "stats": PlayerStats }. Excludes the thrower (no self-damage)
+## and dead targets. FFA: everyone else is a valid target — no friendly fire exists.
+func targets_in_radius(radius: float) -> Array:
+	var result: Array = []
+	var space := get_world_2d().direct_space_state
+	var shape := CircleShape2D.new()
+	shape.radius = radius
+	var params := PhysicsShapeQueryParameters2D.new()
+	params.shape = shape
+	params.transform = Transform2D(0.0, global_position)
+	params.collision_mask = 1   # player bodies + test dummies (terrain filtered below)
+	params.collide_with_bodies = true
+	var seen: Dictionary = {}
+	for hit: Dictionary in space.intersect_shape(params, 32):
+		var body := hit.get("collider") as Node
+		if body == null or seen.has(body.get_instance_id()):
+			continue
+		seen[body.get_instance_id()] = true
+		if body is PlayerController and (body as PlayerController).player_id == _owner_id:
+			continue   # never affect the thrower
+		var stats := body.get_node_or_null("PlayerStats") as PlayerStats
+		if stats == null or stats.is_dead:
+			continue   # terrain TileMap and non-damageable bodies land here
+		result.append({"body": body, "stats": stats})
+	return result
+
+
+## The world node throwable effects (clouds, markers) should be parented to —
+## the same parent this projectile was spawned into.
+func effect_parent() -> Node:
+	return get_parent()

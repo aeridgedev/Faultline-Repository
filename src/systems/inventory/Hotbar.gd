@@ -25,12 +25,32 @@ func _input(event: InputEvent) -> void:
 			if event.is_action_pressed("hotbar_%d" % (i + 1)):
 				select_slot(i)
 				return
+		if event.is_action_pressed("cycle_throwable"):
+			_cycle_throwable()
+			return
 	elif event is InputEventMouseButton and event.pressed:
 		match event.button_index:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				select_slot((_active_slot + 1) % Constants.HOTBAR_SLOTS)
 			MOUSE_BUTTON_WHEEL_UP:
 				select_slot((_active_slot - 1 + Constants.HOTBAR_SLOTS) % Constants.HOTBAR_SLOTS)
+
+
+# R key: select the next throwable-type item among the free hotbar slots (3-5,
+# indices 2-4). Starts searching just after the current active slot and wraps
+# around, so repeated presses step through every throwable in the hotbar. Reserved
+# drill/weapon slots (0-1) are never candidates. No-op if no throwable is carried.
+func _cycle_throwable() -> void:
+	if _inventory == null:
+		return
+	var start := InventoryManager.FREE_HOTBAR_START
+	var count := InventoryManager.HOTBAR_END - InventoryManager.FREE_HOTBAR_START + 1
+	for step in range(1, count + 1):
+		var idx := start + posmod(_active_slot - start + step, count)
+		var item = _inventory.get_item(idx)
+		if item != null and item.get("type") == "throwable":
+			select_slot(idx)
+			return
 
 
 func select_slot(idx: int) -> void:

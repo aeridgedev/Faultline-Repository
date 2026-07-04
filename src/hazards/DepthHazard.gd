@@ -4,6 +4,7 @@
 ## Two effects scale with depth:
 ##   Oxygen instability → stamina drain (Mantle and below)
 ##   Pressure distortion → screen darkening vignette (Mantle and below)
+## Ambient damage is reduced by an active Thermal Capsule (PlayerStats.hazard_resist()).
 class_name DepthHazard
 extends Node
 
@@ -92,6 +93,9 @@ func _apply_damage(layer: int) -> void:
 	if dps == null:
 		return
 	var dmg := float(dps) * _TICK_INTERVAL
+	# Thermal Capsule resistance (0.0–1.0) reduces ambient depth damage; full resist
+	# skips damage + signal via the check below.
+	dmg *= (1.0 - _stats.hazard_resist())
 	if dmg <= 0.0:
 		return
 	_stats.take_damage(dmg)

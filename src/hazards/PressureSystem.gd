@@ -1,5 +1,6 @@
 ## Faultline — pressure damage scaling with depth factor + zero-gravity flag for Core Hollow.
 ## Damage formula: pressure_dps_base * depth_factor — deeper = more pressure.
+## Damage is reduced by an active Thermal Capsule (PlayerStats.hazard_resist()).
 ## Core Hollow zero-gravity is flagged here; PlayerController.set_zero_gravity() (connected
 ## in Main.gd) applies the actual physics: gravity off, free movement on every axis.
 class_name PressureSystem
@@ -44,6 +45,9 @@ func _apply_tick() -> void:
 	if base_dps == null:
 		return  # TBD: no values until balance pass
 	var dmg := float(base_dps) * depth_factor * _TICK_INTERVAL
+	# Thermal Capsule resistance (0.0–1.0) reduces pressure damage; full resist skips
+	# damage + signal via the check below.
+	dmg *= (1.0 - _stats.hazard_resist())
 	if dmg <= 0.0:
 		return
 	_stats.take_damage(dmg)

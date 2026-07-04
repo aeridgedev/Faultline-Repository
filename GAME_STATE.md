@@ -4,7 +4,7 @@
 > and CLAUDE.md before finishing. Treat any discrepancy between this file and the
 > actual code as a bug in this file — fix it immediately.
 
-**Last updated:** 2026-07-02 · **Build:** functional offline single-player. All
+**Last updated:** 2026-07-04 · **Build:** functional offline single-player. All
 balance numbers are provisional dev-placeholders pending a formal balance pass.
 
 ### Legend
@@ -41,7 +41,8 @@ balance numbers are provisional dev-placeholders pending a formal balance pass.
 | 3 | Layer/depth + hazards | **Done** | LayerManager, DepthHazard, PressureSystem (incl. zero-gravity physics), StormSystem, DescentTracker |
 | 4 | Inventory + loot | **Done** | InventoryManager, Hotbar, AutoCollect, LootTable/Drop/Restriction, Chest UI |
 | 5 | Weapons + combat | **Partial** — melee done | Area2D hitbox swing + cooldown + HUD indicator; 5 classes × 4 tiers, base stats `TBD`. Ranged/throwables out of scope here |
-| 6 | Relics + throwables + consumables | **Partial** | Relics + Lytes/Medkit work; throwables and the other consumables are stubs |
+| 5b | Armor | **Done** | 5 classes × 4 tiers; flat+percent reduction, durability, class passives (strengths `TBD`/null), auto-equip, HUD durability bar |
+| 6 | Relics + throwables + consumables | **Done** | Relics; all 7 throwables arc + Area2D impact effects; all 5 consumables functional; effects via `PlayerStats.apply_status()` + HUD panel; items consumed on use. Magnitudes `TBD` |
 | 7 | Storm system | **Done** — visual + phases | Damage values `TBD`; drill-efficiency + heal penalty wired |
 | 8 | UI | **Partial** | HUD, StormTimer, LayerIndicator, KillCounter done; DeathScreen/SpectatorView are stubs |
 | 9 | Network | **Not started** | All offline; placeholder structure only |
@@ -388,7 +389,30 @@ Mirror the drill equivalents. Passives are "TBD" strings in JSON; no mechanical 
 
 ## Armor System
 
-`ArmorBase`, `ArmorClass`, `ArmorTier` exist as file stubs only. `armor_stats.json` has schema but all values are `null`. No armor mechanics are wired anywhere yet (step 5).
+**Done (step 5 remainder).** Full damage-reduction + durability + class-passive system, wired into the damage pipeline, inventory, and HUD.
+
+### ArmorBase (`src/systems/armor/ArmorBase.gd`)
+Resource. Holds `armor_class`, `tier`, `max_durability` (Variant, null until data), `current_durability`, `is_broken`, `is_equipped`. `init_from_data()` reads `armor_stats.json` → `classes.<Class>.tiers.<Tier>` (`flat_reduction`, `percent_reduction`, `durability`) plus `classes.<Class>.passive`. Accessors return **neutral** values when broken or data is null (never crash):
+- `flat_reduction()` — flat damage subtracted first; Titan passive adds `bonus_flat_reduction` (TBD/null → no bonus).
+- `percent_reduction()` — 0.0–1.0 of the remainder; 0.0 when broken.
+- `move_speed_mult()` (Tempest), `debuff_duration_mult()` (Echo, <1 shortens), `burn_resist()` (Hellforge, 0–1) — neutral unless that class and its passive value is non-null.
+- `register_hit()` — −1 durability per hit; emits `durability_changed`, sets `is_broken` + emits `armor_broken` at 0.
+- `restore_durability()` — Upgrade Template parity.
+Expedition passive multiplies `max_durability` by `durability_mult` in `init_from_data()` (TBD/null → no-op). Signals: `durability_changed(current, max)`, `armor_broken`.
+
+### ArmorClass (`ArmorClassData`) / ArmorTier
+Static accessors mirroring the drill equivalents. `ArmorClassData` exposes passive name/description/role per class; `ArmorTier` reads the class×tier matrix and has `validate_matrix()` to warn on missing JSON cells.
+
+### Damage pipeline (`PlayerStats.take_damage`)
+Order: **armor flat reduction → armor percent reduction → `register_hit()` → Toughness relic multiplier → HP loss**. A hit fully absorbed deals 0 and spawns no damage number. Each `take_damage()` call = 1 durability point (so each burn DoT tick counts as a hit — accepted for now). Passives wired: **Echo** shortens incoming debuff durations in `apply_status()`; **Hellforge** scales incoming `dot_dps` by `(1 − burn_resist)` at apply time; **Tempest** exposed via `armor_move_speed_mult()`, multiplied into movement in `PlayerController._handle_movement()`. `equip_armor(armor)` sets/clears the piece.
+
+### Equip / inventory (`PlayerController` + `InventoryManager`)
+`PlayerController.equip_armor_from_item(item)` builds the `ArmorBase`, `init_from_data()`, restores saved durability (wear persists across drop→re-pickup via the same `_restore_saved_durability` used for drills/weapons), and calls `stats.equip_armor()`. `get_equipped_armor()` exposes it. Armor routes through `_place_reserved(ARMOR_SLOT, …)` — picking up armor **always equips it and drops the old piece** as a `LootDrop`; `can_add(armor)` is always true. Emptying the armor slot (`remove_item`) unequips it from stats so reduction never lingers; manual drops stamp live durability.
+
+### HUD (`HUD._refresh_armor`)
+Armor sidebar slot shows class name + tier-coloured border/label **and a durability bar** (green >50% / amber >25% / red) connected to the equipped `ArmorBase.durability_changed`, updating in real time as hits land or armor is swapped.
+
+**All numeric armor values are TBD dev placeholders in `armor_stats.json`; every class passive strength is `null` (not invented) and flagged `_tbd`.**
 
 ---
 
@@ -399,12 +423,12 @@ Mirror the drill equivalents. Passives are "TBD" strings in JSON; no mechanical 
 
 **Reserved drill/weapon slots (fixed loadout rule).** `add_item()` routes by type:
 - `drill` → **always** slot 0 (`DRILL_SLOT`), `weapon` → **always** slot 1 (`WEAPON_SLOT`), via `_place_reserved()`. Any item already there is dropped as a `LootDrop` at the player's position (replace-and-drop), then the new one is placed. On the initial spawn adds the slots are empty, so nothing is dropped.
-- `armor` → armor sidebar slot (only if empty; no hotbar overflow).
+- `armor` → **always** the armor sidebar slot (`ARMOR_SLOT`, idx 5) via the same `_place_reserved()` path: replace-and-drop, and `_reequip_player()` calls `equip_armor_from_item()` so `PlayerStats.equipped_armor` tracks the slot. Emptying the slot (`remove_item`) unequips it from stats.
 - everything else (consumable/throwable/relic/…) → first free hotbar slot **2–4**, then backpack **6–7**. Reserved slots 0–1 are never used for other types.
 
 `_place_reserved()` calls `_reequip_player()` **before** emitting `slot_changed`, which invokes the player's `equip_drill_from_item()` / `equip_weapon_from_item()` to rebuild the in-hand `_equipped_drill` / `_equipped_weapon` Resource. Doing it before the signal means every listener (HUD durability bar, active-tool dispatch) sees the new drill/weapon consistently regardless of signal-connection order. So a picked-up drill/weapon is the one actually dug/swung (closes the old single-`_equipped_*` gap).
 
-`can_add()`: drills/weapons → always `true` (they replace their reserved slot); armor → armor slot free; else → `has_space()` (a free hotbar 2–4 or backpack slot). `has_space()` no longer counts the reserved slots.
+`can_add()`: drills/weapons/armor → always `true` (each replaces its reserved/sidebar slot); else → `has_space()` (a free hotbar 2–4 or backpack slot). `has_space()` no longer counts the reserved slots.
 
 F-key toggles panel UI (built in code). Drop buttons spawn a `LootDrop` and call `remove_item()` — **except** the reserved drill/weapon slots, whose Drop buttons stay disabled (`_on_discard_pressed()` also guards them): the loadout is fixed, so you always carry a drill + weapon and swap them only by picking up replacements.
 
@@ -416,6 +440,12 @@ Key methods: `add_item()`, `_place_reserved()`, `remove_item()`, `swap_slots()`,
 
 ### Hotbar (`src/systems/inventory/Hotbar.gd`)
 Tracks `_active_slot` (0–4). Input: keys 1–5 and scroll wheel. Emits `active_slot_changed(slot_idx)`. `get_active_item()` queries InventoryManager.
+
+**R key — cycle_throwable (added 2026-07-04, replaces the old DEV F6/F7 keys).**
+`_cycle_throwable()` scans the free hotbar slots (indices 2–4 / hotbar 3–5) starting
+just after `_active_slot` and wrapping around (`posmod`), selecting the first slot
+whose item has `type == "throwable"` via the existing `select_slot()`. No-op if the
+player carries no throwable. This is a real (non-DEV) input action, not test scaffolding.
 
 ### AutoCollect (`src/systems/inventory/AutoCollect.gd`)
 **Manual Q pickup (automatic collection disabled).** Despite the class name, pickup is no longer automatic. On `pickup` input (Q, added to `project.godot`), `_try_pickup()` finds all `loot_drops`-group `LootDrop` nodes within `_pickup_radius` (from `data["pickup_radius"]`, 32px fallback = 2 tiles) whose `pickup_delay` has elapsed, selects the **closest** one, and adds it to the inventory (one item per press). If the closest in-range drop cannot be accepted (`InventoryManager.can_add()` false — inventory/relevant slot full), it shows a brief **"Inventory full"** message via the player's floating notify label (`PlayerController._show_notify`, 1.5s) instead of collecting. `LootRestriction` is no longer consulted — pressing Q is an explicit action, so pickup works regardless of drilling/attacking state.
@@ -477,21 +507,38 @@ Resource-based. `activate(world_pos)` → 8-second scan window. Emits `scan_star
 ## Throwable System
 
 ### ThrowableBase (`src/systems/throwables/ThrowableBase.gd`)
-`RigidBody2D` with gravity. `throw(origin, direction, speed)` launches it. `on_body_entered` calls `_apply_effect(hit_body)`. Auto-despawns after 10 seconds.
+`RigidBody2D` base class for all 7 throwables. **Each throwable is a subclass**
+(Smoke.gd, ParalysisBomb.gd, …) that overrides `_on_impact(impact_point, hit_body)`
+and `_dev_tint()`. `PlayerController._make_throwable(type)` instantiates the right
+subclass via `.new()` — **no scene is used** (the legacy `ThrowableBase.tscn` is now
+orphaned/unused; collision shape + dev sprite are built in code in `_ensure_children`/
+`_build_dev_sprite`). `collision_layer = 0`, `collision_mask = 1` (terrain + bodies);
+`contact_monitor` on.
 
-`_owner_id` used to skip FFA friendly-fire (no self-damage).
+- `throw_at(origin, target)` — solves a **ballistic arc** so the projectile lands at
+  the aimed cursor point (flight time scales with distance; vertical velocity
+  compensates for the RigidBody's gravity). Replaces the old `throw(dir, speed)`.
+- `body_entered` → **deferred** `_do_impact()` → `_on_impact()` then `queue_free()`.
+  Deferred because `body_entered` fires while the physics space is locked, and the
+  effects run shape queries / destroy tiles.
+- Shared helpers for subclasses: `_data(key, fallback)` (reads
+  `GameManager.data["throwables"]`, all `TBD`), `targets_in_radius(radius)` (returns
+  `[{body, stats}]`, excludes the thrower and dead targets — FFA, no friendly fire),
+  `effect_parent()` (world node for lingering visuals).
+- `_owner_id` skips the thrower; auto-despawns after 10s.
 
-**All 7 throwable effects are stubs** — they print to console only. No actual game effect.
+**All 7 throwable effects are implemented** (magnitudes `TBD` in
+`data/world_config.json` "throwables"):
 
-| Type | Intended Effect |
+| Type | Effect (implemented) |
 |---|---|
-| SMOKE_BOMB | Obscure vision in radius |
-| PARALYSIS_BOMB | Freeze input |
-| WEAKNESS_BOMB | Reduce damage dealt |
-| HEAT_CHARGE | Fire DoT in radius |
-| DUST_CAPSULE | Obscure drill targeting |
-| ECHO_CHARGE | Reveal all players in radius |
-| SEISMIC_CHARGE | Destroy terrain tiles in radius |
+| SMOKE_BOMB | Spawns a lingering dark occlusion cloud (`smoke_radius`/`smoke_duration`) drawn over players + terrain. Occlusion is the effect (no status). |
+| PARALYSIS_BOMB | `apply_status("Paralyzed", frozen:true)` to all in radius — blocks movement + actions; icy tint + ice-crystal indicator on each target. |
+| WEAKNESS_BOMB | `apply_status("Weakened", damage_output_mult:0.6)` — reduces outgoing melee damage; purple impact ring; shows on HUD debuff panel. |
+| HEAT_CHARGE | `apply_status("Burning", dot_dps, dot_interval)` — DoT ticked by PlayerStats; warm tint + flame indicator on each target; orange flash ring. |
+| DUST_CAPSULE | Sandy occlusion cloud + `apply_status("Dusted", move_speed_mult:0.65)` slow to all in radius. |
+| ECHO_CHARGE | `apply_status("Revealed")` to all in large radius; a magenta marker (`top_level`, z 200) follows each revealed body **through terrain**; magenta ping ring. |
+| SEISMIC_CHARGE | Destroys destructible tiles in a `seismic_radius_tiles` circle. **Never destroys BEDROCK or CORE_HOLLOW_SHELL** (locked drill-only rule). No player damage; yellow shockwave. |
 
 ---
 
@@ -500,13 +547,19 @@ Resource-based. `activate(world_pos)` → 8-second scan window. Emits `scan_star
 ### ConsumableBase (`src/systems/consumables/ConsumableBase.gd`)
 Channelled use: `tick_use(delta, stats)` increments `_use_progress`; calls `_on_use_complete()` when `use_time` elapsed. `interrupt_use()` cancels. `use_progress()` returns 0.0–1.0 for HUD bar.
 
+All 5 consumables are channelled by **holding G**; the active hotbar slot shows a
+green **hold-progress overlay** (`HUD._update_use_progress_overlay` reads
+`PlayerController.get_use_progress()`). On completion the item is **removed from
+inventory** (`PlayerController._on_consumable_completed`). Switching slots mid-channel
+interrupts it.
+
 | Consumable | Status | Notes |
 |---|---|---|
 | Lytes | Functional | Fast one-time heal on completion |
 | Medkit | Functional | Incremental heal over channel duration (every 0.5s tick) |
-| Bloodstim | Stub | `bloodstim_active(duration)` fires; multiplier hookup TBD |
-| ThermalCapsule | Stub | `thermal_active(duration)` fires; DepthHazard integration TBD |
-| FaultBeacon | Stub | `beacon_placed(Vector2.ZERO)` fires; real world position + HUD rendering TBD |
+| Bloodstim | Functional | `apply_status("Bloodstim", buff, {move_speed_mult, damage_output_mult})` — speed + damage boost; still emits `bloodstim_active`. |
+| ThermalCapsule | Functional | `apply_status("Thermal Shield", buff, {hazard_resist})` — DepthHazard + PressureSystem cut tick damage by `(1 − resist)`; still emits `thermal_active`. |
+| FaultBeacon | Functional | `PlayerController._on_consumable_completed` calls `place_beacon(world, player_pos)` → spawns a pulsing amber `BeaconMarker` (z 150) for `fault_beacon_duration`; emits `beacon_placed(real_pos)`. |
 
 ---
 
@@ -557,7 +610,7 @@ Per-class `base` stats + `minor_passive`/`unique_passive` strings. All passives 
 4 classes × 4 tiers matrix of `{dig_time_mult, durability}` plus per-class `spawn_weight`. Values are **[TBD]** dev values.
 
 ### `data/armor_stats.json`
-5 classes × 4 tiers — all values `null`. No armor mechanics wired.
+5 classes × 4 tiers. Per tier: `flat_reduction`, `percent_reduction`, `durability` (testable placeholders, monotonic Common→Legendary, identical across classes for now). Per class: a `passive` block whose strength value is **`null`** (`_tbd`) — deliberately not invented. Read via `GameManager.data["armor"]`. All numbers **[TBD]**.
 
 ### `data/loot_tables.json`
 Per-layer `rarity_weights` + `category_weights`. Provisional weights set for rough feel. Upgrade Template weight locked at 10%.
@@ -601,9 +654,9 @@ Phase schedule locked. Damage values TBD.
 | 1 | `PlayerController.gd:517–525` | ~~Merge conflict marker~~ — **resolved**. HEAD version (no inline comments) kept. | Fixed |
 | 2 | `WorldGenerator.gd` | ~~Core Hollow shell uses generic Bedrock (indestructible), so players can never breach it.~~ **Resolved** — dedicated `CORE_HOLLOW_SHELL` type (Constants value 11) walls the Core Hollow: hardest drillable terrain (`base_dig_time` 8.0 TBD, >2× Ultra Dense), destructible like any non-Bedrock tile, with its own dev art. Bedrock now only at the absolute bottom border. Open interior unchanged. | Fixed |
 | 3 | `PressureSystem.gd`, `PlayerController.gd` | ~~`zero_gravity_changed` signal fires when entering Core Hollow but gravity physics are never modified.~~ **Resolved** — `PlayerController.set_zero_gravity()` now zeroes the player's custom fall acceleration and wires `move_up`/`move_down` into free movement on every axis; `_try_step_up()` is disabled while active. | Fixed |
-| 4 | `armor_stats.json` / armor files | Armor system is entirely non-functional. `ArmorBase`, `ArmorClass`, `ArmorTier` are stubs; no armor mechanics wired. | Medium (step 5) |
-| 5 | All throwable files | All 7 throwable effects print to console only. No actual game effect. | Medium (step 6) |
-| 6 | `Bloodstim.gd`, `ThermalCapsule.gd`, `FaultBeacon.gd` | Signals fire but multiplier/rendering hookups not implemented. | Medium (step 6) |
+| 4 | `armor_stats.json` / armor files | ~~Armor system is entirely non-functional; stubs only.~~ **Resolved** — full armor implemented: flat+percent damage reduction, durability (1/hit, breaks at 0), 5 class passives scaffolded (strengths `TBD`/null), auto-equip + drop-old on pickup, HUD durability bar. Passive strength values remain `null` pending balance pass. | Fixed |
+| 5 | All throwable files | ~~All 7 throwable effects print to console only.~~ **Resolved** — each is a `ThrowableBase` subclass with a real Area2D impact effect (arc to cursor, deferred `_on_impact`, `targets_in_radius`). Magnitudes `TBD`. | Fixed |
+| 6 | `Bloodstim.gd`, `ThermalCapsule.gd`, `FaultBeacon.gd` | ~~Signals fire but hookups not implemented.~~ **Resolved** — Bloodstim (speed+damage), ThermalCapsule (hazard resist wired into DepthHazard + PressureSystem), FaultBeacon (world marker) all apply real effects; items consumed on use. | Fixed |
 | 7 | `BasicScanner.gd`, `DeepRadar.gd` | Signals fire but no detection or denial-of-knowledge mechanic wired. | Medium |
 | 8 | `KillCounter.gd` | Tracks any `player_died` signal in tree — no official kill-attribution system. Inflates count in multi-player. | Low (step 9) |
 | 9 | `PlayerDeath.gd`, `SpectatorView.gd` | Spectator follow-cam and player-list not implemented. | Low (step 9) |
@@ -618,6 +671,112 @@ Phase schedule locked. Damage values TBD.
 ## Session Change Log
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
+
+### 2026-07-04
+
+**Step 5 remainder — Armor system fully implemented (deviation #4 resolved).** Ran two
+sub-agents (armor core files + PlayerStats wiring); both were cut off by a session rate
+limit partway, so the wiring was finished by hand. Landed:
+- **`armor_stats.json`** rewritten to the schema `ArmorBase` reads
+  (`classes.<Class>.tiers.<Tier>.{flat_reduction,percent_reduction,durability}` +
+  `classes.<Class>.passive`). Tier values are testable placeholders (monotonic
+  Common→Legendary, identical across classes for now); every class passive strength is
+  **`null`** and flagged `_tbd` — not invented.
+- **`ArmorBase.gd` / `ArmorClassData` / `ArmorTier`** (agent-authored): Resource with
+  `init_from_data()`, `flat_reduction()`/`percent_reduction()`, class-passive accessors
+  (`move_speed_mult`/`debuff_duration_mult`/`burn_resist`), `register_hit()` (−1 dur/hit,
+  breaks at 0 → all values neutral), `restore_durability()`. Signals `durability_changed`,
+  `armor_broken`.
+- **`PlayerStats.gd`**: `equipped_armor: ArmorBase` + `equip_armor()`. `take_damage()`
+  order is now **armor flat → armor percent → `register_hit()` → Toughness → HP**. Echo
+  passive shortens debuff durations in `apply_status()`; Hellforge scales incoming
+  `dot_dps` by `(1 − burn_resist)`; Tempest exposed via `armor_move_speed_mult()`.
+- **`PlayerController.gd`**: `equip_armor_from_item()` (builds the Resource, restores
+  saved wear, calls `stats.equip_armor()`), `get_equipped_armor()`, and the Tempest
+  speed mult folded into `_handle_movement()` beside the status/relic mults.
+- **`InventoryManager.gd`**: armor routes through `_place_reserved(ARMOR_SLOT,…)` —
+  pickup always equips + drops the old piece; `_with_current_durability`/`_reequip_player`
+  extended to armor; `remove_item(ARMOR_SLOT)` unequips from stats; `can_add(armor)` → true.
+- **`HUD.gd`**: armor sidebar slot gained a real-time durability bar (green/amber/red)
+  bound to the equipped `ArmorBase.durability_changed`, refreshed on hit and on swap.
+- All armor numbers are TBD dev placeholders; passive strengths stay `null` for the
+  balance pass.
+
+**Step 6 — throwables + consumables made fully functional (deviations #5–#6 resolved).**
+
+- **Status-effect payload system (`PlayerStats.gd`).** New `apply_status(name,
+  duration, is_buff, params)` stores a mechanical payload alongside each timed effect:
+  `move_speed_mult`, `damage_output_mult`, `frozen`, `dot_dps`/`dot_interval`,
+  `hazard_resist`, `revealed`. `_process()` ticks durations and DoT (`_tick_dot` applies
+  `dot_dps` in `dot_interval` chunks). Query API: `status_move_speed_mult()`,
+  `status_damage_output_mult()`, `is_frozen()`, `hazard_resist()`, `is_revealed()`. The
+  old `apply_effect(name, dur, is_buff)` is now a display-only shim → `apply_status(…, {})`.
+  Removed the DEV `_start_test_effects()` (Haste/Weakened placeholders) — real sources
+  now exist. *(Note: a parallel armor thread has since layered `equipped_armor`/`ArmorBase`
+  logic into `apply_status`/`take_damage`; compatible with this payload system.)*
+- **ThrowableBase rewrite.** Now a subclass base: each throwable overrides
+  `_on_impact(impact_point, hit_body)` + `_dev_tint()`. Instantiated via `.new()` by
+  `PlayerController._make_throwable()` — **`ThrowableBase.tscn` is orphaned/unused**
+  (collision + sprite built in code). `throw_at(origin, target)` solves a ballistic arc
+  to the cursor (replaces `throw(dir, speed)`). `body_entered` → **deferred** `_do_impact`
+  (physics space is locked during the signal). Helpers: `_data()`, `targets_in_radius()`
+  (FFA, excludes thrower + dead), `effect_parent()`.
+- **7 throwable subclasses** (`Smoke.gd`=SmokeBomb, `ParalysisBomb.gd`, `WeaknessBomb.gd`,
+  `HeatCharge.gd`, `DustCapsule.gd`, `EchoCharge.gd`, `SeismicCharge.gd`) — see the
+  Throwable System table. Seismic **excludes BEDROCK + CORE_HOLLOW_SHELL** (locked
+  drill-only rule). Visuals are code-drawn inner-class Node2Ds parented to the world.
+- **Consumables.** `Bloodstim`/`ThermalCapsule`/`FaultBeacon` now apply real effects via
+  `apply_status`; ThermalCapsule resist is wired into `DepthHazard._apply_damage` and
+  `PressureSystem._apply_tick` (`dmg *= 1 - hazard_resist()`). `PlayerController._make_consumable`
+  now builds all 5 (was Lytes/Medkit only). FaultBeacon placement is triggered by
+  `PlayerController._on_consumable_completed` → `place_beacon(world, player_pos)`.
+- **Item consumption + G-hold UI.** Throwing removes the item from its slot; a completed
+  consumable channel removes it (via `use_completed` → `_on_consumable_completed`).
+  Switching slots interrupts an in-progress channel. HUD shows a green hold-progress
+  overlay on the active slot (`_update_use_progress_overlay` ← `get_use_progress()`).
+- **Data (`world_config.json`).** Added `"throwables"` block and 11 new `"consumables"`
+  keys — all TBD dev placeholders (`seismic_radius_tiles` is in TILES; other radii px).
+- **Constants.** Added `Consumable` enum + `CONSUMABLE_NAMES`; item display names
+  (HUD/inventory/PlayerController) now resolve consumables by name instead of literal "Medkit".
+- **DEV-ONLY test keys (PlayerController._unhandled_input):** F6 cycles the active
+  slot's throwable through all 7 types, F7 cycles the active consumable through all 5
+  (via `InventoryManager.dev_replace_slot`) — remove with TestDummy at networking.
+
+**Fixed: project failed to compile — `InventoryManager._reequip_player()` passed
+`null` to a `Dictionary`-typed parameter.** The armor-system work above added
+`remove_item(ARMOR_SLOT)` → `_reequip_player(ARMOR_SLOT, null)` to unequip armor on
+discard, but `_reequip_player`'s `item_data` parameter was still typed `Dictionary`
+from the drill/weapon-only original. GDScript 4's static typing treats Dictionary
+(like Array, String, and the other built-in value types) as non-nullable, so passing
+`null` where a `Dictionary` is expected is a **compile-time** error — this broke the
+whole script and cascaded into every file that references the `InventoryManager`
+class (`Hotbar.gd`, `PlayerController.gd` reported errors despite having none of
+their own).
+- **`InventoryManager.gd`**: `_reequip_player(slot_idx: int, item_data: Variant)` —
+  widened from `Dictionary` to `Variant`. Chose this over guarding the call site to
+  skip on null, because skipping would leave `PlayerStats.equipped_armor` stale after
+  a discard — exactly the bug the adjacent comment already warns about. The
+  `equip_*_from_item()` methods it calls already treat `null` as "unequip", so no
+  other file needed to change.
+- **Removed dead code**: `InventoryManager.dev_replace_slot()` (existed only to back
+  the F6/F7 DEV keys being removed next).
+
+**Replaced the DEV F6/F7 throwable/consumable type-cycling keys with a real R
+(`cycle_throwable`) hotbar-cycle key.** F6/F7 let a solo dev reach every throwable/
+consumable type without a loot-spawn menu by mutating the active slot's `item_class`
+in place; that debug affordance is now gone in favor of production behavior.
+- **`project.godot`**: added the `cycle_throwable` input action, mapped to **R**
+  (physical keycode 82).
+- **`Hotbar.gd`**: new `_cycle_throwable()`, wired into `_input()` alongside the
+  existing hotbar-slot/scroll handling. Scans free hotbar slots (indices 2–4 /
+  hotbar 3–5) starting just after the current active slot, wrapping via `posmod`,
+  and selects the first one holding a `type == "throwable"` item via the existing
+  `select_slot()`. No-op if the player carries no throwable. Placed in `Hotbar.gd`
+  rather than `PlayerController.gd` because active-slot selection is already
+  Hotbar's responsibility.
+- **`PlayerController.gd`**: removed the entire F6/F7 `_unhandled_input()` block
+  (was DEV-ONLY scaffolding; no longer needed now that item types are set by real
+  loot rather than debug cycling).
 
 ### 2026-07-02
 

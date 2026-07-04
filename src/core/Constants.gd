@@ -193,6 +193,21 @@ const THROWABLE_NAMES := {
 }
 
 # ---------------------------------------------------------------------------
+# CONSUMABLES — exactly 5. Channelled by holding the use key (G); use times,
+# durations, and strengths are TBD in data/world_config.json "consumables".
+# Enum values 0/1 predate this enum (Lytes/Medkit item_class dev values) — keep.
+# ---------------------------------------------------------------------------
+enum Consumable { LYTES, MEDKIT, BLOODSTIM, THERMAL_CAPSULE, FAULT_BEACON }
+
+const CONSUMABLE_NAMES := {
+	Consumable.LYTES: "Lytes",
+	Consumable.MEDKIT: "Medkit",
+	Consumable.BLOODSTIM: "Bloodstim",
+	Consumable.THERMAL_CAPSULE: "Thermal Capsule",
+	Consumable.FAULT_BEACON: "Fault Beacon",
+}
+
+# ---------------------------------------------------------------------------
 # SCANNERS — 8s scan/detection duration. Scanned players are NOT notified.
 # Range values TBD.
 # ---------------------------------------------------------------------------

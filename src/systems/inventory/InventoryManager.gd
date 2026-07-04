@@ -218,7 +218,7 @@ func _item_display_name(type_str: String, cls_id: int) -> String:
 		"armor":      return Constants.ARMOR_CLASS_NAMES.get(cls_id, "?")
 		"relic":      return Constants.RELIC_NAMES.get(cls_id, "?")
 		"throwable":  return Constants.THROWABLE_NAMES.get(cls_id, "?")
-		"consumable": return "Consumable"
+		"consumable": return Constants.CONSUMABLE_NAMES.get(cls_id, "Consumable")
 	return type_str.capitalize()
 
 
@@ -230,6 +230,10 @@ func _on_discard_pressed(slot_idx: int) -> void:
 	var item = _slots[slot_idx]
 	if item == null:
 		return
+	# Armor keeps its wear on the dropped LootDrop (read while still equipped, before
+	# remove_item unequips it). Other item types have no live durability to stamp.
+	if slot_idx == ARMOR_SLOT:
+		item = _with_current_durability(ARMOR_SLOT, item)
 	_spawn_loot_drop(item)
 	remove_item(slot_idx)   # emits slot_changed → _refresh_panel() via connected lambda
 
@@ -263,10 +267,9 @@ func add_item(item_data: Dictionary) -> int:
 		"weapon":
 			return _place_reserved(WEAPON_SLOT, item_data)
 		"armor":
-			if _slots[ARMOR_SLOT] == null:
-				_set_slot(ARMOR_SLOT, item_data)
-				return ARMOR_SLOT
-			return -1
+			# Same replace-and-drop rule as drill/weapon: picking up armor always
+			# equips it, dropping whatever the sidebar slot held as a LootDrop.
+			return _place_reserved(ARMOR_SLOT, item_data)
 	for i in range(FREE_HOTBAR_START, HOTBAR_END + 1):
 		if _slots[i] == null:
 			_set_slot(i, item_data)
@@ -310,11 +313,20 @@ func _with_current_durability(slot_idx: int, item_dict: Dictionary) -> Dictionar
 		var w = player.get_equipped_weapon()
 		if w != null and w.max_durability != null:
 			out["durability"] = w.current_durability
+	elif slot_idx == ARMOR_SLOT and player.has_method("get_equipped_armor"):
+		var a = player.get_equipped_armor()
+		if a != null and a.max_durability != null:
+			out["durability"] = a.current_durability
 	return out
 
 
-## Rebuilds the player's in-hand drill/weapon Resource to match a reserved slot.
-func _reequip_player(slot_idx: int, item_data: Dictionary) -> void:
+## Rebuilds the player's in-hand drill/weapon/armor Resource to match a reserved slot.
+## item_data is Variant (not Dictionary) because remove_item() must be able to pass
+## null here to unequip the armor slot — Dictionary is a non-nullable value type in
+## GDScript 4's static typing, so a `Dictionary` parameter cannot accept null and
+## passing one is a compile-time error. The player's equip_*_from_item() methods
+## already handle null (unequip), so this only widens the parameter type to match.
+func _reequip_player(slot_idx: int, item_data: Variant) -> void:
 	var player := get_parent()
 	if player == null:
 		return
@@ -322,11 +334,17 @@ func _reequip_player(slot_idx: int, item_data: Dictionary) -> void:
 		player.equip_drill_from_item(item_data)
 	elif slot_idx == WEAPON_SLOT and player.has_method("equip_weapon_from_item"):
 		player.equip_weapon_from_item(item_data)
+	elif slot_idx == ARMOR_SLOT and player.has_method("equip_armor_from_item"):
+		player.equip_armor_from_item(item_data)
 
 
 func remove_item(slot_idx: int) -> void:
 	if slot_idx < 0 or slot_idx >= _slots.size():
 		return
+	# Emptying the armor slot must also unequip it from PlayerStats — otherwise the
+	# damage reduction would linger with no armor shown. (Drill/weapon can't be emptied.)
+	if slot_idx == ARMOR_SLOT:
+		_reequip_player(ARMOR_SLOT, null)
 	_set_slot(slot_idx, null)
 
 
@@ -356,15 +374,13 @@ func has_space() -> bool:
 	return false
 
 
-## True if item_data can be accepted. Drills and weapons always fit (they replace
-## their reserved slot). Armor needs its dedicated slot free. Everything else needs
-## a free hotbar (3–5) or backpack slot.
+## True if item_data can be accepted. Drills, weapons, and armor always fit — each
+## replaces its reserved / sidebar slot (dropping the old piece). Everything else
+## needs a free hotbar (3–5) or backpack slot.
 func can_add(item_data: Dictionary) -> bool:
 	match item_data.get("type", ""):
-		"drill", "weapon":
+		"drill", "weapon", "armor":
 			return true
-		"armor":
-			return _slots[ARMOR_SLOT] == null
 	return has_space()
 
 

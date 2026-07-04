@@ -28,6 +28,8 @@ var _slot_dur_bars: Array[ProgressBar] = []
 var _slot_dur_fills: Array[StyleBoxFlat] = []
 var _slot_dur_resources: Array = []   # DrillBase|WeaponBase|null per hotbar slot
 var _slot_cooldown_overlays: Array[ColorRect] = []   # weapon swing-cooldown dim, per slot
+var _slot_use_overlays: Array[ColorRect] = []        # consumable G-hold progress fill, per slot
+var _active_slot: int = 0
 var _inventory: InventoryManager = null
 var _player: PlayerController = null
 
@@ -35,6 +37,9 @@ var _player: PlayerController = null
 var _armor_panel: PanelContainer = null
 var _armor_cls_label: Label = null
 var _armor_panel_style: StyleBoxFlat = null
+var _armor_dur_bar: ProgressBar = null       # durability of the equipped armor
+var _armor_dur_fill: StyleBoxFlat = null      # fill color (green/amber/red by ratio)
+var _armor_dur_res: ArmorBase = null          # the ArmorBase we're listening to
 
 # Backpack slot panels — built in code, appended after the armor slot.
 var _bp_panels: Array[PanelContainer] = []
@@ -115,6 +120,18 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 func _process(_delta: float) -> void:
 	_fps_label.text = str(Engine.get_frames_per_second()) + " fps"
 	_update_weapon_cooldown_overlay()
+	_update_use_progress_overlay()
+
+
+# Green fill brightening over the ACTIVE slot while its consumable is channeled
+# (G held). Clears instantly on release/completion (use_progress returns 0).
+func _update_use_progress_overlay() -> void:
+	if _player == null or _slot_use_overlays.is_empty():
+		return
+	var progress := _player.get_use_progress()
+	for i in _slot_use_overlays.size():
+		var a := (progress * 0.55) if (i == _active_slot and progress > 0.0) else 0.0
+		_slot_use_overlays[i].color = Color(0.20, 0.88, 0.42, a)
 
 
 # Dims the hotbar slot holding the weapon while its swing is on cooldown.
@@ -228,12 +245,20 @@ func _build_hotbar_slots() -> void:
 		cd.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(cd)
 
+		# Consumable G-hold progress: a green tint that brightens as the channel
+		# completes. Same full-slot overlay pattern as the cooldown dim above.
+		var use_fill := ColorRect.new()
+		use_fill.color = Color(0.20, 0.88, 0.42, 0.0)
+		use_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(use_fill)
+
 		_hotbar_row.add_child(panel)
 		_slot_panels.append(panel)
 		_slot_labels.append(label)
 		_slot_dur_bars.append(dur_bar)
 		_slot_dur_fills.append(dur_fill)
 		_slot_cooldown_overlays.append(cd)
+		_slot_use_overlays.append(use_fill)
 
 	_highlight_slot(0)
 
@@ -271,6 +296,22 @@ func _build_armor_slot() -> void:
 	inner.add_child(hdr)
 	inner.add_child(_armor_cls_label)
 	col.add_child(inner)
+
+	# Durability bar — mirrors the hotbar slots' bars; hidden until armor is equipped.
+	_armor_dur_bar = ProgressBar.new()
+	_armor_dur_bar.custom_minimum_size = Vector2(44, 4)
+	_armor_dur_bar.show_percentage = false
+	_armor_dur_bar.visible = false
+	var dur_bg := StyleBoxFlat.new()
+	dur_bg.bg_color = Color(0.10, 0.11, 0.14)
+	dur_bg.set_corner_radius_all(2)
+	_armor_dur_bar.add_theme_stylebox_override("background", dur_bg)
+	_armor_dur_fill = StyleBoxFlat.new()
+	_armor_dur_fill.bg_color = Color(0.22, 0.82, 0.32)
+	_armor_dur_fill.set_corner_radius_all(2)
+	_armor_dur_bar.add_theme_stylebox_override("fill", _armor_dur_fill)
+	col.add_child(_armor_dur_bar)
+
 	_armor_panel.add_child(col)
 	_bottom_hud.add_child(_armor_panel)
 
@@ -381,6 +422,7 @@ func _on_health_changed(new_hp: float, max_hp: float) -> void:
 
 
 func _on_slot_changed(slot_idx: int) -> void:
+	_active_slot = slot_idx
 	_highlight_slot(slot_idx)
 
 
@@ -423,10 +465,18 @@ func _highlight_slot(active: int) -> void:
 func _refresh_armor(item) -> void:
 	if _armor_cls_label == null:
 		return
+	# Drop the listener on the previously-shown armor Resource (swap / unequip).
+	var cb := Callable(self, "_on_armor_dur_changed")
+	if _armor_dur_res != null and _armor_dur_res.durability_changed.is_connected(cb):
+		_armor_dur_res.durability_changed.disconnect(cb)
+	_armor_dur_res = null
+
 	if item == null:
 		_armor_cls_label.text = "—"
 		_armor_cls_label.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
 		_set_armor_slot_style(false, Constants.Tier.COMMON)
+		if _armor_dur_bar != null:
+			_armor_dur_bar.visible = false
 		return
 	var cls_name: String = Constants.ARMOR_CLASS_NAMES.get(item.get("item_class", -1), "?")
 	var tier: int = item.get("tier", Constants.Tier.COMMON)
@@ -434,6 +484,40 @@ func _refresh_armor(item) -> void:
 	_armor_cls_label.text = cls_name
 	_armor_cls_label.add_theme_color_override("font_color", tier_col)
 	_set_armor_slot_style(true, tier)
+
+	# Live durability: listen to the equipped ArmorBase so hits update the bar instantly.
+	if _armor_dur_bar == null or _player == null or not _player.has_method("get_equipped_armor"):
+		return
+	var armor: ArmorBase = _player.get_equipped_armor()
+	if armor == null or armor.max_durability == null:
+		_armor_dur_bar.visible = false
+		return
+	if not armor.durability_changed.is_connected(cb):
+		armor.durability_changed.connect(cb)
+	_armor_dur_res = armor
+	_update_armor_dur_bar(armor.current_durability, float(armor.max_durability))
+
+
+func _on_armor_dur_changed(current: float, maximum: float) -> void:
+	_update_armor_dur_bar(current, maximum)
+
+
+func _update_armor_dur_bar(current: float, maximum: float) -> void:
+	if _armor_dur_bar == null:
+		return
+	if maximum <= 0.0:
+		_armor_dur_bar.visible = false
+		return
+	_armor_dur_bar.visible = true
+	_armor_dur_bar.max_value = maximum
+	_armor_dur_bar.value = current
+	var ratio := current / maximum
+	if ratio > 0.5:
+		_armor_dur_fill.bg_color = Color(0.22, 0.82, 0.32)   # green
+	elif ratio > 0.25:
+		_armor_dur_fill.bg_color = Color(0.92, 0.68, 0.10)   # amber
+	else:
+		_armor_dur_fill.bg_color = Color(0.88, 0.18, 0.14)   # red
 
 
 ## Shows or hides the durability bar for a hotbar slot.
@@ -540,7 +624,7 @@ func _item_short_name(item, slot_idx: int) -> String:
 		"armor":      return Constants.ARMOR_CLASS_NAMES.get(item_class, "?").left(6)
 		"throwable":  return Constants.THROWABLE_NAMES.get(item_class, "?").left(6)
 		"relic":      return Constants.RELIC_NAMES.get(item_class, "?").left(6)
-		"consumable": return "Medkit"
+		"consumable": return Constants.CONSUMABLE_NAMES.get(item_class, "?").left(6)
 	return "?"
 
 
