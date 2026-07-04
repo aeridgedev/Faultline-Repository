@@ -11,10 +11,14 @@ extends CanvasLayer
 @onready var _hp_label: Label = $Control/BottomHUD/HealthSection/HPLabel
 @onready var _hotbar_row: HBoxContainer = $Control/BottomHUD/HotbarSection
 @onready var _bottom_hud: HBoxContainer = $Control/BottomHUD
+@onready var _bottom_bg: ColorRect = $Control/BottomBG
 @onready var _storm_timer: StormTimer = $Control/StormPanel/StormTimer
 @onready var _layer_indicator: LayerIndicator = $Control/LayerPanel/LayerIndicator
+@onready var _layer_panel: PanelContainer = $Control/LayerPanel
+@onready var _storm_panel: PanelContainer = $Control/StormPanel
 @onready var _death_screen: DeathScreen = $Control/DeathScreen
 @onready var _spectator_view: SpectatorView = $Control/SpectatorView
+@onready var _win_screen: WinScreen = $Control/WinScreen
 @onready var _kill_counter: KillCounter = $Control/KillCounter
 @onready var _kill_progress_panel: PanelContainer = $Control/KillProgressPanel
 @onready var _kill_progress_label: Label = $Control/KillProgressPanel/VBoxContainer/KillLabel
@@ -32,6 +36,7 @@ var _slot_use_overlays: Array[ColorRect] = []        # consumable G-hold progres
 var _active_slot: int = 0
 var _inventory: InventoryManager = null
 var _player: PlayerController = null
+var _match_hud_active: bool = true   # false once death/spectating/match-end hides the normal HUD
 
 # Armor slot panel — built in code, appended to _bottom_hud after the hotbar.
 var _armor_panel: PanelContainer = null
@@ -68,12 +73,16 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 	_fps_label.add_theme_font_size_override("font_size", 9)
 	_fps_label.add_theme_color_override("font_color", Color(0.70, 0.70, 0.70, 0.65))
 
+	var player_death: PlayerDeath = player.get_node("PlayerDeath")
 	stats.health_changed.connect(_on_health_changed)
-	stats.player_died.connect(_on_player_died)
+	player_death.died.connect(_on_player_died)
 	stats.active_effects_changed.connect(_on_effects_changed)
 	hotbar.active_slot_changed.connect(_on_slot_changed)
 	_inventory.slot_changed.connect(_on_inventory_slot_changed)
 	_death_screen.spectate_requested.connect(_on_spectate_requested)
+	GameManager.match_won.connect(_on_match_won)
+	_win_screen.play_again_requested.connect(func(): GameManager.restart_match())
+	_win_screen.quit_requested.connect(func(): get_tree().quit())
 
 	var max_hp := stats.max_health if stats.max_health > 0.0 else 1.0
 	_health_bar.max_value = max_hp
@@ -118,6 +127,8 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 
 
 func _process(_delta: float) -> void:
+	if not _match_hud_active:
+		return
 	_fps_label.text = str(Engine.get_frames_per_second()) + " fps"
 	_update_weapon_cooldown_overlay()
 	_update_use_progress_overlay()
@@ -167,11 +178,7 @@ func _style_health_bar() -> void:
 
 
 func _style_panels() -> void:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.06, 0.07, 0.10, 0.88)
-	s.set_corner_radius_all(4)
-	s.set_border_width_all(1)
-	s.border_color = Color(0.55, 0.58, 0.65, 0.80)
+	var s := UIStyle.small_panel_style()
 	var ctrl := get_node_or_null("Control")
 	if ctrl == null:
 		return
@@ -394,13 +401,56 @@ func _set_armor_slot_style(equipped: bool, tier: int) -> void:
 # --- Signal handlers ---
 
 func _on_player_died() -> void:
-	_death_screen.show_death()
+	# Connected to PlayerDeath.died (not the raw PlayerStats.player_died), which
+	# is only emitted after PlayerDeath has already called GameManager.mark_player_dead()
+	# — so by the time we get here, a same-frame match_won (this death happens to
+	# leave exactly one other roster participant alive) has already fired and the
+	# win screen has already taken over. Skip a redundant DeathScreen in that case.
+	if GameManager.state == GameManager.MatchState.POST_MATCH:
+		return
+	var stats: PlayerStats = _player.stats
+	_death_screen.show_death({
+		"killer_name": stats.last_killer_name,
+		"damage": stats.last_killing_damage,
+		"layer_name": Constants.LAYER_NAMES.get(stats.get_layer(), "Unknown"),
+		"kills": stats.kill_count,
+	})
 
 
 func _on_spectate_requested() -> void:
 	_death_screen.visible = false
+	_hide_match_hud()
+	var camera := _player.get_node("Camera2D") as Camera2D
+	_spectator_view.start_spectating(camera, _player.stats.last_killer_id)
+
+
+## Fires once, when only one roster participant remains alive. Shown to
+## whoever's HUD instance is running: the winner (still playing, gets frozen
+## here) or a spectator (already mid-SpectatorView).
+func _on_match_won(winner_id: int) -> void:
+	_hide_match_hud()
+	_death_screen.visible = false
+	_spectator_view.stop_spectating()
+	if _player != null and is_instance_valid(_player) and not _player.stats.is_dead:
+		_player.freeze_controls()
+	_win_screen.show_results(GameManager.get_leaderboard(), winner_id)
+
+
+## Hides every normal in-match HUD element for the DeathScreen/SpectatorView/
+## WinScreen overlays, which own the whole screen while active. Also stops
+## _process() from doing per-frame hotbar-overlay work nobody can see anymore
+## (this is a terminal state for the HUD instance — death/spectating/match-end
+## never revert back to the normal HUD, so the flag is one-way).
+func _hide_match_hud() -> void:
+	_match_hud_active = false
 	_bottom_hud.visible = false
-	_spectator_view.show_spectating()
+	_bottom_bg.visible = false
+	_layer_panel.visible = false
+	_storm_panel.visible = false
+	_kill_progress_panel.visible = false
+	_effects_panel.visible = false
+	_kill_counter.visible = false
+	_fps_label.visible = false
 
 
 func _on_health_changed(new_hp: float, max_hp: float) -> void:
@@ -639,9 +689,7 @@ func _on_kill_progress_changed(current_kills: int, required_kills: int, next_lay
 
 
 func _on_effects_changed(effects: Array) -> void:
-	for child in _effects_vbox.get_children():
-		_effects_vbox.remove_child(child)
-		child.queue_free()
+	UIStyle.clear_children(_effects_vbox)
 	if effects.is_empty():
 		_effects_panel.visible = false
 		return

@@ -17,28 +17,29 @@ anchor_left = 0.5
 anchor_top = 0.0
 anchor_right = 0.5
 anchor_bottom = 0.0
-offset_left = -100.0
+offset_left = -120.0
 offset_top = 8.0
-offset_right = 100.0
-offset_bottom = 36.0
+offset_right = 120.0
+offset_bottom = 72.0
 grow_horizontal = 2
 
-[node name="Label" type="Label" parent="TopBar"]
+[node name="VBoxContainer" type="VBoxContainer" parent="TopBar"]
+layout_mode = 2
+alignment = 1
+
+[node name="Label" type="Label" parent="TopBar/VBoxContainer"]
 layout_mode = 2
 text = "SPECTATING"
 horizontal_alignment = 1
 
-[node name="HintLabel" type="Label" parent="."]
-layout_mode = 1
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -120.0
-offset_top = -12.0
-offset_right = 120.0
-offset_bottom = 12.0
-grow_horizontal = 2
-text = "No other players (offline)"
+[node name="NameLabel" type="Label" parent="TopBar/VBoxContainer"]
+layout_mode = 2
+text = ""
 horizontal_alignment = 1
-modulate = Color(1, 1, 1, 0.4)
+
+[node name="HPBar" type="ProgressBar" parent="TopBar/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 12)
+max_value = 100.0
+value = 100.0
+show_percentage = false

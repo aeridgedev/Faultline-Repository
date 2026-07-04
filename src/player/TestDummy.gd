@@ -1,14 +1,19 @@
 ## Faultline — DEV-ONLY combat target. Not part of the real game.
 ## A stationary, damageable body with a "PlayerStats" child so the player's melee
 ## raycast can hit it (it looks for a node named PlayerStats and calls take_damage).
-## Shows its health above its head and respawns on death so you can keep testing.
-## Remove once real networked players exist.
+## Shows its health above its head. Remove once real networked players exist.
+##
+## Step 8 scope decision: dummies also register as GameManager roster entries
+## (see setup()) so the leaderboard/win-condition flow has real multi-participant
+## data to exercise before step 9 (networking) exists. This is a deliberate
+## deviation from "DEV-ONLY combat target, not a player" — flagged in GAME_STATE.md.
 class_name TestDummy
 extends CharacterBody2D
 
 var _stats: PlayerStats = null
 var _label: Label = null
 var _gravity: float = 0.0
+var player_id: int = -1
 
 
 func _ready() -> void:
@@ -88,4 +93,21 @@ func _refresh_label() -> void:
 
 
 func _on_died() -> void:
+	if player_id != -1:
+		GameManager.mark_player_dead(player_id)
 	queue_free()
+
+
+## Called by Main.gd right after spawn + positioning. `index` gives each dummy
+## a stable display name; `layer` is the Constants.Layer it spawned in (dummies
+## don't move, so spawn layer IS their deepest layer reached).
+func setup(index: int, layer: int) -> void:
+	player_id = GameManager.register_player("Dummy %d" % index, self, true)
+	GameManager.record_layer_reached(player_id, layer)
+
+
+## Matches PlayerController.get_stats() — lets SpectatorView reach either
+## roster participant type through one shared method instead of a hardcoded
+## "PlayerStats" child-name lookup.
+func get_stats() -> PlayerStats:
+	return _stats

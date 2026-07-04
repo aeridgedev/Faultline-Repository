@@ -28,16 +28,44 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+[node name="Panel" type="PanelContainer" parent="CenterContainer"]
 layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 8
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 text = "YOU DIED"
 horizontal_alignment = 1
 
-[node name="SpectateButton" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="KillerLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Killed by —"
+horizontal_alignment = 1
+
+[node name="DamageLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Killing blow: — dmg"
+horizontal_alignment = 1
+
+[node name="LayerLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Layer: —"
+horizontal_alignment = 1
+
+[node name="KillsLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Kills: —"
+horizontal_alignment = 1
+
+[node name="ButtonSpacer" type="Control" parent="CenterContainer/Panel/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 10)
+
+[node name="SpectateButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(140, 36)
 text = "SPECTATE"

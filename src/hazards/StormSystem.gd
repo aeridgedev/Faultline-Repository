@@ -94,7 +94,7 @@ func _physics_process(delta: float) -> void:
 	var dps: Variant = GameManager.data.get("storm_dps", null)
 	if dps == null:
 		return
-	_stats.take_damage(float(dps) * delta)
+	_stats.take_damage(float(dps) * delta, "The Storm")
 
 
 # --- Visuals ---------------------------------------------------------------
@@ -186,7 +186,7 @@ func _check_deadline() -> void:
 	if _stats == null or _stats.is_dead:
 		return
 	if _stats.get_layer() != Constants.Layer.CORE_HOLLOW:
-		_stats.take_damage(_stats.max_health + 1.0)
+		_stats.take_damage(_stats.max_health + 1.0, "The Storm")
 
 
 # --- Storm front position --------------------------------------------------

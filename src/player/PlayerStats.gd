@@ -17,6 +17,14 @@ var damage_reduction: float = 0.0   # 0.0–1.0; set by ToughnessRelic
 var life_capsule_active: bool = false  # set by LifeCapsule; consumed on first lethal hit
 var kill_count: int = 0
 
+# Set on every take_damage() call; read by PlayerDeath/HUD on player_died to
+# populate the DeathScreen ("killed by ...") and by SpectatorView to know
+# which roster id the camera should jump to. source_id is -1 for environmental
+# damage (storm/hazard/DoT) — there's no player to spectate-follow for those.
+var last_killer_name: String = "Unknown"
+var last_killer_id: int = -1
+var last_killing_damage: float = 0.0
+
 var _current_layer: int = Constants.Layer.CRUST
 var _storm: StormSystem = null
 
@@ -54,7 +62,7 @@ func _process(delta: float) -> void:
 	for effect_name: String in _active_effects:
 		var entry: Dictionary = _active_effects[effect_name]
 		entry["remaining"] -= delta
-		_tick_dot(entry, delta)
+		_tick_dot(effect_name, entry, delta)
 		if entry["remaining"] <= 0.0:
 			to_remove.append(effect_name)
 			any_expired = true
@@ -65,7 +73,7 @@ func _process(delta: float) -> void:
 
 
 # Damage-over-time payload (Heat Charge burn): applies dot_dps in dot_interval chunks.
-func _tick_dot(entry: Dictionary, delta: float) -> void:
+func _tick_dot(effect_name: String, entry: Dictionary, delta: float) -> void:
 	var params: Dictionary = entry["params"]
 	var dps: float = float(params.get("dot_dps", 0.0))
 	if dps <= 0.0 or is_dead:
@@ -74,7 +82,7 @@ func _tick_dot(entry: Dictionary, delta: float) -> void:
 	entry["dot_accum"] += delta
 	while entry["dot_accum"] >= interval:
 		entry["dot_accum"] -= interval
-		take_damage(dps * interval)
+		take_damage(dps * interval, effect_name)
 		if is_dead:
 			return
 
@@ -169,7 +177,11 @@ func is_revealed() -> bool:
 	return false
 
 
-func take_damage(amount: float) -> void:
+## source_name/source_id identify the killing blow for the DeathScreen/SpectatorView
+## (step 8): source_id is the attacking PlayerController/TestDummy's GameManager
+## roster id, or -1 for environmental damage (storm/hazard/DoT) which has no
+## player to credit or spectate-follow.
+func take_damage(amount: float, source_name: String = "Unknown", source_id: int = -1) -> void:
 	if is_dead:
 		return
 	# Damage order: armor first (flat subtracted, then percent of the remainder), THEN
@@ -190,6 +202,9 @@ func take_damage(amount: float) -> void:
 		_spawn_damage_number(effective)
 	health_changed.emit(current_health, max_health)
 	if current_health == 0.0:
+		last_killer_name = source_name
+		last_killer_id = source_id
+		last_killing_damage = effective
 		is_dead = true
 		player_died.emit()
 

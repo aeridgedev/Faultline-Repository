@@ -98,7 +98,7 @@ func _apply_damage(layer: int) -> void:
 	dmg *= (1.0 - _stats.hazard_resist())
 	if dmg <= 0.0:
 		return
-	_stats.take_damage(dmg)
+	_stats.take_damage(dmg, "The Depths")
 	depth_hazard_tick.emit(dmg)
 
 

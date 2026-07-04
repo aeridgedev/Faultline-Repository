@@ -1,8 +1,10 @@
-## Faultline — reacts to player_died, freezes controller, enters spectator stub.
+## Faultline — reacts to player_died: freezes the controller and reports the
+## death to GameManager's roster (which checks the win condition). The actual
+## DeathScreen/SpectatorView UI flow is driven by HUD, which listens to the
+## same PlayerStats.player_died signal directly (see HUD._on_player_died).
 class_name PlayerDeath
 extends Node
 
-# TODO(match controller): connect death_processed to alive-count logic
 signal death_processed(player_id: int)
 signal died
 
@@ -15,12 +17,7 @@ func _ready() -> void:
 
 
 func _on_player_died() -> void:
-	_controller.set_physics_process(false)
-	_controller.set_process_input(false)
+	_controller.freeze_controls()
+	GameManager.mark_player_dead(_controller.player_id)
 	death_processed.emit(_controller.player_id)
 	died.emit()
-	_enter_spectator_mode()
-
-
-func _enter_spectator_mode() -> void:
-	print("[PlayerDeath] player %d entering spectator mode" % _controller.player_id)

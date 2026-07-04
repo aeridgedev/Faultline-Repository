@@ -15,7 +15,16 @@
       "Bash(python -c \"import json;json.load\\(open\\('data/world_config.json'\\)\\);print\\('world_config.json OK'\\)\")",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('data/world_config.json'\\)\\);console.log\\('world_config.json OK'\\)\")",
       "Bash(python -c \"import json; json.load\\(open\\('data/armor_stats.json'\\)\\); json.load\\(open\\('data/world_config.json'\\)\\); print\\('JSON OK'\\)\")",
-      "Bash(python -c \"import json; a=json.load\\(open\\('data/armor_stats.json'\\)\\); assert a['classes']['Titan']['tiers']['Legendary']['durability']==160; assert a['classes']['Hellforge']['passive']['burn_resist'] is None; print\\('armor schema OK'\\)\")"
+      "Bash(python -c \"import json; a=json.load\\(open\\('data/armor_stats.json'\\)\\); assert a['classes']['Titan']['tiers']['Legendary']['durability']==160; assert a['classes']['Hellforge']['passive']['burn_resist'] is None; print\\('armor schema OK'\\)\")",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --editor --quit)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --check-only --quit)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --quit-after 120)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --script res://tests/_tmp_roster_smoketest.gd)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . res://tests/_tmp_roster_smoketest.tscn --quit-after 10)",
+      "Skill(simplify)",
+      "Skill(simplify:*)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --quit-after 150)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . res://tests/_tmp_roster_smoketest2.tscn --quit-after 10)"
     ]
   }
 }

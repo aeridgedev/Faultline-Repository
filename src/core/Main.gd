@@ -22,6 +22,10 @@ func _ready() -> void:
 	# Snap camera to spawn position immediately — prevents a visible left-side
 	# gap caused by the camera starting at (0,0) and smoothly panning to spawn.
 	(player.get_node("Camera2D") as Camera2D).reset_smoothing()
+	player.player_id = GameManager.register_player("You", player, false)
+	(player.get_node("PlayerStats") as PlayerStats).layer_changed.connect(
+		func(new_layer: int) -> void: GameManager.record_layer_reached(player.player_id, new_layer)
+	)
 	player.init_world(terrain_manager)
 	# Starting loadout (Common Precision Drill in hotbar slot 1, Common Sword in slot 2)
 	# is populated by setup_hotbar() below: its add_item calls route through
@@ -34,8 +38,8 @@ func _ready() -> void:
 	player.init_storm(storm)
 	(_world.get_node("PressureSystem") as PressureSystem).zero_gravity_changed.connect(player.set_zero_gravity)
 	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
-	for pos: Vector2 in dummy_positions:
-		_spawn_test_dummy(pos)
+	for i in dummy_positions.size():
+		_spawn_test_dummy(dummy_positions[i], i, layer_manager)
 
 	var hud: HUD = HUDScene.instantiate() as HUD
 	add_child(hud)
@@ -110,11 +114,12 @@ func _build_background(layer_manager: LayerManager) -> void:
 # DEV-ONLY: place a test dummy at a world-space position.
 # Positions come from WorldGenerator (2 per layer, on cave floors).
 # Remove once networked players exist.
-func _spawn_test_dummy(pos: Vector2) -> void:
+func _spawn_test_dummy(pos: Vector2, index: int, layer_manager: LayerManager) -> void:
 	var dummy := TestDummy.new()
-	dummy.name = "TestDummy"
+	dummy.name = "TestDummy%d" % index
 	add_child(dummy)
 	dummy.global_position = pos
+	dummy.setup(index, layer_manager.layer_at_y(pos.y))
 
 
 func _spawn_position(layer_manager: LayerManager) -> Vector2:

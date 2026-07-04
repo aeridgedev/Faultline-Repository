@@ -1046,9 +1046,11 @@ func _process_hitbox_overlaps() -> void:
 			total_dmg *= _relic_manager.damage_mult()
 		# Status effects: Weakness Bomb (< 1.0), Bloodstim (> 1.0).
 		total_dmg *= stats.status_damage_output_mult()
-		target_stats.take_damage(total_dmg)
+		var attacker_name: String = GameManager.get_player(player_id).get("name", "Unknown")
+		target_stats.take_damage(total_dmg, attacker_name, player_id)
 		if target_stats.is_dead:
 			stats.add_kill()
+			GameManager.record_kill(player_id)
 		# Durability is spent once per swing that actually connects.
 		if not _swing_consumed:
 			_swing_consumed = true
@@ -1093,6 +1095,21 @@ func get_equipped_drill() -> DrillBase:
 
 func get_equipped_weapon() -> WeaponBase:
 	return _equipped_weapon
+
+
+## Typed accessor so callers that only hold a generic Node reference (e.g.
+## SpectatorView, via GameManager.get_player_node()) can reach PlayerStats
+## without a hardcoded "PlayerStats" child-name lookup. TestDummy exposes the
+## same method so both roster participant types share one contract.
+func get_stats() -> PlayerStats:
+	return stats
+
+
+## Freezes input/physics on death or match end. Shared by PlayerDeath (on this
+## player's own death) and HUD (on match_won, for the winner who's still playing).
+func freeze_controls() -> void:
+	set_physics_process(false)
+	set_process_input(false)
 
 
 func set_zero_gravity(enabled: bool) -> void:

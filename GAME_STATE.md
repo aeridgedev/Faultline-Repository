@@ -44,7 +44,7 @@ balance numbers are provisional dev-placeholders pending a formal balance pass.
 | 5b | Armor | **Done** | 5 classes × 4 tiers; flat+percent reduction, durability, class passives (strengths `TBD`/null), auto-equip, HUD durability bar |
 | 6 | Relics + throwables + consumables | **Done** | Relics; all 7 throwables arc + Area2D impact effects; all 5 consumables functional; effects via `PlayerStats.apply_status()` + HUD panel; items consumed on use. Magnitudes `TBD` |
 | 7 | Storm system | **Done** — visual + phases | Damage values `TBD`; drill-efficiency + heal penalty wired |
-| 8 | UI | **Partial** | HUD, StormTimer, LayerIndicator, KillCounter done; DeathScreen/SpectatorView are stubs |
+| 8 | UI | **Done** | HUD, StormTimer, LayerIndicator, KillCounter, DeathScreen, SpectatorView, and the WinScreen/leaderboard all implemented; wired to a new `GameManager` match roster (deviation: TestDummies register as roster participants — see Known Issues #11) |
 | 9 | Network | **Not started** | All offline; placeholder structure only |
 
 ---
@@ -53,16 +53,24 @@ balance numbers are provisional dev-placeholders pending a formal balance pass.
 
 ### Autoloads (always present)
 - **Constants** (`src/core/Constants.gd`) — all structural enums, locked values, and formulas.
-- **GameManager** (`src/core/GameManager.gd`) — match state machine (BOOT → LOBBY → IN_MATCH → POST_MATCH); owns `data: Dictionary` loaded from all JSON files; advances `match_elapsed` each frame.
+- **GameManager** (`src/core/GameManager.gd`) — match state machine (BOOT → LOBBY → IN_MATCH → POST_MATCH); owns `data: Dictionary` loaded from all JSON files; advances `match_elapsed` each frame. Also owns the **match roster** (step 8): `_players: Dictionary` (id → `{id, name, node, kills, deepest_layer, alive, is_dummy}`).
+  - `register_player(name, node, is_dummy) -> int` — call once per participant at spawn; returns its roster id. `node` is the live scene node (kept so the spectator system can camera-follow it directly; every read-back is guarded with `is_instance_valid()` since TestDummy `queue_free()`s on death).
+  - `record_kill(id)`, `record_layer_reached(id, layer)` — called by the killer's `PlayerController` after a lethal swing, and whenever a participant's `PlayerStats.layer_changed` fires.
+  - `mark_player_dead(id)` — called from `PlayerDeath`/`TestDummy` on death; idempotent; internally calls `_check_win_condition()`.
+  - `get_leaderboard() -> Array` — every entry (dead + alive), sorted by kills descending, for `WinScreen`.
+  - `get_living_player_ids() -> Array`, `get_player(id) -> Dictionary`, `get_player_node(id) -> Node` (null-safe) — read by `SpectatorView`.
+  - `_check_win_condition()` — when exactly one participant is alive, calls `end_match()` and emits `signal match_won(winner_id: int)` (just the id — the only consumer, `HUD`, looks the rest up via `get_leaderboard()`).
+  - `restart_match()` — clears the roster and calls `get_tree().reload_current_scene()`; `Main.gd`'s `_ready()` re-registers everyone and calls `start_match()` again, so no extra reset bookkeeping is needed here.
+  - **Deliberate DEV-scope decision:** `TestDummy` also registers as a roster participant (see its section below) so this whole system has real multi-participant data to exercise before step 9 (networking) exists — flagged as Known Issue #11.
 
 ### Bootstrap (`src/core/Main.gd`)
 Entry point: `src/core/Main.tscn`. On `_ready`:
 1. Instantiates PlayerScene and HUDScene.
 2. Calls `WorldGenerator.generate()` with random seed.
 3. Builds vertical background gradient.
-4. Spawns player at atmosphere above Crust surface (centered X — single-player placeholder; real 100-player scatter TBD with networking).
+4. Spawns player at atmosphere above Crust surface (centered X — single-player placeholder; real 100-player scatter TBD with networking); registers it with `GameManager.register_player("You", player, false)` and connects `PlayerStats.layer_changed` → `GameManager.record_layer_reached()`.
 5. Initialises DepthHazard, PressureSystem, StormSystem.
-6. Spawns `TestDummy` (DEV-ONLY; remove when networking exists).
+6. Spawns `TestDummy` (DEV-ONLY; remove when networking exists), passing each a spawn index + its `LayerManager.layer_at_y()` layer so `TestDummy.setup()` can register it on the `GameManager` roster too (step 8 DEV-scope decision — see Known Issues #11).
 7. Calls `player.setup_hotbar()` after HUD is ready.
 8. Calls `GameManager.start_match()`.
 
@@ -114,7 +122,7 @@ selected). `equip_drill(drill)` remains the low-level unequip-old → wire → e
 - Cooldown: `1.0 / weapon.swing_speed` seconds (divided by Haste relic `attack_speed_mult`). Stored as `_attack_duration`; `_attack_timer` counts it down. New swings are blocked until it reaches 0.
 - On swing, `_activate_attack_hitbox()` positions a persistent `Area2D` child (`_attack_hitbox`, built once in `_build_attack_hitbox()`) in front of the player, aimed at the cursor: a `RectangleShape2D` of `size = (weapon.attack_range, TILE_SIZE*2)`, offset by `aim * range/2` and rotated to `aim.angle()`, so it spans from the player out to the weapon's reach. `collision_mask` bit 1 detects player bodies + the test dummy; terrain (also bit 1) is filtered out by the `PlayerStats` lookup.
 - The hitbox is live for a short window (`min(0.12s, cooldown)`). `_tick_attack_hitbox()` (called every physics frame, independent of tool/inventory state so the cooldown and window keep advancing) polls `get_overlapping_bodies()` across the window — this absorbs the one-frame delay before Area2D overlaps register. Each overlapping body with a `PlayerStats` child (excluding self and dead targets) takes `weapon.damage × Strength-relic mult` **once per swing** (`_swing_hit_bodies` dedupes). Multiple targets in the arc are all hit (FFA).
-- Durability is consumed `1.0` **once per swing that connects** (`_swing_consumed`); whiffs cost nothing. Lethal hits call `stats.add_kill()`.
+- Durability is consumed `1.0` **once per swing that connects** (`_swing_consumed`); whiffs cost nothing. Every hit passes the attacker's roster name + `player_id` into `target_stats.take_damage()` (via `GameManager.get_player(player_id)`) so a lethal swing's `last_killer_name`/`last_killer_id` are correct; lethal hits call `stats.add_kill()` **and** `GameManager.record_kill(player_id)` (keeps the roster's kill count in sync with `PlayerStats.kill_count`).
 - Broken weapon / null damage (TBD): swing does nothing.
 - `get_attack_cooldown_ratio()` exposes remaining-cooldown fraction (0 = ready) for the HUD overlay.
 
@@ -130,7 +138,7 @@ selected). `equip_drill(drill)` remains the low-level unequip-old → wire → e
 ### PlayerStats (`src/player/PlayerStats.gd`)
 Holds `current_health`, `max_health` (100.0 default), `damage_reduction` (0.0–1.0, set by ToughnessRelic), `life_capsule_active`, `_current_layer`, `kill_count` (incremented by `add_kill()`).
 
-`take_damage(amount)`: applies reduction, clamps to 0, spawns floating DamageNumber, emits `health_changed`. If health reaches 0 and `life_capsule_active`, consumes it and leaves player at 1 HP instead.
+`take_damage(amount, source_name: String = "Unknown", source_id: int = -1)`: applies reduction, clamps to 0, spawns floating DamageNumber, emits `health_changed`. If health reaches 0 and `life_capsule_active`, consumes it and leaves player at 1 HP instead. Otherwise, on the killing blow, sets `last_killer_name`/`last_killer_id`/`last_killing_damage` (read by `PlayerDeath`/`HUD` for the DeathScreen and by `SpectatorView` for its initial camera target) before emitting `player_died`. `source_id` is the attacking `PlayerController`/`TestDummy`'s `GameManager` roster id, or `-1` for environmental damage (storm/hazard/DoT) — there's no player to credit or spectate-follow for those. Every existing call site (melee in `PlayerController`, `DepthHazard`, `PressureSystem`, `StormSystem`, the DoT tick in `_tick_dot`) passes a source now; **new damage sources must too**, or the DeathScreen just shows "Unknown".
 
 `heal(amount)`: multiplied by `storm.get_heal_mult()` if player is inside storm zone; clamped to `max_health`.
 
@@ -172,7 +180,10 @@ Signals: `layer_changed(int)`, `descent_blocked(int)`, `kill_progress_changed(cu
 | Inner Core | 4 |
 
 ### PlayerDeath (`src/player/PlayerDeath.gd`)
-On `player_died`: freezes `PlayerController` physics and input; emits `death_processed(player_id)`. `_enter_spectator_mode()` is a stub (prints debug message; real follow-cam logic TBD step 9).
+On `player_died`: freezes `PlayerController` physics and input, calls `GameManager.mark_player_dead(_controller.player_id)` (checks the win condition), then emits `death_processed(player_id)`/`died`. The DeathScreen/SpectatorView UI flow itself is driven separately by `HUD`, which listens to the same `PlayerStats.player_died` signal directly (see HUD below) — `PlayerDeath`'s job is purely the freeze + roster notification.
+
+### TestDummy (`src/player/TestDummy.gd`)
+DEV-ONLY stationary combat target (remove once real networked players exist). **Step 8 deviation:** also registers as a `GameManager` roster participant via `setup(index, layer)` (called by `Main.gd` right after spawn+positioning) — `register_player("Dummy %d" % index, self, true)` plus `record_layer_reached()` with its spawn layer (dummies don't move, so spawn layer IS their deepest layer reached). `_on_died()` calls `GameManager.mark_player_dead(player_id)` before `queue_free()`. This exists purely so the leaderboard/win-condition/spectator flow has real multi-participant data before step 9 — see Known Issues #11.
 
 ---
 
@@ -591,8 +602,11 @@ Built entirely in code. Contains:
 - **KillCounter** — local player kill count; increments on any `player_died` signal heard in tree.
 - **KillProgressPanel** — prominent descent-gate panel below KillCounter (top-left, `offset_top=80`, `offset_bottom=130`, widened to x=8–196). Deliberately styled to stand out from the cyan HUD: 14px **gold** centered label with a dark outline, a thick (9px) gold progress bar, and a gold-bordered dark panel (its own stylebox, excluded from the generic `_style_panels()` list). Hidden in Core Hollow. Shows `"{next_layer}: {current}/{required} kills"` (e.g. Mantle/Outer Core/Inner Core). `current` is clamped to `required` so the bar never overflows. Receives `kill_progress_changed` from DescentTracker; no polling — fully signal-driven. Populates on the first physics frame (DescentTracker's sentinel `-1` triggers the initial emit).
 - **EffectsPanel** — small panel below StormPanel (top-right, `offset_top=76`). Hidden when no effects active. When `active_effects_changed` fires from `PlayerStats`, rebuilds a VBoxContainer row-list: each row shows effect name (green for buffs, red for debuffs) and remaining duration in whole seconds (ceiling). Panel height is recalculated as `6 + N×14` px per update.
-- **DeathScreen** — full-screen overlay on death; SPECTATE button emits `spectate_requested`.
-- **SpectatorView** — shown after spectate clicked; no camera follow logic (stub; TBD step 9).
+- **DeathScreen** (`src/ui/DeathScreen.gd`/`.tscn`) — full-screen dark-overlay panel shown on `player_died`. `show_death(data: Dictionary)` (keys `killer_name`/`damage`/`layer_name`/`kills`, all with safe fallbacks) populates killer name, killing-blow damage, death layer, and match kill count — `HUD._on_player_died()` builds that dict from `PlayerStats.last_killer_name`/`last_killing_damage`/`get_layer()`/`kill_count`. SPECTATE button emits `spectate_requested`, handled by `HUD._on_spectate_requested()`.
+- **SpectatorView** (`src/ui/SpectatorView.gd`/`.tscn`) — real camera-follow spectating. `start_spectating(camera: Camera2D, preferred_target_id: int)` reparents the handed-off `Camera2D` onto the target node (`GameManager.get_player_node(id)`) — works identically for `PlayerController` or `TestDummy` since both have a child node named `"PlayerStats"`; `Camera2D` being a `Node2D` means reparenting alone makes it follow, no per-frame code needed. Top bar shows only the spectated target's name + an HP `ProgressBar` (via that target's `PlayerStats.health_changed`). Left/Right (`ui_left`/`ui_right`, only while `visible`) cycle `GameManager.get_living_player_ids()` with wraparound; auto-advances to another living target if the current one's `player_died` fires. `stop_spectating()` hides + disconnects (does not touch the camera's parent — the caller owns that afterward).
+- **WinScreen** (`src/ui/WinScreen.gd`/`.tscn`, new) — full-screen match-end leaderboard. `show_results(leaderboard: Array, winner_id: int)` pins the `winner_id` entry at rank 1 with a gold ("Legendary" tier color) highlight + "WINNER" tag, then lists the rest of `GameManager.get_leaderboard()` (already kills-sorted) beneath it in a `ScrollContainer` (rank/name/kills/deepest-layer-name per row). `play_again_requested` → `HUD` wires to `GameManager.restart_match()`; `quit_requested` → `get_tree().quit()`. Shown to whoever's HUD instance is running (the winner, still playing until frozen here, or a spectator already mid-`SpectatorView`) via `HUD._on_match_won()`, connected to the new `GameManager.match_won` signal.
+
+**Death/spectate/win orchestration (`HUD.gd`, step 8).** `HUD._hide_match_hud()` hides every normal in-match element (`BottomHUD`, `BottomBG`, `LayerPanel`, `StormPanel`, `KillProgressPanel`, `EffectsPanel`, `KillCounter`, `FPSLabel`) — used both when spectating starts and when the match ends, since `DeathScreen`/`WinScreen` are opaque overlays but `SpectatorView` is not (its background is transparent by design, so the game world stays visible behind its top name/HP bar; leaving the rest of the HUD up underneath would clutter that view). `_on_player_died()` returns early if `GameManager.state == POST_MATCH` — guards a same-frame edge case where this death also happens to be the second-to-last participant, so `PlayerDeath`'s earlier-connected `player_died` listener (`GameManager.mark_player_dead()`) can synchronously fire `match_won` before this handler runs; the win screen has already taken over by then (and would render on top by node order regardless, since `WinScreen` is the last `Control` sibling in `HUD.tscn`), so a redundant DeathScreen is skipped. `_on_match_won(winner)` hides the match HUD + DeathScreen, calls `_spectator_view.stop_spectating()`, freezes the local player's controller if they're still alive (the winner), and calls `_win_screen.show_results(GameManager.get_leaderboard(), winner.id)`.
 
 ### DamageNumber (`src/ui/DamageNumber.gd`)
 World-space floating label. Spawned by `PlayerStats.take_damage()`. Floats upward at 22px/s, fades, self-destructs after 0.9s. White text with black outline.
@@ -659,9 +673,9 @@ Phase schedule locked. Damage values TBD.
 | 6 | `Bloodstim.gd`, `ThermalCapsule.gd`, `FaultBeacon.gd` | ~~Signals fire but hookups not implemented.~~ **Resolved** — Bloodstim (speed+damage), ThermalCapsule (hazard resist wired into DepthHazard + PressureSystem), FaultBeacon (world marker) all apply real effects; items consumed on use. | Fixed |
 | 7 | `BasicScanner.gd`, `DeepRadar.gd` | Signals fire but no detection or denial-of-knowledge mechanic wired. | Medium |
 | 8 | `KillCounter.gd` | Tracks any `player_died` signal in tree — no official kill-attribution system. Inflates count in multi-player. | Low (step 9) |
-| 9 | `PlayerDeath.gd`, `SpectatorView.gd` | Spectator follow-cam and player-list not implemented. | Low (step 9) |
-| 10 | `GameManager.gd` | POST_MATCH state has no UI or logic (no win screen, no leaderboard). | Low (step 8) |
-| 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (6 per layer) must be removed when networked players exist. | Low (step 9) |
+| 9 | `PlayerDeath.gd`, `SpectatorView.gd` | ~~Spectator follow-cam and player-list not implemented.~~ **Resolved** — `SpectatorView.start_spectating()` reparents the local player's `Camera2D` onto any living `GameManager` roster participant; Left/Right cycle, auto-advance on target death. | Fixed |
+| 10 | `GameManager.gd` | ~~POST_MATCH state has no UI or logic (no win screen, no leaderboard).~~ **Resolved** — `GameManager` roster + `match_won` signal + `WinScreen.show_results()` (Play Again → `restart_match()`, Quit → `get_tree().quit()`). | Fixed |
+| 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (6 per layer) must be removed when networked players exist. **Widened scope (2026-07-04):** dummies now also register as `GameManager` roster participants (`TestDummy.setup()`) so the step 8 leaderboard/win-condition/spectator flow has real multi-participant data to exercise — a deliberate deviation from "DEV-ONLY combat target, not a player." Since dummies never attack, the win condition in practice only fires if the local player kills every dummy (or dies leaving exactly one other participant alive); this whole roster wiring should be revisited once step 9 replaces dummies with real networked players. | Low (step 9) |
 | 12 | `Main.gd` | Player always spawns at world centre X. Needs per-player scatter for 100-player drops. | Low (step 9) |
 | 13 | `DrillClass.gd`, `terrain_stats.json` | Thermal's `class_effectiveness` (now set to excel at soft/organic terrain) is inert at runtime: `ignores_terrain_effectiveness(THERMAL)` makes the dig calc use uniform speed, ignoring the JSON values. Data reflects intent; runtime does not. Decide later whether Thermal keeps uniform speed or honours its terrain values. | Low |
 | 14 | `InventoryManager.gd`, `PlayerController.gd` | ~~Drill/weapon current durability lost on drop → re-pickup.~~ **Resolved** — dropped items carry live `current_durability` (`_with_current_durability`), restored on re-equip (`_restore_saved_durability`), broken re-flagged at 0. | Fixed |
@@ -777,6 +791,119 @@ in place; that debug affordance is now gone in favor of production behavior.
 - **`PlayerController.gd`**: removed the entire F6/F7 `_unhandled_input()` block
   (was DEV-ONLY scaffolding; no longer needed now that item types are set by real
   loot rather than debug cycling).
+
+**Step 8 — death/spectator/win-screen flow completed, plus a new `GameManager`
+match roster.** Ran three sub-agents in parallel (DeathScreen, SpectatorView,
+WinScreen — each restricted to its own new/existing files) against a roster API
+built first by hand, then wired the whole flow together by hand.
+
+- **`GameManager.gd`**: new match roster — `register_player(name, node, is_dummy)`,
+  `record_kill(id)`, `record_layer_reached(id, layer)`, `mark_player_dead(id)`
+  (idempotent; internally checks the win condition), `get_leaderboard()` (kills
+  descending), `get_living_player_ids()`, `get_player(id)`/`get_player_node(id)`
+  (null-safe against freed nodes), `restart_match()` (clears roster + reloads the
+  scene), and a new `match_won(winner: Dictionary)` signal fired the instant exactly
+  one participant remains alive. Verified with a throwaway scene-based smoketest
+  (register 3 participants, kill 2, assert `match_won`/leaderboard/idempotency/
+  freed-node handling — 10/10 assertions passed) before deleting the test files.
+- **`PlayerStats.gd`**: `take_damage(amount, source_name: String = "Unknown",
+  source_id: int = -1)` — the two new params set `last_killer_name`/`last_killer_id`/
+  `last_killing_damage` on the killing blow. Every existing call site updated:
+  `PlayerController`'s melee hit (`GameManager.get_player(player_id)`'s name +
+  `player_id`, plus a new `GameManager.record_kill(player_id)` alongside the
+  existing `stats.add_kill()`), `DepthHazard` ("The Depths"), `PressureSystem`
+  ("Crushing Pressure"), `StormSystem` ("The Storm", both the per-tick and the
+  17:30-deadline instakill), and `_tick_dot` (the status effect's own name, e.g.
+  "Burning").
+- **`TestDummy.gd`**: new `setup(index, layer)` (called by `Main.gd` right after
+  spawn+positioning) registers the dummy on the `GameManager` roster and records
+  its spawn layer as its deepest layer reached; `_on_died()` now calls
+  `GameManager.mark_player_dead(player_id)` before `queue_free()`. Deliberate
+  DEV-scope decision, not an oversight — see Known Issues #11.
+- **`Main.gd`**: registers the local player (`GameManager.register_player("You",
+  player, false)`), connects `PlayerStats.layer_changed` → `record_layer_reached()`,
+  and passes each dummy's spawn index + computed layer (`layer_manager.layer_at_y()`)
+  into `TestDummy.setup()`.
+- **`PlayerDeath.gd`**: `_on_player_died()` now calls
+  `GameManager.mark_player_dead(_controller.player_id)`; removed the old
+  `_enter_spectator_mode()` print-only stub (the real DeathScreen/SpectatorView flow
+  lives in `HUD.gd`, which listens to the same `player_died` signal directly).
+- **`src/ui/DeathScreen.gd`/`.tscn`** (sub-agent-built): `show_death(data: Dictionary)`
+  replaces the old no-arg `show_death()`; renders killer name/killing-blow damage/
+  death layer/kill count inside a styled dark `PanelContainer`, keeping the existing
+  `spectate_requested` signal contract HUD already used.
+- **`src/ui/SpectatorView.gd`/`.tscn`** (sub-agent-built): real camera-follow
+  spectating — see the UI Systems section above for the full mechanism
+  (`start_spectating`/`stop_spectating`, reparent-on-switch, Left/Right cycling,
+  auto-advance on death, name+HP top bar).
+- **`src/ui/WinScreen.gd`/`.tscn`** (new, sub-agent-built): match-end leaderboard —
+  see the UI Systems section above (`show_results`, `play_again_requested`,
+  `quit_requested`).
+- **`HUD.gd`/`.tscn`**: added the `WinScreen` node/onready var; `init()` connects
+  `GameManager.match_won` and the two `WinScreen` button signals; rewrote
+  `_on_player_died()` to build the `DeathScreen` data dict from live `PlayerStats`
+  fields (with the POST_MATCH early-return guard described in the UI Systems
+  section), `_on_spectate_requested()` to hand `SpectatorView` the player's
+  `Camera2D` + `last_killer_id`, and added `_on_match_won()` + `_hide_match_hud()`.
+- All three sub-agent deliverables were read back and cross-checked against the
+  contract they were given before wiring; a full headless boot (`--quit-after 120`,
+  no runtime errors) and a `--check-only` parse pass (after forcing a
+  `--headless --editor --quit` project rescan so the brand-new `WinScreen`
+  `class_name` was picked up in the global script class cache) both came back clean.
+
+**Step 8 cleanup pass (`/simplify`) — 4 parallel reviews (reuse/simplification/
+efficiency/altitude), findings applied.**
+- New **`src/ui/UIStyle.gd`** (`class_name UIStyle`, static-only helpers) — three
+  files (`HUD.gd`, `SpectatorView.gd`'s new `_style_top_bar()`) had each
+  hand-rolled the identical "small HUD panel" `StyleBoxFlat` recipe, and two more
+  (`DeathScreen.gd`, `WinScreen.gd`) had each hand-rolled the identical "full-screen
+  modal" recipe; both are now `UIStyle.small_panel_style()`/`modal_panel_style()`.
+  `UIStyle.clear_children()` replaces the "remove+queue_free every child" loop that
+  was duplicated between `HUD._on_effects_changed()` and the new `WinScreen.show_results()`.
+- **`GameManager.gd`**: `match_won` now emits `winner_id: int` instead of a
+  duplicated Dictionary (the only consumer, `HUD._on_match_won`, only ever read
+  `.id`); `get_leaderboard()` no longer `.duplicate()`s every entry (single-read,
+  discard-immediately caller, matching `get_player()`'s existing non-duplicating
+  behavior); `get_living_player_ids()` now calls `get_player_node(id)` instead of
+  reimplementing its `is_instance_valid()` check inline.
+- **Controller-freeze consolidated**: new `PlayerController.freeze_controls()`
+  (`set_physics_process(false)` + `set_process_input(false)`) replaces the same
+  two-line body that `PlayerDeath.gd` and `HUD._on_match_won` each had separately.
+- **`SpectatorView` no longer locates a target's stats via a hardcoded
+  `get_node_or_null("PlayerStats")` string lookup.** Both `PlayerController` and
+  `TestDummy` now expose a `get_stats() -> PlayerStats` method (an actual shared
+  contract instead of an unenforced child-naming convention two classes happen to
+  follow); `SpectatorView._switch_to()` calls that.
+- **`HUD` now depends on `PlayerDeath.died` instead of the raw
+  `PlayerStats.player_died`** for `_on_player_died()` — `PlayerDeath.died` only
+  fires after `GameManager.mark_player_dead()` has already run, so the existing
+  POST_MATCH guard (skips showing DeathScreen if this same death also ended the
+  match) is now a real causal guarantee instead of resting on an unstated
+  signal-connection-order assumption.
+- **`HUD._process()` now early-returns once `_match_hud_active` goes false**
+  (set by `_hide_match_hud()`, which death/spectating/match-end all funnel
+  through) — previously it kept scanning hotbar slots and dimming
+  now-invisible cooldown/use-progress overlays every frame for the rest of the
+  match after the player died or the match ended.
+- Minor dedup: `SpectatorView`'s two HP-bar-update call sites share one
+  `_set_hp_bar()`; `WinScreen._build_row()` now builds each row-kind's
+  `StyleBoxFlat` once (cached) instead of per row, and folds its five repeated
+  `add_theme_font_size_override("font_size", 13)` calls into the existing
+  per-row color-override loop.
+- **Deliberately skipped** (noted, not fixed): threading throw-owner identity
+  through `apply_status()`/`_tick_dot()` so a Heat Charge burn kill credits the
+  thrower instead of showing "Killed by Burning" — real gap, but the fix reaches
+  into `ThrowableBase.gd`/`HeatCharge.gd` (step 6 files untouched by this diff),
+  which is out of altitude for a cleanup pass on the step 8 diff; and wrapping
+  `_hide_match_hud()`'s 8 individually-toggled HUD nodes into one container,
+  since `HUD.tscn`'s panels are independently anchored to different screen
+  corners and restructuring that layout wasn't worth the risk for saving 8 bool
+  assignments.
+- Re-verified after all fixes: `--check-only` parse pass clean (after another
+  `--headless --editor --quit` rescan for the new `UIStyle` class), a fresh
+  150-frame headless boot clean, and a second throwaway roster smoketest against
+  the new `match_won(winner_id: int)` signature (5/5 assertions) — deleted after
+  passing.
 
 ### 2026-07-02
 

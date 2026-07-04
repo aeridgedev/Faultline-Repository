@@ -3,24 +3,33 @@
 Working brief for Claude when building this project. Read this first every session.
 
 > **NEXT SESSION PRIORITY (when the user opens a new session and asks "what should
-> I do" / "what's next", lead with this):** **Build step 6 (throwables + consumables)
-> is now complete.** All 7 throwables arc toward the cursor on G and trigger real
-> Area2D-based effects on impact (Smoke/Dust vision clouds, Paralysis freeze, Weakness
-> damage debuff, Heat burn DoT, Echo through-terrain reveal, Seismic terrain
-> destruction — which is barred from BEDROCK and CORE_HOLLOW_SHELL by the locked
-> drill-only rule); Bloodstim/ThermalCapsule/FaultBeacon consumables now apply real
-> effects on G-hold with a hotbar progress overlay; thrown/consumed items are removed
-> from inventory. Effects run through a new **status-effect payload system in
-> `PlayerStats`** (`apply_status(name, dur, is_buff, params)` with `move_speed_mult`/
-> `damage_output_mult`/`frozen`/`dot_dps`/`hazard_resist`/`revealed`), surfaced on the
-> existing HUD buff/debuff panel and read by PlayerController (move/damage/freeze) and
-> DepthHazard/PressureSystem (thermal resist). All throwable/consumable numbers are TBD
-> dev placeholders in `data/world_config.json` (`throwables`/`consumables`).
-> Recommended next: **Armor system (build step 5 remainder)** — armor files/stats were
-> stubs; a parallel thread has begun wiring `ArmorBase` into `PlayerStats` (see the
-> `equipped_armor` integration), so finish that. After that, **Storm/UI polish** (step
-> 7–8: DeathScreen/SpectatorView/POST_MATCH are still stubs). Confirm target with the
-> user before writing code.
+> I do" / "what's next", lead with this):** **Build step 8 (UI) is now complete,
+> including the death/spectator/win-screen flow.** Dying shows a `DeathScreen` with
+> killer name, killing-blow damage, layer died in, and match kill count; its SPECTATE
+> button hands a `SpectatorView` the local player's `Camera2D`, which reparents it
+> onto the killer (or the first living participant if the death was environmental)
+> and lets Left/Right cycle every living participant, auto-advancing off anyone who
+> dies while spectated. A new **`GameManager` match roster** (`register_player`/
+> `record_kill`/`record_layer_reached`/`mark_player_dead`/`get_leaderboard`/
+> `match_won` signal) tracks every participant's kills + deepest layer reached and
+> fires `match_won` the instant exactly one participant remains alive, which shows a
+> `WinScreen` leaderboard (winner pinned gold at rank 1, everyone else by kills) with
+> Play Again (`GameManager.restart_match()` — clears the roster, reloads the scene)
+> and Quit buttons. **Deliberate DEV-scope decision:** since real networked players
+> don't exist yet (step 9), the DEV-ONLY `TestDummy` targets were promoted to full
+> roster participants too, purely so this whole flow has real multi-participant data
+> to exercise end-to-end today — this is a documented deviation from "TestDummy is a
+> combat target, not a player" (see Known Issues #11 in GAME_STATE.md) and should be
+> revisited/removed once step 9 lands. `PlayerStats.take_damage()` gained
+> `source_name`/`source_id` params (every hazard/melee call site updated) so deaths
+> can report who/what killed the player. All armor + storm work from prior sessions
+> is also done (see GAME_STATE.md Overall Status table).
+> Recommended next: **Step 9 — Networking** (retrofit an authoritative headless
+> server onto these proven offline systems: terrain streaming/chunking, the input
+> model, and — new this session — the `GameManager` roster becoming the real
+> multi-client participant list instead of local player + dummies). This is the last
+> build step and the biggest one; confirm scope/approach with the user before writing
+> code rather than assuming a specific networking architecture.
 
 ## Game overview
 
@@ -195,8 +204,10 @@ which item this session targets before writing code.
 4. **Inventory + loot**  ✓ complete (InventoryManager, Hotbar, AutoCollect, LootTable, LootDrop, LootRestriction, Chest interactive UI, discard-to-world-drop)
 5. **Weapons + combat**  ◑ melee complete (Area2D hitbox swing + cooldown + HUD cooldown overlay; all 5 classes / 4 tiers, base stats are TBD placeholders). Ranged/throwable combat not built here.
 6. **Relics + throwables + consumables**  ✓ complete (relics; all 7 throwables arc + Area2D impact effects; Lytes/Medkit/Bloodstim/ThermalCapsule/FaultBeacon all functional; effects flow through `PlayerStats.apply_status()` + HUD panel; items consumed on use). All effect magnitudes are TBD in `data/world_config.json`.
-7. Storm system
-8. UI (HUD partially done; DeathScreen, SpectatorView, StormTimer stubs exist)
+7. Storm system  ✓ complete (visual + phases; damage values TBD)
+8. UI  ✓ complete (HUD, StormTimer, LayerIndicator, KillCounter, DeathScreen,
+   SpectatorView, and the win-screen/leaderboard all implemented and wired to the
+   `GameManager` match roster)
 9. **Network (last)** — retrofit authoritative server onto proven offline systems
 
 ## Working conventions
@@ -287,6 +298,32 @@ which item this session targets before writing code.
   throwable-type item among the free hotbar slots (3–5), wrapping around, and is a
   no-op if the player carries no throwable. Lives in `Hotbar.gd` (not
   `PlayerController.gd`) because slot selection is already Hotbar's job.
+- **RESOLVED (2026-07-04) — death/spectator/win-screen flow (step 8) + `GameManager`
+  match roster.** `GameManager` gained a roster (`register_player(name, node,
+  is_dummy)`, `record_kill`, `record_layer_reached`, `mark_player_dead`,
+  `get_leaderboard()`, `get_living_player_ids()`, `get_player_node()`, and a
+  `match_won(winner_id: int)` signal fired the instant exactly one participant
+  remains alive. **Deliberate DEV-scope decision:** `TestDummy` targets register as full
+  roster participants too (`TestDummy.setup(index, layer)`), specifically so this
+  flow has real multi-participant data before step 9 (networking) exists — this
+  is a documented deviation from "TestDummy is a combat target, not a player" (see
+  GAME_STATE.md Known Issues #11); revisit/remove once real networked players
+  replace dummies. `PlayerStats.take_damage(amount, source_name, source_id)` grew
+  two optional params (every existing call site — melee, DepthHazard, PressureSystem,
+  StormSystem, DoT ticks — updated to pass them) so a death can report who/what
+  landed the killing blow; `last_killer_name`/`last_killer_id`/`last_killing_damage`
+  are set at that point for the DeathScreen and SpectatorView's initial camera
+  target. `SpectatorView.start_spectating(camera, preferred_target_id)` reparents
+  the local player's existing `Camera2D` onto the spectated node (works for either
+  `PlayerController` or `TestDummy` — both have a child literally named
+  `"PlayerStats"`); Left/Right (`ui_left`/`ui_right`) cycle `GameManager.get_living_player_ids()`.
+  **Locked rule going forward:** any new damage source must pass a `source_name`
+  (and `source_id` if there's a real attacker to credit/spectate-follow) into
+  `take_damage()` — omitting it silently shows "Unknown" on the DeathScreen rather
+  than erroring, so this is easy to forget. Any new match participant type (once
+  step 9 adds real networked players) must call `GameManager.register_player()` the
+  same way TestDummy/the local player do, and call `GameManager.mark_player_dead()`
+  on death, or the leaderboard/win-condition silently won't see it.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the
