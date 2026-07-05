@@ -44,6 +44,8 @@ static func spawn(
 			if layer == Constants.Layer.CORE_HOLLOW:
 				continue  # no loot in Core Hollow
 
+			# Floor division to a whole slot-grid index is intended.
+			@warning_ignore("integer_division")
 			var slot_key := Vector2i(col / SLOT_SIZE, row / SLOT_SIZE)
 			if not slots.has(slot_key):
 				slots[slot_key] = []

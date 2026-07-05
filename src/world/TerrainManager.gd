@@ -303,7 +303,6 @@ func _tile_dense_crystal() -> Image:
 	const S := 16
 	var K  := Color(0.02, 0.08, 0.14)
 	var D  := Color(0.04, 0.14, 0.24)   # very dark teal
-	var B  := Color(0.08, 0.24, 0.40)   # base teal
 	var LT := Color(0.16, 0.42, 0.58)   # brighter facet
 	var WH := Color(0.60, 0.88, 0.95)   # specular
 	var PU := Color(0.18, 0.16, 0.40)   # purple tint in shadow

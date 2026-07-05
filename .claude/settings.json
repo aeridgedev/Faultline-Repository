@@ -24,7 +24,17 @@
       "Skill(simplify)",
       "Skill(simplify:*)",
       "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --quit-after 150)",
-      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . res://tests/_tmp_roster_smoketest2.tscn --quit-after 10)"
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . res://tests/_tmp_roster_smoketest2.tscn --quit-after 10)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --check-only --quit --verbose)",
+      "Bash(\"/c/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/godot 4/Godot_v4.7-stable_win64_console.exe\" --headless --path . --quit-after 60 --verbose)",
+      "Bash(grep -n \"world_width_tiles\" data/*.json)",
+      "Bash(grep -rn \"world_width_tiles\" data/)",
+      "Bash(where godot4 *)",
+      "Bash(powershell -Command \"Get-Command godot4 -ErrorAction SilentlyContinue; Get-Command godot -ErrorAction SilentlyContinue; Get-ChildItem -Path 'C:\\\\Program Files','C:\\\\Program Files \\(x86\\)' -Filter 'Godot*.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5 FullName\")",
+      "Bash(powershell -NoProfile -Command \"Get-ChildItem -Path 'C:\\\\Users' -Filter 'Godot*.exe' -Recurse -ErrorAction SilentlyContinue -Depth 6 | Select-Object -First 10 FullName\")",
+      "Bash(powershell -NoProfile -Command \"Get-ChildItem -Path 'C:\\\\' -Filter 'Godot*.exe' -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 20 FullName\")",
+      "Bash(grep -rn \"InventoryManager\" src/player/Player.tscn)",
+      "Bash(find . -name \"InventoryManager.tscn\")"
     ]
   }
 }

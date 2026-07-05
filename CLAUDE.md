@@ -324,6 +324,103 @@ which item this session targets before writing code.
   step 9 adds real networked players) must call `GameManager.register_player()` the
   same way TestDummy/the local player do, and call `GameManager.mark_player_dead()`
   on death, or the leaderboard/win-condition silently won't see it.
+- **RESOLVED (2026-07-04) — TestDummy density raised again for testing
+  visibility.** `WorldGenerator.DUMMIES_PER_LAYER` raised `6 → 8` (32 dummies
+  total across the 4 non-Core-Hollow layers; Core Hollow deliberately still gets
+  none — see below). No other spawn logic changed: `_append_dummy_positions()`'s
+  existing floor-candidate search (air cell with a solid tile directly below,
+  3-tile margin from each layer edge, picks spread evenly across the
+  column-sorted candidate list) already guarantees solid-ground placement and
+  full-width spread for any `DUMMIES_PER_LAYER` value, so it needed no changes.
+  Fixed a stale comment in `Main.gd` (`_spawn_test_dummy`) that still said
+  "2 per layer" from before an earlier session had already raised it to 6.
+  **Locked rule going forward:** Core Hollow intentionally gets **zero** test
+  dummies — `TestDummy` is a grounded `CharacterBody2D` (gravity + `is_on_floor()`
+  physics) and has no zero-gravity handling, while the Core Hollow interior is
+  open semi-fluid space with no floor by design (and no loot spawns there
+  either) — spawning dummies there would either contradict "solid ground
+  placement" or require bespoke zero-g dummy physics, which is out of scope for
+  a DEV-ONLY testing aid. If a future session wants Core Hollow combat targets,
+  treat it as new scope, not a `DUMMIES_PER_LAYER` bump.
+- **RESOLVED (2026-07-04) — buff/debuff `EffectsPanel` always visible, not
+  auto-hidden when empty.** The panel existed and was correctly wired end to
+  end (`Bloodstim`/etc. → `PlayerStats.apply_status()` → `active_effects_changed`
+  → `HUD._on_effects_changed()` already built rows with name/color/countdown and
+  removed expired effects correctly) — the actual bug was that `HUD.tscn`'s
+  `EffectsPanel` defaulted to `visible = false` and `HUD._on_effects_changed()`
+  re-hid it (`visible = false`) every time the active-effects list was empty, so
+  with no effect running (the common case) the panel — background, border, and
+  all — never rendered. Fixed: `EffectsPanel` no longer starts hidden in
+  `HUD.tscn`; `_on_effects_changed()` no longer touches `.visible` and only
+  resizes the panel (floored at one empty row's height, `maxf(14.0, 6.0 +
+  effects.size()*14.0)`, so it never shrinks to an invisible sliver);
+  `HUD.init()` calls `_on_effects_changed(stats.get_active_effects())` once at
+  startup via a new `PlayerStats.get_active_effects()` public accessor so the
+  panel reflects real state from frame one instead of the tscn's placeholder
+  size. `_hide_match_hud()` still explicitly hides it during death/spectating/
+  match-end, unchanged. **Locked rule going forward:** `EffectsPanel` stays
+  visible for the entire match regardless of active-effect count — an empty
+  list means zero rows, not a hidden panel; do not reintroduce empty-list
+  auto-hide without an explicit spec change. *(No Godot binary was available in
+  this environment to run a live boot + Bloodstim-hold check this session; the
+  fix was verified by tracing the full signal chain by hand. Flagging this
+  rather than silently claiming a live-tested fix — next session with Godot
+  available should do a visual confirm.)*
+- **RESOLVED (2026-07-04) — buff/debuff panel still showed nothing after the
+  above fix because the DEV loadout's consumable slot was a Medkit, not a
+  Bloodstim.** `PlayerController.setup_hotbar()` hardcoded the DEV consumable
+  test item as bare `item_class: 1` (`Constants.Consumable.MEDKIT`). `Medkit.gd`
+  only calls `stats.heal()` — it never calls `apply_status()` — so no amount of
+  holding G on the default loadout could ever produce a panel row, independent
+  of whether the panel itself worked. Changed the DEV slot to
+  `Constants.Consumable.BLOODSTIM` (also replacing the magic number with the
+  named constant), since Bloodstim does carry a status payload and is the item
+  this mission asked to test. *(The "reach other consumables offline" gap noted
+  in the original version of this entry is resolved by the next entry.)*
+- **RESOLVED (2026-07-04) — `cycle_consumable` (C key) + two-consumable DEV
+  loadout.** Added a production `cycle_consumable` input action (C, physical
+  keycode 67) mirroring `cycle_throwable` (R): both now call a shared
+  `Hotbar._cycle_type(item_type)` that steps through the free hotbar slots (2–4)
+  and selects the next item of the given `type`, wrapping, no-op if none carried.
+  Because a slot-cycler is only useful with ≥2 carried items of that type, the DEV
+  loadout in `PlayerController.setup_hotbar()` now carries **two** consumables —
+  `BLOODSTIM` and `THERMAL_CAPSULE`, the only two consumables that feed the
+  buff/debuff panel (both call `apply_status`) — in place of the earlier lone
+  Bloodstim and the DEV relic-test slot. **Locked rules going forward:** (1) new
+  timed player effects that should appear on the HUD panel must flow through
+  `PlayerStats.apply_status()` (a consumable that only calls `heal()`, like Medkit,
+  will never show on the panel — that's correct, not a bug). (2) `cycle_throwable`
+  and `cycle_consumable` are real production features (cycle whatever the player
+  actually carries), NOT dev type-cyclers — do not resurrect the removed F6/F7
+  in-place `item_class` mutation. The DEV loadout no longer includes a relic; if
+  offline relic-use testing is needed, re-add one in `setup_hotbar()` (relics do
+  not feed the buff/debuff panel, so their absence doesn't affect it).
+- **RESOLVED (2026-07-04) — inventory drag-and-drop (move/swap items in the F
+  panel).** Implemented entirely in `InventoryManager.gd`; the panel is built in
+  code (there is **no `InventoryManager.tscn`**), and `HUD.gd`/`HUD.tscn` were
+  intentionally left untouched (see rules below). Each of the 8 slot rows is an
+  inner-class `_InvSlotControl` (`PanelContainer`) that overrides Godot's built-in
+  `_get_drag_data`/`_can_drop_data`/`_drop_data`; the engine floats a tier-colored
+  name chip (there are no item icon sprites — text IS the item's visual) and
+  auto-snaps-back on an invalid release. Drop on empty = move, on occupied = swap.
+  **Locked rules going forward:** (1) Any drag/programmatic move that changes a
+  **reserved** slot (0 drill / 1 weapon / 5 armor) must go through the reserved-aware
+  path (`_move_or_swap` → `_stamped_item` + `_assign_slot`), which stamps live
+  durability before re-equip and calls `_reequip_player()` **before** `_set_slot()` —
+  NOT the bare `swap_slots()` helper, which does neither and will desync the
+  equipped Resource. (2) Type enforcement covers slots 0, 1, **and 5**: only
+  drills in 0, weapons in 1, armor in 5 — a deliberate extension past the brief's
+  "slots 1–2 only," because a non-armor in the armor slot makes
+  `equip_armor_from_item()` build a bogus `ArmorBase` and desync `PlayerStats`.
+  `_is_move_valid()` validates BOTH directions of a swap; a rejected drop shows a
+  transient "Wrong slot type" message and snaps back. (3) The drag-error message
+  must render on the inventory panel's own CanvasLayer (layer 20), never on the HUD
+  (layer 1) — the open panel occludes the HUD, so a HUD-hosted message would be
+  invisible; this is also why the feature needed no HUD change (the HUD already
+  reflects moves via the existing `slot_changed` signal). Reserved slots are valid
+  drag **sources** (per the brief): dragging a drill to an empty backpack slot
+  unequips it, dragging it back re-equips with preserved wear — the equipped
+  Resource always mirrors the reserved slot's contents.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

@@ -111,6 +111,13 @@ func apply_status(effect_name: String, duration: float, is_buff: bool, params: D
 	active_effects_changed.emit(_build_effects_array())
 
 
+## Public snapshot of every active effect, for callers that need the current
+## state without waiting on the next active_effects_changed signal (e.g. HUD
+## syncing the buff/debuff panel right when it's built).
+func get_active_effects() -> Array:
+	return _build_effects_array()
+
+
 func _build_effects_array() -> Array:
 	var result: Array = []
 	for effect_name: String in _active_effects:

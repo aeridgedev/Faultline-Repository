@@ -19,7 +19,7 @@ var _rng: RandomNumberGenerator
 # DEV-ONLY: number of TestDummy combat targets placed per non-Core-Hollow layer,
 # spread across the layer for kill-count testing. Remove with the dummies once
 # networked players exist.
-const DUMMIES_PER_LAYER := 6
+const DUMMIES_PER_LAYER := 8
 
 
 ## Returns an Array of Vector2 world-space positions for TestDummy spawning
@@ -47,6 +47,8 @@ func generate(terrain_manager: TerrainManager, layer_manager: LayerManager, seed
 	terrain_manager.init_streaming_lazy(world_data, width)
 
 	# Place only the columns visible at spawn; PlayerController streams the rest.
+	# Floor division to a whole column index is intended.
+	@warning_ignore("integer_division")
 	terrain_manager.stream_columns(width / 2, 48)
 
 	return dummy_positions
@@ -58,7 +60,10 @@ func _compute_layer(layer: Constants.Layer, rng: RandomNumberGenerator, world_da
 	if top_y == null or bottom_y == null:
 		return
 
+	# Floor division to whole tile-row indices is intended.
+	@warning_ignore("integer_division")
 	var top_tile: int    = int(top_y) / Constants.TILE_SIZE
+	@warning_ignore("integer_division")
 	var bottom_tile: int = int(bottom_y) / Constants.TILE_SIZE
 	var width: int = _world_width_tiles()
 	if width == 0:
@@ -103,15 +108,23 @@ func _compute_core_hollow(world_data: Dictionary) -> void:
 	if top_y == null or bottom_y == null:
 		return
 
+	# Floor division to whole tile indices is intended throughout this block
+	# (chamber center/radius math only makes sense on whole tiles).
+	@warning_ignore("integer_division")
 	var top_tile    := int(top_y)    / Constants.TILE_SIZE
+	@warning_ignore("integer_division")
 	var bottom_tile := int(bottom_y) / Constants.TILE_SIZE
 	var width       := _world_width_tiles()
 	if width == 0:
 		return
 
+	@warning_ignore("integer_division")
 	var center_col := width / 2
+	@warning_ignore("integer_division")
 	var center_row := (top_tile + bottom_tile) / 2
+	@warning_ignore("integer_division")
 	var max_v := (bottom_tile - top_tile) / 2 - 2
+	@warning_ignore("integer_division")
 	var max_h := width / 2 - 2
 	var hollow_r := mini(max_v, max_h)
 
@@ -312,6 +325,8 @@ func _compute_bedrock_border(world_data: Dictionary) -> void:
 	if world_h == null:
 		return
 
+	# Floor division to a whole row index is intended.
+	@warning_ignore("integer_division")
 	var total_rows: int = int(world_h) / Constants.TILE_SIZE
 
 	for col in range(width):

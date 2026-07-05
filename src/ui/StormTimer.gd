@@ -39,6 +39,8 @@ func _refresh_countdown() -> void:
 		return
 	var remaining := maxf(phase_end - _storm.get_elapsed(), 0.0)
 	var remaining_secs := int(remaining)
+	# Floor division to whole minutes for MM:SS display is intended.
+	@warning_ignore("integer_division")
 	var minutes := remaining_secs / 60
 	var seconds := remaining_secs % 60
 	_countdown_label.text = "%d:%02d" % [minutes, seconds]

@@ -28,6 +28,9 @@ func _input(event: InputEvent) -> void:
 		if event.is_action_pressed("cycle_throwable"):
 			_cycle_throwable()
 			return
+		if event.is_action_pressed("cycle_consumable"):
+			_cycle_consumable()
+			return
 	elif event is InputEventMouseButton and event.pressed:
 		match event.button_index:
 			MOUSE_BUTTON_WHEEL_DOWN:
@@ -41,6 +44,20 @@ func _input(event: InputEvent) -> void:
 # around, so repeated presses step through every throwable in the hotbar. Reserved
 # drill/weapon slots (0-1) are never candidates. No-op if no throwable is carried.
 func _cycle_throwable() -> void:
+	_cycle_type("throwable")
+
+
+# C key: same as _cycle_throwable() but for consumable-type items. Lets a player
+# step through every consumable they carry (Bloodstim / Medkit / Thermal Capsule /
+# Fault Beacon / Lytes) in the free hotbar slots. No-op if no consumable is carried.
+func _cycle_consumable() -> void:
+	_cycle_type("consumable")
+
+
+# Selects the next free-hotbar-slot (3-5, indices 2-4) item whose "type" matches,
+# starting just after the current active slot and wrapping, so repeated presses
+# step through every match. Reserved drill/weapon slots (0-1) are never candidates.
+func _cycle_type(item_type: String) -> void:
 	if _inventory == null:
 		return
 	var start := InventoryManager.FREE_HOTBAR_START
@@ -48,7 +65,7 @@ func _cycle_throwable() -> void:
 	for step in range(1, count + 1):
 		var idx := start + posmod(_active_slot - start + step, count)
 		var item = _inventory.get_item(idx)
-		if item != null and item.get("type") == "throwable":
+		if item != null and item.get("type") == item_type:
 			select_slot(idx)
 			return
 

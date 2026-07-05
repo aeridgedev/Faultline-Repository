@@ -27,7 +27,48 @@ var _slots: Array = []   # size 8; each entry = Dictionary or null
 var is_open: bool = false
 
 var _panel_layer: CanvasLayer = null
-var _slot_rows: Array = []   # [{lbl: Label, btn: Button, idx: int}, ...]
+var _slot_rows: Array = []   # [{lbl: Label, btn: Button, ctrl: _InvSlotControl, idx: int}, ...]
+var _row_by_idx: Dictionary = {}   # slot_idx -> _slot_rows entry (fast lookup during drag)
+
+# --- Drag-and-drop state (inventory panel only; see _build_slot_row / _begin_drag) ---
+var _drag_source_idx: int = -1     # slot the current drag started from, or -1
+var _style_base: StyleBoxEmpty     # normal (no-highlight) slot background
+var _style_valid: StyleBoxFlat     # green tint shown on a valid drop target under the cursor
+var _style_invalid: StyleBoxFlat   # red tint shown on a wrong-type drop target under the cursor
+var _msg_label: Label = null       # transient "Wrong slot type" message on the panel
+var _msg_token: int = 0            # guards overlapping _flash_message timers
+
+
+## Draggable + droppable slot control for the inventory panel. Godot's built-in
+## drag-and-drop virtual callbacks are overridden here and forwarded to the owning
+## InventoryManager, which holds all slot state + rules. Kept as an inner class
+## (rather than a new file) so every inventory-panel concern stays in this script,
+## per the task's file-scope constraint.
+class _InvSlotControl extends PanelContainer:
+	var manager: InventoryManager
+	var slot_idx: int
+
+	func _get_drag_data(_at_position: Vector2) -> Variant:
+		var data: Variant = manager._begin_drag(slot_idx)
+		if data == null:
+			return null   # empty slot → no drag begins
+		# The floating preview is created by the manager and attached to THIS source
+		# control; set_drag_preview renders it above every CanvasLayer automatically.
+		set_drag_preview(manager._make_drag_preview_for(slot_idx))
+		return data
+
+	func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+		return manager._hover_drop(slot_idx, data)
+
+	func _drop_data(_at_position: Vector2, data: Variant) -> void:
+		manager._perform_drop(slot_idx, data)
+
+	# NOTIFICATION_DRAG_END is broadcast to every Control when any drag ends
+	# (dropped OR cancelled), so this is the reliable place to clear the drag's
+	# visual state. Guarded in the manager so it runs its cleanup only once.
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_DRAG_END:
+			manager._on_drag_end()
 
 
 func _ready() -> void:
@@ -74,6 +115,8 @@ func close_panel() -> void:
 # --- Panel construction (built once in _ready, shown/hidden on demand) ---
 
 func _build_panel() -> void:
+	_build_drag_styles()
+
 	_panel_layer = CanvasLayer.new()
 	_panel_layer.layer = 20
 	_panel_layer.visible = false
@@ -128,6 +171,46 @@ func _build_panel() -> void:
 	_add_section(vbox, "ARMOR", [ARMOR_SLOT])
 	_add_section(vbox, "BACKPACK", [BACKPACK_START, BACKPACK_END])
 
+	# Transient drag-error message ("Wrong slot type"), hidden until flashed. Overlaid
+	# on the panel (bottom-anchored, so showing it doesn't reflow the slot list) and on
+	# the panel's own CanvasLayer (layer 20): the HUD sits on a lower layer and would be
+	# occluded by this panel, so a HUD-hosted message wouldn't be visible here. Added
+	# last so it draws above the slot rows.
+	_msg_label = Label.new()
+	_msg_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_msg_label.anchor_left = 0.0
+	_msg_label.anchor_right = 1.0
+	_msg_label.anchor_top = 1.0
+	_msg_label.anchor_bottom = 1.0
+	_msg_label.offset_top = -18.0
+	_msg_label.offset_bottom = -4.0
+	_msg_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_msg_label.add_theme_font_size_override("font_size", 8)
+	_msg_label.add_theme_color_override("font_color", Color(0.96, 0.40, 0.38))
+	_msg_label.visible = false
+	panel.add_child(_msg_label)
+
+
+# Shared styleboxes for slot drop-target feedback: transparent normally, a subtle
+# green tint over a valid target, a red tint over a wrong-type target.
+func _build_drag_styles() -> void:
+	_style_base = StyleBoxEmpty.new()
+	_style_base.set_content_margin_all(2.0)
+
+	_style_valid = StyleBoxFlat.new()
+	_style_valid.bg_color = Color(0.20, 0.85, 0.35, 0.18)
+	_style_valid.border_color = Color(0.32, 0.92, 0.48, 0.95)
+	_style_valid.set_border_width_all(1)
+	_style_valid.set_corner_radius_all(3)
+	_style_valid.set_content_margin_all(2.0)
+
+	_style_invalid = StyleBoxFlat.new()
+	_style_invalid.bg_color = Color(0.90, 0.25, 0.25, 0.22)
+	_style_invalid.border_color = Color(0.96, 0.38, 0.36, 0.98)
+	_style_invalid.set_border_width_all(1)
+	_style_invalid.set_corner_radius_all(3)
+	_style_invalid.set_content_margin_all(2.0)
+
 
 func _add_section(vbox: VBoxContainer, header: String, indices: Array) -> void:
 	var sep := HSeparator.new()
@@ -143,14 +226,27 @@ func _add_section(vbox: VBoxContainer, header: String, indices: Array) -> void:
 		vbox.add_child(_build_slot_row(idx))
 
 
-func _build_slot_row(slot_idx: int) -> HBoxContainer:
+# Each slot row is wrapped in an _InvSlotControl (PanelContainer) that is both a drag
+# source and a drop target. The key/item labels use MOUSE_FILTER_IGNORE so presses
+# fall through to the control (starting a drag); the Drop button keeps STOP so it stays
+# clickable and grabbing it never starts a drag.
+func _build_slot_row(slot_idx: int) -> _InvSlotControl:
+	var ctrl := _InvSlotControl.new()
+	ctrl.manager = self
+	ctrl.slot_idx = slot_idx
+	ctrl.mouse_filter = Control.MOUSE_FILTER_STOP
+	ctrl.add_theme_stylebox_override("panel", _style_base)
+	ctrl.mouse_exited.connect(_on_slot_mouse_exited.bind(slot_idx))
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	ctrl.add_child(row)
 
 	# Fixed-width slot identifier.
 	var lbl_key := Label.new()
 	lbl_key.text = _slot_key_name(slot_idx)
 	lbl_key.custom_minimum_size = Vector2(22, 0)
+	lbl_key.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl_key.add_theme_font_size_override("font_size", 7)
 	lbl_key.add_theme_color_override("font_color", Color(0.45, 0.50, 0.58))
 	row.add_child(lbl_key)
@@ -159,6 +255,7 @@ func _build_slot_row(slot_idx: int) -> HBoxContainer:
 	var lbl_item := Label.new()
 	lbl_item.text = "—"
 	lbl_item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl_item.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl_item.add_theme_font_size_override("font_size", 8)
 	lbl_item.add_theme_color_override("font_color", Color(0.30, 0.32, 0.38))
 	row.add_child(lbl_item)
@@ -171,8 +268,10 @@ func _build_slot_row(slot_idx: int) -> HBoxContainer:
 	btn.pressed.connect(_on_discard_pressed.bind(slot_idx))
 	row.add_child(btn)
 
-	_slot_rows.append({"lbl": lbl_item, "btn": btn, "idx": slot_idx})
-	return row
+	var entry := {"lbl": lbl_item, "btn": btn, "ctrl": ctrl, "idx": slot_idx}
+	_slot_rows.append(entry)
+	_row_by_idx[slot_idx] = entry
+	return ctrl
 
 
 func _refresh_panel() -> void:
@@ -236,6 +335,216 @@ func _on_discard_pressed(slot_idx: int) -> void:
 		item = _with_current_durability(ARMOR_SLOT, item)
 	_spawn_loot_drop(item)
 	remove_item(slot_idx)   # emits slot_changed → _refresh_panel() via connected lambda
+
+
+# --- Drag and drop (inventory panel only) --------------------------------------
+# Godot's built-in Control drag-and-drop drives this: _InvSlotControl forwards
+# _get_drag_data / _can_drop_data / _drop_data here. The engine handles the floating
+# preview following the cursor (above all CanvasLayers) and snap-back when a drop
+# lands on no valid target; this script only decides validity and mutates slot state.
+
+## Begins a drag from slot_idx. Returns the drag payload (a Dictionary) or null when
+## the slot is empty (no drag starts). Dims the source row for the drag's duration.
+func _begin_drag(slot_idx: int) -> Variant:
+	if _slots[slot_idx] == null:
+		return null
+	_drag_source_idx = slot_idx
+	_set_row_dim(slot_idx, true)
+	return {"inv_drag": true, "src": slot_idx}
+
+
+## Floating visual that follows the cursor: a tier-colored name chip mirroring how the
+## slot renders the item (this game has no item icons — the text IS the item's visual).
+func _make_drag_preview_for(slot_idx: int) -> Control:
+	var item = _slots[slot_idx]
+	var tier: int = item.get("tier", Constants.Tier.COMMON) if item != null else Constants.Tier.COMMON
+	var tier_col: Color = Constants.TIER_COLORS.get(tier, Color(0.82, 0.86, 0.92))
+	var tier_name: String = Constants.TIER_NAMES.get(tier, "Common")
+	var name_str: String = _item_display_name(item.get("type", ""), item.get("item_class", -1)) if item != null else "?"
+
+	# Wrapper offsets the chip up-left of the pointer so it doesn't sit under the cursor.
+	var wrapper := Control.new()
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var chip := PanelContainer.new()
+	chip.position = Vector2(-8, -20)
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.10, 0.12, 0.16, 0.96)
+	st.border_color = tier_col
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(3)
+	st.set_content_margin_all(4.0)
+	chip.add_theme_stylebox_override("panel", st)
+
+	var lbl := Label.new()
+	lbl.text = "%s %s" % [tier_name, name_str]
+	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_color_override("font_color", tier_col)
+	chip.add_child(lbl)
+	wrapper.add_child(chip)
+	return wrapper
+
+
+## Called every frame the dragged item hovers a slot. Highlights the target green
+## (valid) or red (wrong type) and returns true so a wrong-type drop still fires
+## _drop_data (letting us snap back AND show the "Wrong slot type" message). Returns
+## false only for a non-inventory drag or a drop onto the same slot (a no-op).
+func _hover_drop(target_idx: int, data: Variant) -> bool:
+	if not _is_inv_drag(data):
+		return false
+	_clear_all_highlights()
+	var src_idx: int = data["src"]
+	if target_idx == src_idx:
+		return false
+	_set_row_style(target_idx, _style_valid if _is_move_valid(src_idx, target_idx) else _style_invalid)
+	return true
+
+
+## Called when the item is released over target_idx. Moves/swaps if valid; on a
+## wrong-type drop shows the message and leaves state unchanged (engine snaps back).
+func _perform_drop(target_idx: int, data: Variant) -> void:
+	if not _is_inv_drag(data):
+		return
+	var src_idx: int = data["src"]
+	if target_idx == src_idx:
+		return
+	if not _is_move_valid(src_idx, target_idx):
+		_flash_message("Wrong slot type")
+		return
+	_move_or_swap(src_idx, target_idx)
+
+
+## Broadcast to all controls when any drag ends (dropped or cancelled). Restores the
+## dimmed source row and clears every hover highlight. Guarded so it runs once.
+func _on_drag_end() -> void:
+	if _drag_source_idx == -1:
+		return
+	_drag_source_idx = -1
+	_clear_all_highlights()
+	_reset_all_dim()
+	if is_open:
+		_refresh_panel()
+
+
+func _is_inv_drag(data: Variant) -> bool:
+	return data is Dictionary and data.get("inv_drag", false) == true and data.has("src")
+
+
+# --- Move validity + execution ---
+
+func _is_reserved(idx: int) -> bool:
+	return idx == DRILL_SLOT or idx == WEAPON_SLOT or idx == ARMOR_SLOT
+
+
+## The item type a reserved slot demands, or "" for a free slot.
+## NOTE (deliberate extension beyond the brief): the task specifies type enforcement
+## only for slot 1 (drill) and slot 2 (weapon). We enforce the armor sidebar slot the
+## same way — placing a non-armor item there would make PlayerController build an
+## ArmorBase from a non-armor class and desync PlayerStats' equipped armor, a real bug.
+## Free hotbar/backpack slots accept any type.
+func _required_type(idx: int) -> String:
+	match idx:
+		DRILL_SLOT:  return "drill"
+		WEAPON_SLOT: return "weapon"
+		ARMOR_SLOT:  return "armor"
+	return ""
+
+
+func _type_ok(idx: int, item) -> bool:
+	var req := _required_type(idx)
+	if req == "":
+		return true
+	return item != null and item.get("type", "") == req
+
+
+## Both directions of a potential swap must satisfy slot type rules: the dragged item
+## must fit the target, and (on a swap) the target's item must fit the source slot.
+## Moving a reserved slot's item onto an empty free slot is allowed (it unequips).
+func _is_move_valid(src_idx: int, target_idx: int) -> bool:
+	var src_item = _slots[src_idx]
+	var tgt_item = _slots[target_idx]
+	if not _type_ok(target_idx, src_item):
+		return false
+	if tgt_item != null and not _type_ok(src_idx, tgt_item):
+		return false
+	return true
+
+
+## Executes the move/swap. Handles reserved slots (drill/weapon/armor): live durability
+## is stamped onto their outgoing item BEFORE any re-equip rebuilds the equipped
+## Resource, and _reequip_player runs BEFORE slot_changed fires so the HUD durability
+## bar / active tool read the new equipped state (mirrors _place_reserved's ordering).
+func _move_or_swap(from_idx: int, to_idx: int) -> void:
+	# Snapshot both items up front — stamp reserved-slot items while their equipped
+	# Resources still exist. from/to reserved slots are always distinct Resource types
+	# (drill vs weapon vs armor), so stamping both before any re-equip is safe.
+	var from_item = _stamped_item(from_idx)
+	var to_item   = _stamped_item(to_idx)
+	# Swap: to_idx receives from_item; from_idx receives to_item (null on a move-to-empty).
+	_assign_slot(from_idx, to_item)
+	_assign_slot(to_idx, from_item)
+
+
+## A reserved, occupied slot's item annotated with its live durability (so wear
+## survives the move); otherwise the slot's item unchanged.
+func _stamped_item(idx: int):
+	var item = _slots[idx]
+	if item != null and _is_reserved(idx):
+		return _with_current_durability(idx, item)
+	return item
+
+
+## Writes new_item into a slot. For reserved slots, re-equips (or unequips on null)
+## the player's in-hand Resource BEFORE emitting slot_changed, keeping equip state in
+## lockstep with slot contents. slot_changed then refreshes both HUD and panel.
+func _assign_slot(idx: int, new_item) -> void:
+	if _is_reserved(idx):
+		_reequip_player(idx, new_item)
+	_set_slot(idx, new_item)
+
+
+# --- Slot visual helpers (drag feedback) ---
+
+func _set_row_style(slot_idx: int, style: StyleBox) -> void:
+	var entry = _row_by_idx.get(slot_idx, null)
+	if entry != null:
+		entry.ctrl.add_theme_stylebox_override("panel", style)
+
+
+func _clear_all_highlights() -> void:
+	for entry in _slot_rows:
+		entry.ctrl.add_theme_stylebox_override("panel", _style_base)
+
+
+func _on_slot_mouse_exited(slot_idx: int) -> void:
+	# Clears a lingering highlight when the cursor leaves a slot for empty panel space
+	# mid-drag (where no other slot's _can_drop_data fires to overwrite it).
+	if _drag_source_idx != -1:
+		_set_row_style(slot_idx, _style_base)
+
+
+func _set_row_dim(slot_idx: int, dim: bool) -> void:
+	var entry = _row_by_idx.get(slot_idx, null)
+	if entry != null:
+		entry.ctrl.modulate = Color(1, 1, 1, 0.35) if dim else Color(1, 1, 1, 1)
+
+
+func _reset_all_dim() -> void:
+	for entry in _slot_rows:
+		entry.ctrl.modulate = Color(1, 1, 1, 1)
+
+
+func _flash_message(text: String) -> void:
+	if _msg_label == null:
+		return
+	_msg_label.text = text
+	_msg_label.visible = true
+	_msg_token += 1
+	var my_token := _msg_token
+	var timer := get_tree().create_timer(1.2)
+	timer.timeout.connect(func() -> void:
+		if my_token == _msg_token and _msg_label != null:
+			_msg_label.visible = false)
 
 
 func _spawn_loot_drop(item_data_dict: Dictionary) -> void:

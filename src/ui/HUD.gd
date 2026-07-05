@@ -56,7 +56,9 @@ const _COLOR_SLOT_BORDER_NORMAL := Color(0.55, 0.58, 0.65, 0.90)
 const _COLOR_SLOT_BORDER_ACTIVE := Color(0.08, 0.88, 0.96, 1.00)
 
 
-func init(player: PlayerController, storm: StormSystem, layer_manager: LayerManager) -> void:
+## `_layer_manager` is currently unused by HUD itself — kept for a future
+## Minimap reconnection (see GAME_STATE.md), not dead by oversight.
+func init(player: PlayerController, storm: StormSystem, _layer_manager: LayerManager) -> void:
 	_player = player
 	var stats: PlayerStats = player.get_node("PlayerStats")
 	var hotbar: Hotbar = player.get_node("Hotbar")
@@ -77,6 +79,9 @@ func init(player: PlayerController, storm: StormSystem, layer_manager: LayerMana
 	stats.health_changed.connect(_on_health_changed)
 	player_death.died.connect(_on_player_died)
 	stats.active_effects_changed.connect(_on_effects_changed)
+	# Sync the panel to whatever PlayerStats already holds at HUD startup (always
+	# empty in practice today, but keeps the panel honest rather than assuming).
+	_on_effects_changed(stats.get_active_effects())
 	hotbar.active_slot_changed.connect(_on_slot_changed)
 	_inventory.slot_changed.connect(_on_inventory_slot_changed)
 	_death_screen.spectate_requested.connect(_on_spectate_requested)
@@ -575,11 +580,11 @@ func _update_armor_dur_bar(current: float, maximum: float) -> void:
 ## Uses a named Callable so duplicate connections are detected and skipped.
 func _refresh_dur_bar(slot_idx: int, item) -> void:
 	var bar: ProgressBar = _slot_dur_bars[slot_idx]
+	var cb := Callable(self, "_on_dur_changed").bind(slot_idx)
 
 	# Disconnect from the previous resource occupying this slot.
 	if slot_idx < _slot_dur_resources.size():
 		var prev = _slot_dur_resources[slot_idx]
-		var cb := Callable(self, "_on_dur_changed").bind(slot_idx)
 		if prev is DrillBase:
 			if (prev as DrillBase).durability_changed.is_connected(cb):
 				(prev as DrillBase).durability_changed.disconnect(cb)
@@ -593,7 +598,6 @@ func _refresh_dur_bar(slot_idx: int, item) -> void:
 		return
 
 	var item_type: String = item.get("type", "")
-	var cb := Callable(self, "_on_dur_changed").bind(slot_idx)
 
 	match item_type:
 		"drill":
@@ -690,10 +694,6 @@ func _on_kill_progress_changed(current_kills: int, required_kills: int, next_lay
 
 func _on_effects_changed(effects: Array) -> void:
 	UIStyle.clear_children(_effects_vbox)
-	if effects.is_empty():
-		_effects_panel.visible = false
-		return
-	_effects_panel.visible = true
 	for effect: Dictionary in effects:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
@@ -710,5 +710,9 @@ func _on_effects_changed(effects: Array) -> void:
 		row.add_child(name_lbl)
 		row.add_child(dur_lbl)
 		_effects_vbox.add_child(row)
-	# 14px per row + 6px panel padding, grows downward from offset_top.
-	_effects_panel.offset_bottom = _effects_panel.offset_top + 6 + effects.size() * 14
+	# The panel itself stays visible for the whole match regardless of effect
+	# count (mission-driven change, 2026-07-04 — see CLAUDE.md); an empty list
+	# just means zero rows, not a hidden panel. Height still grows with active
+	# effects (14px/row + 6px padding) but is floored at one empty row's worth
+	# so it never collapses to an invisible sliver.
+	_effects_panel.offset_bottom = _effects_panel.offset_top + maxf(14.0, 6.0 + effects.size() * 14.0)

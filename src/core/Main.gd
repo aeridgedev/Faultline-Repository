@@ -112,7 +112,7 @@ func _build_background(layer_manager: LayerManager) -> void:
 
 
 # DEV-ONLY: place a test dummy at a world-space position.
-# Positions come from WorldGenerator (2 per layer, on cave floors).
+# Positions come from WorldGenerator (WorldGenerator.DUMMIES_PER_LAYER per layer, on cave floors).
 # Remove once networked players exist.
 func _spawn_test_dummy(pos: Vector2, index: int, layer_manager: LayerManager) -> void:
 	var dummy := TestDummy.new()

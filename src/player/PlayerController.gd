@@ -272,6 +272,7 @@ func _make_drill_tex() -> Texture2D:
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	for x in range(W):
+		@warning_ignore("integer_division")   # H is even; floor to a whole-pixel taper is intended
 		var taper := clampi(x - 9, 0, int(H / 2) - 1)
 		var y_min := taper; var y_max := H - 1 - taper
 		if y_max < y_min:
@@ -312,6 +313,7 @@ func _make_sword_tex() -> Texture2D:
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	for x in range(W):
+		@warning_ignore("integer_division")   # H is even; floor to a whole-pixel taper is intended
 		var taper := clampi(x - (W - 5), 0, int(H / 2) - 1)
 		var y_min := taper; var y_max := H - 1 - taper
 		if y_max < y_min:
@@ -323,6 +325,7 @@ func _make_sword_tex() -> Texture2D:
 			elif x < 3:
 				img.set_pixel(x, y, H2 if (x + y) % 2 == 0 else H1)
 			elif x < 5:
+				@warning_ignore("integer_division")   # H is even; floor to a whole-pixel taper is intended
 				img.set_pixel(x, y, G2 if y <= int(H / 2) - 1 else G1)
 			else:
 				if y == y_min + 1:
@@ -493,8 +496,16 @@ func setup_hotbar() -> void:
 		inv.add_item({"type": "drill",      "item_class": Constants.DrillClass.PRECISION, "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "weapon",     "item_class": Constants.WeaponClass.SWORDS,   "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "throwable",  "item_class": Constants.Throwable.SMOKE_BOMB, "tier": Constants.Tier.COMMON})
-		inv.add_item({"type": "consumable", "item_class": 1,                              "tier": Constants.Tier.COMMON})
-		inv.add_item({"type": "relic",      "item_class": Constants.Relic.SPEED,          "tier": Constants.Tier.COMMON})
+		# DEV consumable slots (2 of them): the buff/debuff panel is only fed by
+		# consumables that call apply_status() — Bloodstim ("Bloodstim" buff) and
+		# ThermalCapsule ("Thermal Shield" buff). Carrying BOTH makes the new
+		# `cycle_consumable` (C key) demonstrable (C flips between them) and makes
+		# both panel buffs reachable via "hold G". This replaced the earlier lone
+		# Medkit (heal-only, never touches the panel) and a DEV relic-test slot
+		# (relics don't feed the panel and nothing depends on a starting relic;
+		# re-add one here if offline relic testing is needed again).
+		inv.add_item({"type": "consumable", "item_class": Constants.Consumable.BLOODSTIM,       "tier": Constants.Tier.COMMON})
+		inv.add_item({"type": "consumable", "item_class": Constants.Consumable.THERMAL_CAPSULE, "tier": Constants.Tier.COMMON})
 		inv.slot_changed.connect(func(slot: int, _item: Variant) -> void:
 			_consumable_cache.erase(slot)
 			# If the item in the active slot changed (swap / drop / pickup), the

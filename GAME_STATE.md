@@ -196,7 +196,7 @@ Called once per match with a random seed. Pre-computes all tile data into a per-
 1. Per layer: fill with weighted terrain type (see distributions below). Data written to `world_data[col][row]` — no `tile_map.set_cell()` calls yet.
 2. Carve caves: wrapping horizontal tunnels + vertical shafts.
 3. Horizontal rock bands every 8–14 rows within each layer (harder terrain variety).
-4. After filling each layer, scan air cells for valid floor positions (air cell with solid tile directly below); collect `DUMMIES_PER_LAYER` (currently 6) positions per layer for TestDummy spawning, spread evenly across the layer width (candidates sorted by column, picked at even fractions). DEV-ONLY kill-count testing.
+4. After filling each layer, scan air cells for valid floor positions (air cell with solid tile directly below); collect `DUMMIES_PER_LAYER` (currently 8) positions per layer for TestDummy spawning, spread evenly across the layer width (candidates sorted by column, picked at even fractions). DEV-ONLY kill-count testing.
 5. Core Hollow: generates as a circular chamber walled by `CORE_HOLLOW_SHELL` with an open interior void. **The shell (boundary wall) is the hardest terrain in the game** — a dedicated drillable terrain type (`Constants.TerrainType.CORE_HOLLOW_SHELL`, enum value 11), NOT Bedrock, with `base_dig_time` 8.0 (TBD placeholder, >2× Ultra Dense's 3.5). It forms a complete boundary around the interior: thin at the poles (the circle nearly fills the layer height, so a central descent breaches only ~2 shell tiles) and thicker toward the equator, but drillable everywhere given enough time. It destroys like any non-Bedrock tile. The **interior remains open/void** — intentional: once inside, players move through a semi-fluid substance (free movement, no terrain tiles, no gravity). The open-void interior is correct in spirit but the physics (zero-gravity, fluid movement feel) are not yet implemented (deviation #3).
 6. Bedrock border: bottom row only; world wraps horizontally.
 7. Calls `terrain_manager.init_streaming_lazy(world_data, width)` — passes all data to TerrainManager without placing tiles.
@@ -443,20 +443,24 @@ Armor sidebar slot shows class name + tier-coloured border/label **and a durabil
 
 F-key toggles panel UI (built in code). Drop buttons spawn a `LootDrop` and call `remove_item()` — **except** the reserved drill/weapon slots, whose Drop buttons stay disabled (`_on_discard_pressed()` also guards them): the loadout is fixed, so you always carry a drill + weapon and swap them only by picking up replacements.
 
+**Drag-and-drop item movement inside the panel (added 2026-07-04).** Every slot row (all 8: hotbar 0–4, armor 5, backpack 6–7) is wrapped in an inner-class `_InvSlotControl` (a `PanelContainer`) that overrides Godot's built-in `_get_drag_data`/`_can_drop_data`/`_drop_data` and forwards them to the manager. The engine handles the floating preview (a tier-colored name chip built by `_make_drag_preview_for()`, since items have no icon sprites — text IS the visual) following the cursor above every CanvasLayer, and the automatic snap-back when a drop lands on no valid target. The source row is dimmed (`modulate.a=0.35`) for the drag's duration; `NOTIFICATION_DRAG_END` (broadcast to all controls) → `_on_drag_end()` restores it and clears highlights. Drop onto an empty slot **moves**; onto an occupied slot **swaps**. Both use `_move_or_swap()` (NOT the pre-existing `swap_slots()`, which doesn't re-equip): it stamps live durability onto reserved-slot items before any re-equip and calls `_reequip_player()` before each `_set_slot()`, so drill/weapon/armor equip state stays in lockstep with slot contents and the HUD updates via the existing `slot_changed` signal (no HUD code change needed). **Type rules** (`_is_move_valid()` checks BOTH swap directions): only a drill may land in slot 0, only a weapon in slot 1, and — a deliberate extension beyond the brief — only armor in the armor slot 5 (a non-armor there would make `equip_armor_from_item()` build a bogus `ArmorBase` and desync `PlayerStats`). A rejected drop shows a transient **"Wrong slot type"** message and snaps back. **Visual feedback:** valid target under the cursor gets a subtle green tint, wrong-type target a red tint (shared styleboxes; `_can_drop_data` returns `true` even for wrong-type so `_drop_data` can fire the message rather than the OS just refusing). The "Wrong slot type" message is rendered on the panel's own CanvasLayer (layer 20), not the HUD (layer 1) — the HUD would be occluded by this panel. Scope: drag-and-drop only works inside the open inventory panel (F); the always-on HUD hotbar/backpack are display-only.
+
 Signals: `slot_changed(slot_idx, item)`, `inventory_opened`, `inventory_closed`.
 
-Key methods: `add_item()`, `_place_reserved()`, `remove_item()`, `swap_slots()`, `get_armor()`, `can_add()`, `has_space()`, `all_items()`.
+Key methods: `add_item()`, `_place_reserved()`, `remove_item()`, `swap_slots()`, `get_armor()`, `can_add()`, `has_space()`, `all_items()`. Drag-and-drop: `_begin_drag()`, `_hover_drop()`, `_perform_drop()`, `_on_drag_end()`, `_is_move_valid()`, `_move_or_swap()`, `_assign_slot()`, `_stamped_item()`.
 
 **Durability persistence across drop → re-pickup.** Although the inventory stores item dicts (not the Resource), a dropped drill/weapon keeps its wear: `_place_reserved()` stamps the outgoing item with the live equipped `current_durability` via `_with_current_durability()` (read from `PlayerController.get_equipped_drill()`/`get_equipped_weapon()` before re-equip) onto the `LootDrop`'s `item_data["durability"]`. On re-equip, `PlayerController._restore_saved_durability()` clamps that value onto the rebuilt Resource and re-flags `is_broken` at 0. Fresh loot (chest/LootTable) and the spawn loadout carry no `durability` key, so they build at full durability. The slot dict's stamped value is only read at equip time; the equipped Resource stays authoritative afterward (a later drop re-reads the live value), so stale dict values are never used.
 
 ### Hotbar (`src/systems/inventory/Hotbar.gd`)
 Tracks `_active_slot` (0–4). Input: keys 1–5 and scroll wheel. Emits `active_slot_changed(slot_idx)`. `get_active_item()` queries InventoryManager.
 
-**R key — cycle_throwable (added 2026-07-04, replaces the old DEV F6/F7 keys).**
-`_cycle_throwable()` scans the free hotbar slots (indices 2–4 / hotbar 3–5) starting
-just after `_active_slot` and wrapping around (`posmod`), selecting the first slot
-whose item has `type == "throwable"` via the existing `select_slot()`. No-op if the
-player carries no throwable. This is a real (non-DEV) input action, not test scaffolding.
+**R key — cycle_throwable / C key — cycle_consumable (added 2026-07-04; R replaces
+the old DEV F6/F7 keys).** Both call a shared `_cycle_type(item_type)` that scans the
+free hotbar slots (indices 2–4 / hotbar 3–5) starting just after `_active_slot` and
+wrapping around (`posmod`), selecting the first slot whose item has the matching
+`type` via the existing `select_slot()`. `_cycle_throwable()` → `_cycle_type("throwable")`
+(R), `_cycle_consumable()` → `_cycle_type("consumable")` (C). No-op if the player carries
+no item of that type. Both are real (non-DEV) input actions, not test scaffolding.
 
 ### AutoCollect (`src/systems/inventory/AutoCollect.gd`)
 **Manual Q pickup (automatic collection disabled).** Despite the class name, pickup is no longer automatic. On `pickup` input (Q, added to `project.godot`), `_try_pickup()` finds all `loot_drops`-group `LootDrop` nodes within `_pickup_radius` (from `data["pickup_radius"]`, 32px fallback = 2 tiles) whose `pickup_delay` has elapsed, selects the **closest** one, and adds it to the inventory (one item per press). If the closest in-range drop cannot be accepted (`InventoryManager.can_add()` false — inventory/relevant slot full), it shows a brief **"Inventory full"** message via the player's floating notify label (`PlayerController._show_notify`, 1.5s) instead of collecting. `LootRestriction` is no longer consulted — pressing Q is an explicit action, so pickup works regardless of drilling/attacking state.
@@ -601,7 +605,7 @@ Built entirely in code. Contains:
 - **StormTimer** — current region name + MM:SS countdown to next phase. Updates both labels once per second via a tick accumulator. Region and countdown always computed from `match_elapsed` directly (not from `_phase_idx`), so display is correct regardless of node execution order.
 - **KillCounter** — local player kill count; increments on any `player_died` signal heard in tree.
 - **KillProgressPanel** — prominent descent-gate panel below KillCounter (top-left, `offset_top=80`, `offset_bottom=130`, widened to x=8–196). Deliberately styled to stand out from the cyan HUD: 14px **gold** centered label with a dark outline, a thick (9px) gold progress bar, and a gold-bordered dark panel (its own stylebox, excluded from the generic `_style_panels()` list). Hidden in Core Hollow. Shows `"{next_layer}: {current}/{required} kills"` (e.g. Mantle/Outer Core/Inner Core). `current` is clamped to `required` so the bar never overflows. Receives `kill_progress_changed` from DescentTracker; no polling — fully signal-driven. Populates on the first physics frame (DescentTracker's sentinel `-1` triggers the initial emit).
-- **EffectsPanel** — small panel below StormPanel (top-right, `offset_top=76`). Hidden when no effects active. When `active_effects_changed` fires from `PlayerStats`, rebuilds a VBoxContainer row-list: each row shows effect name (green for buffs, red for debuffs) and remaining duration in whole seconds (ceiling). Panel height is recalculated as `6 + N×14` px per update.
+- **EffectsPanel** — small panel below StormPanel (top-right, `offset_top=76`). **Always visible for the whole match** (fixed 2026-07-04 — was previously hidden whenever no effects were active; see the dated changelog entry below). When `active_effects_changed` fires from `PlayerStats`, rebuilds a VBoxContainer row-list: each row shows effect name (green for buffs, red for debuffs) and remaining duration in whole seconds (ceiling). Panel height is recalculated as `max(14, 6 + N×14)` px per update — floored at one empty row's height so it never shrinks to an invisible sliver when no effects are active. `HUD.init()` also syncs it once at startup via `PlayerStats.get_active_effects()` rather than waiting for the first signal. Still explicitly hidden by `_hide_match_hud()` during death/spectating/match-end, same as the rest of the normal in-match HUD.
 - **DeathScreen** (`src/ui/DeathScreen.gd`/`.tscn`) — full-screen dark-overlay panel shown on `player_died`. `show_death(data: Dictionary)` (keys `killer_name`/`damage`/`layer_name`/`kills`, all with safe fallbacks) populates killer name, killing-blow damage, death layer, and match kill count — `HUD._on_player_died()` builds that dict from `PlayerStats.last_killer_name`/`last_killing_damage`/`get_layer()`/`kill_count`. SPECTATE button emits `spectate_requested`, handled by `HUD._on_spectate_requested()`.
 - **SpectatorView** (`src/ui/SpectatorView.gd`/`.tscn`) — real camera-follow spectating. `start_spectating(camera: Camera2D, preferred_target_id: int)` reparents the handed-off `Camera2D` onto the target node (`GameManager.get_player_node(id)`) — works identically for `PlayerController` or `TestDummy` since both have a child node named `"PlayerStats"`; `Camera2D` being a `Node2D` means reparenting alone makes it follow, no per-frame code needed. Top bar shows only the spectated target's name + an HP `ProgressBar` (via that target's `PlayerStats.health_changed`). Left/Right (`ui_left`/`ui_right`, only while `visible`) cycle `GameManager.get_living_player_ids()` with wraparound; auto-advances to another living target if the current one's `player_died` fires. `stop_spectating()` hides + disconnects (does not touch the camera's parent — the caller owns that afterward).
 - **WinScreen** (`src/ui/WinScreen.gd`/`.tscn`, new) — full-screen match-end leaderboard. `show_results(leaderboard: Array, winner_id: int)` pins the `winner_id` entry at rank 1 with a gold ("Legendary" tier color) highlight + "WINNER" tag, then lists the rest of `GameManager.get_leaderboard()` (already kills-sorted) beneath it in a `ScrollContainer` (rank/name/kills/deepest-layer-name per row). `play_again_requested` → `HUD` wires to `GameManager.restart_match()`; `quit_requested` → `get_tree().quit()`. Shown to whoever's HUD instance is running (the winner, still playing until frozen here, or a spectator already mid-`SpectatorView`) via `HUD._on_match_won()`, connected to the new `GameManager.match_won` signal.
@@ -675,7 +679,7 @@ Phase schedule locked. Damage values TBD.
 | 8 | `KillCounter.gd` | Tracks any `player_died` signal in tree — no official kill-attribution system. Inflates count in multi-player. | Low (step 9) |
 | 9 | `PlayerDeath.gd`, `SpectatorView.gd` | ~~Spectator follow-cam and player-list not implemented.~~ **Resolved** — `SpectatorView.start_spectating()` reparents the local player's `Camera2D` onto any living `GameManager` roster participant; Left/Right cycle, auto-advance on target death. | Fixed |
 | 10 | `GameManager.gd` | ~~POST_MATCH state has no UI or logic (no win screen, no leaderboard).~~ **Resolved** — `GameManager` roster + `match_won` signal + `WinScreen.show_results()` (Play Again → `restart_match()`, Quit → `get_tree().quit()`). | Fixed |
-| 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (6 per layer) must be removed when networked players exist. **Widened scope (2026-07-04):** dummies now also register as `GameManager` roster participants (`TestDummy.setup()`) so the step 8 leaderboard/win-condition/spectator flow has real multi-participant data to exercise — a deliberate deviation from "DEV-ONLY combat target, not a player." Since dummies never attack, the win condition in practice only fires if the local player kills every dummy (or dies leaving exactly one other participant alive); this whole roster wiring should be revisited once step 9 replaces dummies with real networked players. | Low (step 9) |
+| 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (8 per layer, 32 total — raised from 6 on 2026-07-04 for testing visibility; Core Hollow intentionally gets none, see CLAUDE.md) must be removed when networked players exist. **Widened scope (2026-07-04):** dummies now also register as `GameManager` roster participants (`TestDummy.setup()`) so the step 8 leaderboard/win-condition/spectator flow has real multi-participant data to exercise — a deliberate deviation from "DEV-ONLY combat target, not a player." Since dummies never attack, the win condition in practice only fires if the local player kills every dummy (or dies leaving exactly one other participant alive); this whole roster wiring should be revisited once step 9 replaces dummies with real networked players. | Low (step 9) |
 | 12 | `Main.gd` | Player always spawns at world centre X. Needs per-player scatter for 100-player drops. | Low (step 9) |
 | 13 | `DrillClass.gd`, `terrain_stats.json` | Thermal's `class_effectiveness` (now set to excel at soft/organic terrain) is inert at runtime: `ignores_terrain_effectiveness(THERMAL)` makes the dig calc use uniform speed, ignoring the JSON values. Data reflects intent; runtime does not. Decide later whether Thermal keeps uniform speed or honours its terrain values. | Low |
 | 14 | `InventoryManager.gd`, `PlayerController.gd` | ~~Drill/weapon current durability lost on drop → re-pickup.~~ **Resolved** — dropped items carry live `current_durability` (`_with_current_durability`), restored on re-equip (`_restore_saved_durability`), broken re-flagged at 0. | Fixed |
@@ -687,6 +691,52 @@ Phase schedule locked. Damage values TBD.
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
 
 ### 2026-07-04
+
+**Inventory drag-and-drop (move/swap items inside the F panel).** Implemented entirely
+in `InventoryManager.gd` (the panel is code-built; there is no `InventoryManager.tscn`,
+and no HUD change was needed — see the "no HUD change" note below). New inner class
+`_InvSlotControl` (a `PanelContainer`) wraps each of the 8 slot rows and overrides
+Godot's built-in `_get_drag_data` / `_can_drop_data` / `_drop_data`, forwarding to the
+manager; row key/item labels are `MOUSE_FILTER_IGNORE` so presses fall through to start
+a drag, while the per-row **Drop** button stays `STOP` (still clickable, never starts a
+drag).
+- **Drag:** `_begin_drag()` returns a `{"inv_drag", "src"}` payload (null on an empty
+  slot → no drag) and dims the source row (`modulate.a=0.35`). `_make_drag_preview_for()`
+  builds a tier-colored name chip handed to `set_drag_preview()` — the engine floats it
+  above every CanvasLayer and follows the cursor. This game has **no item icon sprites**,
+  so the dragged "icon" is the item's text chip (faithful adaptation, flagged).
+- **Drop:** `_perform_drop()` → `_move_or_swap()`. Empty target = move; occupied =
+  swap. Uses `_move_or_swap()` (a new reserved-slot-aware path), NOT the pre-existing
+  `swap_slots()` which doesn't re-equip: it stamps live durability onto reserved-slot
+  items before any re-equip, and calls `_reequip_player()` **before** each `_set_slot()`,
+  so drill/weapon/armor equipped Resources stay in lockstep with slot contents. Both
+  changed slots emit `slot_changed`, which the HUD already listens to (`_on_inventory_slot_changed`
+  handles hotbar/armor/backpack), so the HUD updates immediately with no new HUD code.
+- **Type rules** (`_is_move_valid()`, checks BOTH swap directions): only drills in slot
+  0, only weapons in slot 1. **Deliberate extension beyond the brief:** also only armor
+  in the armor slot 5 — the task named only slots 1–2, but allowing a non-armor into the
+  armor slot would make `equip_armor_from_item()` build a bogus `ArmorBase` from a
+  non-armor class and desync `PlayerStats.equipped_armor`, a real bug. A rejected drop
+  shows a transient **"Wrong slot type"** message (`_flash_message`, 1.2s) and snaps back
+  (no state change). Reserved slots are valid drag **sources** per the brief, so dragging
+  a drill onto an empty backpack slot is allowed and unequips it (equip state mirrors slot
+  0); dragging it back re-equips with preserved wear.
+- **Visual feedback:** `_can_drop_data`/`_hover_drop` tints the hovered target green
+  (valid) / red (wrong-type) via shared styleboxes, returning `true` even for wrong-type
+  so `_drop_data` fires and can show the message rather than the OS silently refusing.
+  Highlights cleared on `mouse_exited` and on `NOTIFICATION_DRAG_END` (`_on_drag_end`,
+  guarded to run once), which also un-dims the source and refreshes the panel.
+- **No HUD.gd/HUD.tscn change (deliberate):** requirement 2 says the HUD updates "via
+  the existing `slot_changed` signal" — it already does. And the **"Wrong slot type"**
+  message is rendered on the inventory panel's own CanvasLayer (layer 20), because the
+  HUD (layer 1) is occluded by the open panel — a HUD-hosted message would be invisible.
+  So the message lives on the panel; the two HUD files were left untouched.
+- **Not runtime-verified:** no Godot binary in this environment (project targets Godot
+  4.7). Verified by tracing the built-in drag API + `slot_changed`/`_reequip_player`
+  paths by hand; all APIs used (`_get_drag_data`/`set_drag_preview`/`NOTIFICATION_DRAG_END`)
+  are stable since Godot 4.0. Next session with Godot should F-open the panel and drag:
+  move to empty, swap two consumables, drill→slot 1 (expect "Wrong slot type"), and
+  drag armor out/in (expect equip/unequip + durability bar update).
 
 **Step 5 remainder — Armor system fully implemented (deviation #4 resolved).** Ran two
 sub-agents (armor core files + PlayerStats wiring); both were cut off by a session rate
@@ -904,6 +954,122 @@ efficiency/altitude), findings applied.**
   150-frame headless boot clean, and a second throwaway roster smoketest against
   the new `match_won(winner_id: int)` signature (5/5 assertions) — deleted after
   passing.
+
+**More test dummies per layer, again.** `WorldGenerator.DUMMIES_PER_LAYER` raised
+`6 → 8` (32 `TestDummy`s total across the 4 non-Core-Hollow layers) so dummies are
+easier to encounter while exploring/testing kill gates. `_append_dummy_positions()`
+was not touched — its existing floor-candidate search (air cell with a solid tile
+directly below it, 3-tile margin from each layer edge, then up to `DUMMIES_PER_LAYER`
+picks spread evenly across the column-sorted candidate list) already guarantees
+solid-ground placement and full-layer-width spread for any count, and `TestDummy.setup()`
+already registers every spawned dummy with `GameManager.register_player()` regardless
+of how many spawn. Also fixed a stale comment in `Main._spawn_test_dummy()` that still
+said "2 per layer" (left over from before the 2026-06-30 session raised it to 6).
+**Deliberately left Core Hollow with zero dummies**: it's an open, floorless,
+zero-gravity chamber by design (no loot spawns there either), and `TestDummy` is a
+grounded `CharacterBody2D` with no zero-gravity handling — there is no "solid ground"
+inside Core Hollow to place one on. See the matching `CLAUDE.md` entry for the locked
+rule.
+
+**Fixed: buff/debuff `EffectsPanel` was invisible whenever no effect was active,
+contradicting the "panel container must always exist/be visible during gameplay"
+requirement.** Investigated the full chain end to end first: `Bloodstim.gd`
+(`_on_use_complete`) → `PlayerStats.apply_status()`/`_process()` → `active_effects_changed`
+signal → `HUD._on_effects_changed()` were all already wired correctly (row build,
+green/red coloring, whole-second countdown, automatic removal on expiry all worked).
+The actual defect was narrower: `HUD.tscn`'s `EffectsPanel` node had `visible = false`
+baked in, and `HUD._on_effects_changed()` re-hid the panel (`visible = false`) every
+time `effects` came back empty — so with no active effect (the common case) the panel
+never rendered at all, not even its empty background/border, which is what this
+mission's spec explicitly calls out as wrong.
+- **`HUD.tscn`**: removed the `visible = false` line on `EffectsPanel` (Control's
+  default is visible).
+- **`HUD.gd`**: `_on_effects_changed()` no longer toggles `_effects_panel.visible`;
+  the panel now stays up for the whole match (still explicitly hidden by
+  `_hide_match_hud()` during death/spectating/match-end, unchanged). Height is
+  still recalculated per update but now floored at `maxf(14.0, 6.0 + effects.size()*14.0)`
+  so an empty panel shows a full one-row-tall background instead of collapsing
+  toward zero height. `HUD.init()` now also calls `_on_effects_changed(stats.get_active_effects())`
+  once right after connecting the signal, so the panel reflects real state from
+  the first frame instead of relying on the tscn's baked-in placeholder size.
+- **`PlayerStats.gd`**: added `get_active_effects() -> Array`, a thin public
+  wrapper around the existing (private-by-convention) `_build_effects_array()`,
+  so `HUD.init()` has a legitimate way to read current state without waiting on
+  a signal.
+- Verified by re-reading the full call chain by hand (no Godot binary available
+  in this environment to run a headless boot this session — flagged here rather
+  than silently skipped); the logic changes are small and narrowly scoped enough
+  that this is asserted with high confidence, but the next session with Godot
+  available should do a live boot + Bloodstim hold to visually confirm.
+- **Locked rule going forward:** `EffectsPanel` must stay visible for the entire
+  match regardless of active-effect count — do not reintroduce an empty-list
+  auto-hide. If a future design wants it hidden absent effects, that's a
+  deliberate spec change requiring the same explicit sign-off this one had, not
+  a "cleanup."
+
+**Follow-up fix: user reported "now only the panel exists, can't see the
+effect" after the above — the real bug wasn't in the panel at all.**
+`PlayerController.setup_hotbar()`'s DEV test loadout put a bare `item_class: 1`
+(`Constants.Consumable.MEDKIT`) in the consumable hotbar slot. `Medkit.gd` only
+calls `stats.heal()` — it never calls `apply_status()` — so holding G on the
+default loadout could never produce a row on the buff/debuff panel no matter
+how correct the panel itself was; there was also no way to reach Bloodstim (or
+Thermal Capsule / Fault Beacon) from the default loadout at all, since the
+DEV F6/F7 consumable-type-cycle keys were removed in an earlier session (see
+"Replaced the DEV F6/F7..." entry, 2026-07-04 above) without a production
+replacement — only throwables got one (`R` / `cycle_throwable`).
+- **`PlayerController.gd`**: changed the DEV consumable slot from the bare
+  `1` to `Constants.Consumable.BLOODSTIM` (named constant instead of a magic
+  number, as a side benefit). This is the item the mission asked to test, and
+  it does carry a status payload (`move_speed_mult`/`damage_output_mult`),
+  so it's what actually exercises the panel out of the box.
+- **Known gap, not fixed here (flagging rather than silently leaving it):**
+  Medkit/Thermal Capsule/Fault Beacon are still unreachable from the default
+  DEV loadout — there is currently no consumable-equivalent of `Hotbar`'s
+  `cycle_throwable` (`R`). If a future session wants every consumable
+  reachable offline, that needs a real `cycle_consumable` action (mirroring
+  `Hotbar._cycle_throwable()`), not another loadout swap. *(Addressed in the
+  next entry.)*
+- Same caveat as above: no Godot binary in this environment, so this was
+  verified by tracing `Bloodstim._on_use_complete()` → `apply_status()` →
+  the signal chain by hand, not by an actual G-hold in a running game.
+
+**Follow-up (user: "add it"): added a real `cycle_consumable` (C key) hotbar-cycle
+action + a second panel-buff consumable in the DEV loadout, so the buff/debuff
+panel is now demonstrably testable with more than one effect.** Closes the
+"known gap" flagged just above.
+- **`project.godot`**: new `cycle_consumable` input action mapped to **C**
+  (physical keycode 67; verified free against the existing input map).
+- **`Hotbar.gd`**: added `_cycle_consumable()`, wired into `_input()` right
+  after the `cycle_throwable` branch. Refactored the existing `_cycle_throwable()`
+  loop into a shared `_cycle_type(item_type: String)` helper (both cycle keys now
+  call it) rather than duplicating the free-slot-scan logic — `_cycle_throwable()`
+  → `_cycle_type("throwable")`, `_cycle_consumable()` → `_cycle_type("consumable")`.
+  Same production behavior as R: steps through the free hotbar slots (indices 2–4)
+  starting just after the active slot, wraps via `posmod`, selects the first
+  matching-type item; reserved drill/weapon slots (0–1) are never candidates;
+  no-op if none carried.
+- **`PlayerController.setup_hotbar()`**: the DEV loadout now carries **two**
+  consumables — `BLOODSTIM` (slot 4) and `THERMAL_CAPSULE` (slot 5) — replacing
+  the earlier lone Bloodstim **and** the DEV relic-test slot (`Relic.SPEED`).
+  Rationale: a slot-cycler is only demonstrable with ≥2 carried items of the
+  type, and the two panel-feeding consumables are exactly Bloodstim ("Bloodstim"
+  buff: speed+damage) and ThermalCapsule ("Thermal Shield" buff: hazard_resist).
+  Relics were the lowest-value casualty for the freed slot — they provably do
+  **not** feed the buff/debuff panel (`apply_status`/`apply_effect` callers are
+  only PlayerStats/consumables/throwables, never `src/systems/relics/`) and no
+  code depends on a starting relic; re-add one in `setup_hotbar()` if offline
+  relic-use testing is needed again. The 3 free hotbar slots (2–4) now hold
+  throwable + 2 consumables; `cycle_throwable` still works (one throwable) and
+  `cycle_consumable` flips between the two consumables.
+- **DEV-scope note:** this whole DEV loadout (and now both cycle keys' usefulness
+  in it) is offline test scaffolding; real loadouts come from the loot system and
+  both cycle keys are legitimate production features that will simply cycle
+  whatever the player actually carries.
+- Same environment caveat: no Godot binary available here, so verified by tracing
+  the input-action → `_cycle_type` → `select_slot` → `active_slot_changed` →
+  consumable-use paths by hand; next session with Godot should press C in-game to
+  confirm the cycle + G-hold on each buff.
 
 ### 2026-07-02
 
