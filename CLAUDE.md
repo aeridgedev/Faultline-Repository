@@ -421,6 +421,41 @@ which item this session targets before writing code.
   drag **sources** (per the brief): dragging a drill to an empty backpack slot
   unequips it, dragging it back re-equips with preserved wear — the equipped
   Resource always mirrors the reserved slot's contents.
+- **RESOLVED (2026-07-05) — R / `cycle_throwable` removed; G is context-sensitive on
+  the active hotbar slot only.** The `cycle_throwable` input action (R) added
+  2026-07-04 is deleted from `project.godot`; R is now unbound. `Hotbar._cycle_throwable()`
+  and its `_input()` branch are removed from `Hotbar.gd`; `_cycle_consumable()` (C key)
+  and the shared `_cycle_type()` helper are unchanged. Throwables are now selected only
+  via number keys 1–5 / scroll, same as every other item type. `PlayerController.gd`
+  needed no changes: `_handle_item_use()` already dispatched G purely off
+  `_active_item().get("type")` (throwable → arc-throw, consumable → hold-to-channel,
+  relic → activate, drill/weapon/empty → no-op) with no R/cycle/F6/F7 logic of its own.
+  **Locked rule going forward:** do not reintroduce a throwable- or weapon-type-specific
+  cycle key — hotbar slot selection (1–5/scroll) is the sole way to choose a throwable;
+  `cycle_consumable` (C) remains the one exception because consumables were explicitly
+  scoped to keep it.
+- **RESOLVED (2026-07-05) — first-pass balance pass: every TBD/null tunable in
+  `data/*.json` now has a concrete value.** All eight data files were filled in one
+  session by 7 file-disjoint parallel sub-agents (weapons, drills, armor, terrain, loot,
+  world_config, storm+spawn). **These are first-pass / pre-playtest values, explicitly
+  NOT final** — this does not repeal the "TBD — do NOT invent values" rule below: the
+  numbers are testable placeholders and every file carries a `_meta._balanced` marker +
+  first-pass status text; treat them as a starting point to tune, never as canon. Design
+  intent applied (anchored to 100 HP / 200 move): dramatic tier jumps, lottery-rare
+  Legendary, forgiving-early/hard-late hazard+storm spike (storm 45 dps in Core Hollow ≈
+  2.2s TTK), Core Hollow Shell stays the hardest drillable terrain (dig time 11.0). No
+  `.gd` file was modified and `Constants.gd` locked values are untouched (verified by git
+  diff + JSON parse of all 8 files). **Two brief-conflicts flagged, not silently
+  resolved** (both recorded in `GAME_STATE.md` and in-file `_meta` notes): (1) JSON
+  forbids `#`/`//` comments (Godot `JSON.parse_string`/`DataLoader` would reject them), so
+  the requested per-value `# TBD-balanced` comments were substituted with `_meta._balanced`
+  string markers; (2) the "Legendary only in Inner Core + Core Hollow" philosophy line
+  contradicts the user's explicit Mantle 1% / Outer Core 5% loot figures — the explicit
+  numeric table was followed and a `loot_tables.json` `_meta._legendary_distribution_note`
+  records how to switch to the strict reading. **Locked rule going forward:** balance
+  values live ONLY in `data/*.json` (read via `GameManager.data`); the in-code numeric
+  literals that remain are documented null-safe fallbacks and structural constants
+  (tick intervals) — do not treat those as the balance source or duplicate them into JSON.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

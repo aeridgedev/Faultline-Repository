@@ -1,15 +1,17 @@
 {
   "_meta": {
     "description": "Weapon Class x Tier. 5 classes, 4 tiers (Mythic removed). Tier scaling multipliers are LOCKED in Constants.WEAPON_TIER_SCALING; only each class's Common BASE stats are tuned here.",
-    "status": "DEV PLACEHOLDERS — provisional Common base stats so combat functions. NOT final; pending balance pass.",
+    "status": "FIRST-PASS BALANCED (pre-playtest) — Common base stats tuned for distinct per-class feel vs 100 HP. Tier scaling still applied at runtime. Values remain provisional until playtesting.",
     "schema_note": "Each class has a 'base' object read by WeaponBase.init_from_data(): damage, swing_speed (attacks/sec), durability (hits before breaking), range (pixels).",
-    "tier_scaling_note": "Rare +20%dmg/+10%swing/+15%dur | Epic +35/+15/+25 +Minor Passive | Legendary +50/+20/+40 +Unique Passive"
+    "tier_scaling_note": "Rare +20%dmg/+10%swing/+15%dur | Epic +35/+15/+25 +Minor Passive | Legendary +50/+20/+40 +Unique Passive",
+    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
+    "_balance_note": "DPS at Common (dmg x swing): Daggers 23.4 | Swords 25.5 | Hammers 23.4 | Spears 20.25 | Axes 25.0. Classes differentiated by burst-per-hit, reach, and durability rather than raw DPS."
   },
   "classes": {
-    "Daggers":  { "base": { "damage": 8.0,  "swing_speed": 2.5, "durability": 60.0,  "range": 28.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Swords":   { "base": { "damage": 15.0, "swing_speed": 1.5, "durability": 80.0,  "range": 64.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Hammers":  { "base": { "damage": 30.0, "swing_speed": 0.7, "durability": 100.0, "range": 36.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Spears":   { "base": { "damage": 14.0, "swing_speed": 1.3, "durability": 70.0,  "range": 56.0 }, "minor_passive": "TBD", "unique_passive": "TBD" },
-    "Axes":     { "base": { "damage": 22.0, "swing_speed": 1.0, "durability": 90.0,  "range": 38.0 }, "minor_passive": "TBD", "unique_passive": "TBD" }
+    "Daggers":  { "base": { "damage": 9.0,  "swing_speed": 2.6,  "durability": 55.0,  "range": 26.0 }, "minor_passive": "Serrated Edge (bleed on hit)",      "unique_passive": "Assassin's Mark (critical strike from behind)" },
+    "Swords":   { "base": { "damage": 17.0, "swing_speed": 1.5,  "durability": 85.0,  "range": 60.0 }, "minor_passive": "Riposte (parry window on swing)",   "unique_passive": "Bloodthirst (lifesteal on kill)" },
+    "Hammers":  { "base": { "damage": 36.0, "swing_speed": 0.65, "durability": 110.0, "range": 34.0 }, "minor_passive": "Concussive Blow (brief stagger)",   "unique_passive": "Seismic Shockwave (ground-slam knockback)" },
+    "Spears":   { "base": { "damage": 15.0, "swing_speed": 1.35, "durability": 70.0,  "range": 74.0 }, "minor_passive": "Piercing Thrust (partial armor pierce)", "unique_passive": "Impaling Lunge (dash-through strike)" },
+    "Axes":     { "base": { "damage": 25.0, "swing_speed": 1.0,  "durability": 95.0,  "range": 40.0 }, "minor_passive": "Rend (stacking armor shred)",       "unique_passive": "Executioner (bonus damage to low-HP targets)" }
   }
 }

@@ -1,8 +1,10 @@
 {
   "_meta": {
     "description": "Chest spawn formula parameters and special-item spawn rates. The chest spawn chance per layer is derived, not hand-set.",
-    "status": "PARTIAL — formula LOCKED, special rates TBD",
-    "formula": "spawnChance = 0.8 * (1 - depthFactor)^2"
+    "status": "PARTIAL — formula LOCKED, special rates first-pass balanced",
+    "formula": "spawnChance = 0.8 * (1 - depthFactor)^2",
+    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
+    "_balance_note": "special_item_spawn_rates filled as relative weights inside the loot 'special' category; kept low because these are powerful/rare items. chest_spawn block untouched (LOCKED formula + derived chances)."
   },
   "chest_spawn": {
     "base": 0.8,
@@ -14,11 +16,12 @@
     }
   },
   "special_item_spawn_rates": {
-    "_status": "TBD",
-    "layer_breach_device": null,
-    "life_capsule": null,
+    "_status": "first-pass balanced",
+    "_interpretation_note": "These are relative spawn weights inside the loot_tables.json 'special' category, not probabilities. Kept low because these items are powerful/rare. Pending playtest tuning.",
+    "layer_breach_device": 4,
+    "life_capsule": 3,
     "upgrade_template": "10% weight in relevant rarity pool (see loot_tables.json)",
-    "fault_beacon": null,
-    "deep_radar": null
+    "fault_beacon": 5,
+    "deep_radar": 4
   }
 }

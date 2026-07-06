@@ -25,9 +25,6 @@ func _input(event: InputEvent) -> void:
 			if event.is_action_pressed("hotbar_%d" % (i + 1)):
 				select_slot(i)
 				return
-		if event.is_action_pressed("cycle_throwable"):
-			_cycle_throwable()
-			return
 		if event.is_action_pressed("cycle_consumable"):
 			_cycle_consumable()
 			return
@@ -39,17 +36,11 @@ func _input(event: InputEvent) -> void:
 				select_slot((_active_slot - 1 + Constants.HOTBAR_SLOTS) % Constants.HOTBAR_SLOTS)
 
 
-# R key: select the next throwable-type item among the free hotbar slots (3-5,
+# C key: select the next consumable-type item among the free hotbar slots (3-5,
 # indices 2-4). Starts searching just after the current active slot and wraps
-# around, so repeated presses step through every throwable in the hotbar. Reserved
-# drill/weapon slots (0-1) are never candidates. No-op if no throwable is carried.
-func _cycle_throwable() -> void:
-	_cycle_type("throwable")
-
-
-# C key: same as _cycle_throwable() but for consumable-type items. Lets a player
-# step through every consumable they carry (Bloodstim / Medkit / Thermal Capsule /
-# Fault Beacon / Lytes) in the free hotbar slots. No-op if no consumable is carried.
+# around, so repeated presses step through every consumable carried (Bloodstim /
+# Medkit / Thermal Capsule / Fault Beacon / Lytes). Reserved drill/weapon slots
+# (0-1) are never candidates. No-op if no consumable is carried.
 func _cycle_consumable() -> void:
 	_cycle_type("consumable")
 

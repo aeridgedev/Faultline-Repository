@@ -1,15 +1,17 @@
 {
   "_meta": {
     "description": "Storm descent schedule. Storm consumes one region every ~3.5 min. No Sudden Death. Anyone not in Core Hollow by 17:30 dies. Timings LOCKED; damage values TBD.",
-    "status": "TIMINGS LOCKED — damage TBD"
+    "status": "TIMINGS LOCKED — damage first-pass balanced",
+    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
+    "_balance_note": "Per-phase damage_per_second is an escalating curve: ignorable in Atmosphere (0.5), ramping ~2x-2.5x each phase, LETHAL in Core Hollow (45.0 dps kills a full-HP 100 player in ~2.2s). NOTE: the live StormSystem currently reads a single flat storm_dps from world_config.json (set to 12.0); this per-phase curve is the intended escalation for WHEN StormSystem is upgraded to read per-phase damage. No .gd was modified to wire this — intent recorded only."
   },
   "core_hollow_deadline_seconds": 1050,
   "phases": [
-    { "region": "Atmosphere",  "start": 0,    "end": 210,  "damage_per_second": null },
-    { "region": "Crust",       "start": 210,  "end": 420,  "damage_per_second": null },
-    { "region": "Mantle",      "start": 420,  "end": 630,  "damage_per_second": null },
-    { "region": "Outer Core",  "start": 630,  "end": 840,  "damage_per_second": null },
-    { "region": "Inner Core",  "start": 840,  "end": 1050, "damage_per_second": null },
-    { "region": "Core Hollow", "start": 1050, "end": -1,   "damage_per_second": null }
+    { "region": "Atmosphere",  "start": 0,    "end": 210,  "damage_per_second": 0.5 },
+    { "region": "Crust",       "start": 210,  "end": 420,  "damage_per_second": 2.0 },
+    { "region": "Mantle",      "start": 420,  "end": 630,  "damage_per_second": 5.0 },
+    { "region": "Outer Core",  "start": 630,  "end": 840,  "damage_per_second": 10.0 },
+    { "region": "Inner Core",  "start": 840,  "end": 1050, "damage_per_second": 20.0 },
+    { "region": "Core Hollow", "start": 1050, "end": -1,   "damage_per_second": 45.0 }
   ]
 }

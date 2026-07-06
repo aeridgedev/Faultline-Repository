@@ -12,7 +12,7 @@ extends Resource
 ## Try to upgrade the best candidate in the given inventory.
 ## Priority: active hotbar drill → active hotbar weapon → first drill → first weapon.
 func apply_to_inventory(inventory: InventoryManager, hotbar: Hotbar) -> bool:
-	var active := inventory.get_item(hotbar.get_active_slot())
+	var active: Variant = inventory.get_item(hotbar.get_active_slot())
 	if _try_upgrade_item_data(active, inventory, hotbar.get_active_slot()):
 		return true
 	for entry in inventory.all_items():

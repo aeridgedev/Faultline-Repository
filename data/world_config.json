@@ -1,5 +1,7 @@
 {
-  "_meta": "DEV PLACEHOLDERS — all numbers provisional, pending balance pass. Do not treat as final.",
+  "_meta": "DEV PLACEHOLDERS — structural world/player/stamina numbers below remain provisional. Hazard/relic/scanner/consumable/throwable balance values are first-pass balanced (see _balanced).",
+
+  "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
 
   "world_width_tiles": 400,
 
@@ -22,59 +24,61 @@
 
   "pickup_radius": 48.0,
 
-  "_hazards_meta": "DEV PLACEHOLDERS — provisional hazard/relic/scanner values so these systems do something. NOT final.",
+  "_hazards_meta": "FIRST-PASS BALANCED 2026-07-05 — hazards forgiving early, spike hard toward Inner Core. Testable, pending playtesting.",
 
-  "storm_dps": 6.0,
+  "storm_dps": 12.0,
   "storm_drill_efficiency_mult": 0.5,
-  "storm_heal_mult": 0.5,
+  "storm_heal_mult": 0.4,
   "storm_overlay_alpha": 0.35,
 
-  "_pressure_dps_base_meta": "TBD — pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8). Reduced for testability; not final.",
-  "pressure_dps_base": 0.5,
+  "_pressure_dps_base_meta": "FIRST-PASS BALANCED 2026-07-05 — pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8) → Crust 0 / Mantle 1.2 / Outer 2.4 / Inner 3.6 / Core Hollow 4.8 per sec.",
+  "pressure_dps_base": 6.0,
 
   "depth_hazard": {
-    "_meta": "TBD — all DPS and drain values below are testable placeholders. Not final. Scaling intent: low Crust / moderate Mantle / noticeable Outer Core / high Inner Core.",
+    "_meta": "FIRST-PASS BALANCED 2026-07-05 — DPS/oxygen/visibility scale low Crust / moderate Mantle / noticeable Outer Core / high Inner Core; Core Hollow left to the storm. Testable, pending playtesting.",
+    "_balance_note": "Layer DPS (depth_hazard only): Crust 0 / Mantle 1 / Outer Core 4 / Inner Core 12 / Core Hollow 0. Combined with pressure this yields the intended forgiving-early, punishing-deep curve.",
 
     "crust_dps": 0.0,
-    "mantle_dps": 0.3,
-    "outer_core_dps": 1.0,
-    "inner_core_dps": 2.5,
+    "mantle_dps": 1.0,
+    "outer_core_dps": 4.0,
+    "inner_core_dps": 12.0,
     "core_hollow_dps": 0.0,
 
     "crust_oxygen_drain": 0.0,
-    "mantle_oxygen_drain": 1.0,
-    "outer_core_oxygen_drain": 2.5,
-    "inner_core_oxygen_drain": 5.0,
+    "mantle_oxygen_drain": 1.5,
+    "outer_core_oxygen_drain": 4.0,
+    "inner_core_oxygen_drain": 8.0,
     "core_hollow_oxygen_drain": 0.0,
 
     "crust_visibility_alpha": 0.0,
-    "mantle_visibility_alpha": 0.08,
-    "outer_core_visibility_alpha": 0.18,
-    "inner_core_visibility_alpha": 0.30,
+    "mantle_visibility_alpha": 0.10,
+    "outer_core_visibility_alpha": 0.20,
+    "inner_core_visibility_alpha": 0.34,
     "core_hollow_visibility_alpha": 0.05
   },
 
-  "relic_duration": { "haste": 3.5, "speed": 3.5, "strength": 3.5 },
+  "relic_duration": { "haste": 3.5, "speed": 3.5, "strength": 4.0 },
   "relic_strength": {
-    "haste_mult": 1.4,
-    "speed_mult": 1.5,
-    "strength_mult": 1.6,
-    "toughness_reduction": 0.3
+    "_balance_note": "FIRST-PASS BALANCED 2026-07-05 — dramatic while active (~3-4s), per design. Testable, pending playtesting.",
+    "haste_mult": 1.5,
+    "speed_mult": 1.6,
+    "strength_mult": 1.8,
+    "toughness_reduction": 0.35
   },
 
-  "basic_scanner_range": 200.0,
-  "deep_radar_range": 400.0,
+  "basic_scanner_range": 220.0,
+  "deep_radar_range": 460.0,
 
   "consumables": {
-    "_meta": "TBD — every use time / duration / strength below is a testable dev placeholder pending the balance pass. Not final.",
+    "_meta": "FIRST-PASS BALANCED 2026-07-05 — use times / durations / strengths tuned to be meaningful on a 100 HP player. Testable, pending playtesting.",
     "lytes_use_time": 0.8,
     "lytes_heal": 25.0,
     "medkit_use_time": 2.0,
-    "medkit_heal_total": 50.0,
+    "medkit_heal_total": 60.0,
     "bloodstim_use_time": 1.2,
     "bloodstim_duration": 6.0,
     "bloodstim_speed_mult": 1.30,
-    "bloodstim_damage_mult": 1.30,
+    "bloodstim_damage_mult": 1.35,
     "thermal_capsule_use_time": 1.5,
     "thermal_capsule_duration": 20.0,
     "thermal_capsule_resist": 0.75,
@@ -83,21 +87,21 @@
   },
 
   "throwables": {
-    "_meta": "TBD — every radius / duration / strength below is a testable dev placeholder pending the balance pass. Not final. seismic_radius_tiles is in TILES; all other radii in PIXELS.",
+    "_meta": "FIRST-PASS BALANCED 2026-07-05 — radii / durations / strengths tuned to be meaningful. Testable, pending playtesting. seismic_radius_tiles is in TILES; all other radii in PIXELS.",
     "smoke_radius": 56.0,
     "smoke_duration": 6.0,
-    "paralysis_radius": 44.0,
-    "paralysis_duration": 1.5,
-    "weakness_radius": 48.0,
+    "paralysis_radius": 46.0,
+    "paralysis_duration": 1.75,
+    "weakness_radius": 50.0,
     "weakness_duration": 6.0,
     "weakness_damage_mult": 0.60,
-    "heat_radius": 48.0,
+    "heat_radius": 50.0,
     "heat_duration": 5.0,
-    "heat_dps": 4.0,
-    "dust_radius": 56.0,
+    "heat_dps": 6.0,
+    "dust_radius": 58.0,
     "dust_duration": 5.0,
-    "dust_slow_mult": 0.65,
-    "echo_radius": 220.0,
+    "dust_slow_mult": 0.60,
+    "echo_radius": 230.0,
     "echo_duration": 8.0,
     "seismic_radius_tiles": 3
   }

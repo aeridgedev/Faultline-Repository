@@ -4,8 +4,11 @@
 > and CLAUDE.md before finishing. Treat any discrepancy between this file and the
 > actual code as a bug in this file — fix it immediately.
 
-**Last updated:** 2026-07-04 · **Build:** functional offline single-player. All
-balance numbers are provisional dev-placeholders pending a formal balance pass.
+**Last updated:** 2026-07-05 · **Build:** functional offline single-player. A
+**first-pass balance pass** (2026-07-05) has filled every previously-null/placeholder
+tunable in `data/*.json` with concrete testable numbers — these are first-pass /
+pre-playtest values, still NOT final (see the Session Change Log). `Constants.gd`
+locked structural values are unchanged.
 
 ### Legend
 
@@ -454,13 +457,15 @@ Key methods: `add_item()`, `_place_reserved()`, `remove_item()`, `swap_slots()`,
 ### Hotbar (`src/systems/inventory/Hotbar.gd`)
 Tracks `_active_slot` (0–4). Input: keys 1–5 and scroll wheel. Emits `active_slot_changed(slot_idx)`. `get_active_item()` queries InventoryManager.
 
-**R key — cycle_throwable / C key — cycle_consumable (added 2026-07-04; R replaces
-the old DEV F6/F7 keys).** Both call a shared `_cycle_type(item_type)` that scans the
-free hotbar slots (indices 2–4 / hotbar 3–5) starting just after `_active_slot` and
-wrapping around (`posmod`), selecting the first slot whose item has the matching
-`type` via the existing `select_slot()`. `_cycle_throwable()` → `_cycle_type("throwable")`
-(R), `_cycle_consumable()` → `_cycle_type("consumable")` (C). No-op if the player carries
-no item of that type. Both are real (non-DEV) input actions, not test scaffolding.
+**C key — cycle_consumable (R/cycle_throwable removed 2026-07-05).** `_cycle_consumable()`
+calls `_cycle_type("consumable")`, which scans the free hotbar slots (indices 2–4 /
+hotbar 3–5) starting just after `_active_slot` and wrapping around (`posmod`),
+selecting the first slot whose item has type `"consumable"` via the existing
+`select_slot()`. No-op if the player carries no consumable. There is no longer a
+throwable-cycling key — `cycle_throwable` (R) and `_cycle_throwable()` were removed
+entirely; switching hotbar slots (1–5 / scroll) is the only way to select a throwable.
+`_cycle_type()` itself is unchanged (still a generic type-matching scan) so a future
+throwable-cycle key, if ever reinstated, could reuse it.
 
 ### AutoCollect (`src/systems/inventory/AutoCollect.gd`)
 **Manual Q pickup (automatic collection disabled).** Despite the class name, pickup is no longer automatic. On `pickup` input (Q, added to `project.godot`), `_try_pickup()` finds all `loot_drops`-group `LootDrop` nodes within `_pickup_radius` (from `data["pickup_radius"]`, 32px fallback = 2 tiles) whose `pickup_delay` has elapsed, selects the **closest** one, and adds it to the inventory (one item per press). If the closest in-range drop cannot be accepted (`InventoryManager.can_add()` false — inventory/relevant slot full), it shows a brief **"Inventory full"** message via the player's floating notify label (`PlayerController._show_notify`, 1.5s) instead of collecting. `LootRestriction` is no longer consulted — pressing Q is an explicit action, so pickup works regardless of drilling/attacking state.
@@ -689,6 +694,101 @@ Phase schedule locked. Damage values TBD.
 ## Session Change Log
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
+
+### 2026-07-05
+
+**First-pass balance pass — every TBD/null tunable in `data/*.json` filled (7 parallel
+sub-agents, file-disjoint).** Every previously-`null`/placeholder balance value across
+all eight data files now has a concrete, testable first-pass number. **These are NOT
+final** — they are playtest-ready placeholders consistent with the project's "do not
+fabricate final numbers" rule; each file carries a `_meta._balanced` marker string and
+its status text says first-pass/pre-playtest. **No `.gd` file was touched** (audit below);
+`Constants.gd` locked values (WEAPON_TIER_SCALING, LAYER_KILL_REQUIREMENTS, chest formula)
+are byte-for-byte unchanged.
+
+Balance philosophy applied consistently (anchored to 100 HP / 200 move speed):
+- **Weapons** (`weapon_stats.json`) — Common bases only (tier scaling stays runtime/LOCKED):
+  Daggers 9dmg/2.6sw/55dur/26rng · Swords 17/1.5/85/60 · Hammers 36/0.65/110/34 ·
+  Spears 15/1.35/70/74 · Axes 25/1.0/95/40. Per-hit damage varies widely but Common DPS
+  sits in a tight ~20–25 band, so classes differ by burst/reach/durability, not raw DPS.
+  `minor_passive`/`unique_passive` are now descriptive flavor strings (display-only; no
+  code consumes them numerically yet).
+- **Drills** (`drill_stats.json`) — dramatic tier curves. Prec/Therm/Reso dig_time_mult
+  1.00→0.72→0.50→0.32, durability 150→350→750→1600. Burst (2 tiles/dig) slightly slower/
+  less durable: 1.10→0.80→0.56→0.36, 130→310→680→1450. spawn_weight 40/28/18/14 = 100.
+- **Armor** (`armor_stats.json`) — tiers flat 2/4/7/11, percent 0.06/0.15/0.26/0.40,
+  durability 40/75/120/180. **The 5 null passives are now filled:** Titan +3 flat,
+  Hellforge 0.5 burn-resist, Tempest ×1.12 move, Echo ×0.6 debuff-duration, Expedition
+  ×1.5 durability (`_tbd` flipped to false).
+- **Terrain** (`terrain_stats.json`) — dig times 0.4 (Soil) → 4.0 (Ultra Dense) →
+  **11.0 (Core Hollow Shell, 2.75× the next-hardest — stays the hardest drillable)**;
+  move mods subtle up top (1.0/0.98) → noticeable deep (0.84/0.80). class_effectiveness:
+  Thermal best on soft (0.55), Burst best on medium (0.58), Precision best on hard/dense
+  and the shell (0.55/0.75), Resonance flat 0.90 everywhere.
+- **Hazards/storm** (`world_config.json`) — depth_hazard DPS 0/1/4/12/0 (Crust→Core
+  Hollow), pressure_dps_base 6.0 (×depth_factor → Inner 3.6, Core Hollow 4.8/s), so
+  combined non-storm is ~0 in Crust and ~15.6/s at Inner Core — forgiving early, hard
+  spike deep. storm_dps 12.0 (single value the live StormSystem reads), storm_heal_mult
+  0.4.
+- **Storm per-phase** (`storm_timings.json`) — damage_per_second 0.5/2/5/10/20/45
+  (Atmosphere→Core Hollow); 45/s kills a 100 HP player in ~2.2s. **Wiring note:**
+  StormSystem currently reads only the single flat `storm_dps` from world_config; this
+  per-phase curve is recorded as the intended escalation for when StormSystem is later
+  upgraded to read per-phase — no `.gd` was changed to wire it (out of scope this pass).
+- **Loot** (`loot_tables.json`) — rarity per user's exact table: Crust 70/25/5/0,
+  Mantle 50/35/14/1, Outer 30/40/25/5, Inner 10/30/45/15, **new Core Hollow 0/20/50/30**
+  (every row sums to 100). category_weights shift drill/weapon/armor-heavy early →
+  relic/throwable/special-rich deep. **Documented design conflict:** the "Legendary only
+  in Inner Core + Core Hollow" philosophy line contradicts the user's explicit Mantle 1% /
+  Outer 5% figures; the explicit numeric table was followed (keeps Legendary lottery-rare
+  early) and a `_meta._legendary_distribution_note` records how to flip Mantle/Outer
+  Legendary to 0 if the strict reading is preferred. Core Hollow entry is inert today
+  (ChestSpawner excludes Core Hollow) — flagged via `_note`, added for when/if Core Hollow
+  chests are ever enabled.
+- **Special-item rates + relics/scanners/consumables/throwables** — `spawn_rates.json`
+  `special_item_spawn_rates` filled (layer_breach_device 4, life_capsule 3, fault_beacon 5,
+  deep_radar 4 — relative weights within the loot 'special' category, documented). Relics
+  (world_config): durations haste/speed 3.5s, strength 4.0s; strengths 1.5/1.6/1.8,
+  toughness_reduction 0.35. Scanners 220/460. Consumables + throwables set to testable
+  values (medkit_heal_total 60, bloodstim_damage_mult 1.35, heat_dps 6, etc.).
+
+**JSON-comment constraint resolution (flagged):** the brief asked to flag each value with
+a `# TBD-balanced` comment, but JSON forbids `#`/`//` comments — Godot's `JSON.parse_string`
+(and `DataLoader`) would reject the whole file. Substituted a `_meta._balanced` string
+marker (+ per-section `_balance_note` strings) in each file instead, matching the existing
+`_meta`/`_tbd`/`_note` convention. Verified: all 8 files parse under `python json.load` and
+contain no `//`/`NaN`/`Infinity`/`#` tokens (so they parse under Godot too).
+
+**Post-pass verification (sequential, done by hand):** (1) all 8 `data/*.json` parse; (2)
+`git diff` shows `Constants.gd` unmodified — locked values intact; (3) balance-value audit:
+48 gameplay `.gd` files read tunables via `GameManager.data`/`_data()`/`data.get()`; the
+only in-code numbers are documented null-safe fallbacks (e.g. PlayerStats `100.0` when
+`player_max_health` is absent — but it IS present in JSON) and structural constants
+(`_TICK_INTERVAL := 1.0` poll rate). No primary balance value is hardcoded, so nothing
+needed moving. *(No Godot binary in this environment to boot-test; validated via json.load
++ token scan + tracing each system's data read.)*
+
+**R / `cycle_throwable` removed; G is purely context-sensitive on the active hotbar
+slot.** Per explicit request, the throwable-cycling key introduced 2026-07-04 is gone:
+- **`project.godot`**: the `cycle_throwable` input action (R, physical keycode 82) is
+  deleted outright. R is now unbound and does nothing in-game. `cycle_consumable` (C)
+  is untouched.
+- **`Hotbar.gd`**: removed the `if event.is_action_pressed("cycle_throwable"): ...`
+  branch from `_input()` and deleted `_cycle_throwable()`. `_cycle_consumable()` and
+  the shared `_cycle_type(item_type)` helper are unchanged — C still cycles carried
+  consumables through the free hotbar slots. Players now select a throwable only via
+  the number keys (1–5) or scroll, same as every other item type.
+- **`PlayerController.gd`**: audited `_handle_item_use()`, `_active_item()`,
+  `_refresh_active_tool()`, and the throw/consume/relic paths — no R/`cycle_throwable`/
+  F6/F7 references existed here (that logic only ever lived in `Hotbar.gd`). Confirmed
+  G (`use_item`) already dispatches purely on `_active_item().get("type")`: `throwable`
+  → arc-throw at cursor (`_throw_active`, throw on `use_just`), `consumable` → hold-to-
+  channel (`_get_or_create_consumable` + `tick_use`/`interrupt_use`), `relic` → activate
+  on press, and drill/weapon/empty fall through the `_` branch (debug print only, no
+  gameplay effect) — no code change needed there.
+- Corrected the now-stale "R key — cycle_throwable" description in this file's
+  Inventory System → Hotbar section (previously written 2026-07-04) to reflect the
+  removal, per this doc's own "fix stale discrepancies immediately" rule.
 
 ### 2026-07-04
 

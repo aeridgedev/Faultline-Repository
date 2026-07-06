@@ -1,28 +1,37 @@
 {
   "_meta": {
     "description": "Per-layer chest loot pools. Chest SPAWN chance is computed by Constants.chest_spawn_chance(); this file controls WHAT a spawned chest contains. Upgrade Template = 10% weight within the relevant rarity pool. Loot pools are NOT terrain-specific.",
-    "status": "PLACEHOLDER weights — tuned for feel, not final balance. Rarity skews Common-heavy in Crust, Legendary-available by Inner Core.",
+    "status": "FIRST-PASS BALANCE — rarity_weights set to the user's precise per-layer spec (each row sums to 100); category_weights progression-tuned (drills/weapons/armor common early, relics/throwables/specials richer deep). Testable values pending playtesting.",
+    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
+    "_balance_note": "PHILOSOPHY: loot gets RARER but STRONGER deeper. Chest spawn chance already falls sharply with depth via the locked Constants.chest_spawn_chance() formula (Crust 80% -> Inner Core ~13%), so deep chests are few; their contents skew high-tier to compensate.",
+    "_legendary_distribution_note": "TENSION FLAGGED: a separate design line states 'Legendary only appears in Inner Core and Core Hollow.' That contradicts the explicit numeric table the user specified here, which grants Legendary 1% in Mantle and 5% in Outer Core (kept intentionally lottery-rare so early Legendaries are a jackpot, not absent). This file follows the explicit numeric table (the precise spec). A human who prefers the strict reading can set Mantle.Legendary and Outer Core.Legendary to 0 and redistribute their weight (e.g. into Epic) so each row still sums to 100.",
     "categories": ["drill", "weapon", "armor", "relic", "throwable", "consumable", "special"]
   },
   "layers": {
     "Crust": {
-      "rarity_weights":   { "Common": 65, "Rare": 28, "Epic": 6,  "Legendary": 1  },
-      "category_weights": { "drill": 25,  "weapon": 25, "armor": 10, "relic": 2, "throwable": 8,  "consumable": 30, "special": 0 },
+      "rarity_weights":   { "Common": 70, "Rare": 25, "Epic": 5,  "Legendary": 0  },
+      "category_weights": { "drill": 25,  "weapon": 25, "armor": 12, "relic": 2,  "throwable": 6,  "consumable": 30, "special": 0 },
       "upgrade_template_weight": 10
     },
     "Mantle": {
-      "rarity_weights":   { "Common": 45, "Rare": 38, "Epic": 14, "Legendary": 3  },
-      "category_weights": { "drill": 22,  "weapon": 22, "armor": 14, "relic": 4, "throwable": 10, "consumable": 26, "special": 2 },
+      "rarity_weights":   { "Common": 50, "Rare": 35, "Epic": 14, "Legendary": 1  },
+      "category_weights": { "drill": 22,  "weapon": 22, "armor": 14, "relic": 5,  "throwable": 9,  "consumable": 26, "special": 2 },
       "upgrade_template_weight": 10
     },
     "Outer Core": {
-      "rarity_weights":   { "Common": 20, "Rare": 42, "Epic": 28, "Legendary": 10 },
-      "category_weights": { "drill": 20,  "weapon": 20, "armor": 17, "relic": 7, "throwable": 12, "consumable": 20, "special": 4 },
+      "rarity_weights":   { "Common": 30, "Rare": 40, "Epic": 25, "Legendary": 5  },
+      "category_weights": { "drill": 18,  "weapon": 20, "armor": 17, "relic": 8,  "throwable": 12, "consumable": 21, "special": 4 },
       "upgrade_template_weight": 10
     },
     "Inner Core": {
-      "rarity_weights":   { "Common": 5,  "Rare": 28, "Epic": 44, "Legendary": 23 },
-      "category_weights": { "drill": 17,  "weapon": 17, "armor": 20, "relic": 12, "throwable": 13, "consumable": 15, "special": 6 },
+      "rarity_weights":   { "Common": 10, "Rare": 30, "Epic": 45, "Legendary": 15 },
+      "category_weights": { "drill": 14,  "weapon": 18, "armor": 19, "relic": 12, "throwable": 14, "consumable": 17, "special": 6 },
+      "upgrade_template_weight": 10
+    },
+    "Core Hollow": {
+      "_note": "Core Hollow's design states 'no loot spawns inside it,' and ChestSpawner currently EXCLUDES Core Hollow — so this entry is inert today. It exists only so that IF Core Hollow chests are ever enabled, sensible odds already exist. Rarity here is the richest in the game (no Common at all; Legendary 30%), matching the 'rarest but strongest deepest' philosophy.",
+      "rarity_weights":   { "Common": 0,  "Rare": 20, "Epic": 50, "Legendary": 30 },
+      "category_weights": { "drill": 8,   "weapon": 20, "armor": 20, "relic": 16, "throwable": 16, "consumable": 12, "special": 8 },
       "upgrade_template_weight": 10
     }
   }

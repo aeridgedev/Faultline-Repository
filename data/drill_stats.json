@@ -1,7 +1,9 @@
 {
   "_meta": {
     "description": "Drill Class x Tier matrix. Class and Tier are INDEPENDENT — any class can be any tier. Upgrade Templates raise tier and fully restore durability. Legendary is the ceiling. No movement weight penalty.",
-    "status": "TBD DEV PLACEHOLDERS — every numeric value in this file (dig_time_mult, durability, spawn_weight) is a provisional TBD placeholder chosen for testable feel. NOT final; pending the AI balance pass.",
+    "status": "FIRST-PASS BALANCED (2026-07-05) — dig_time_mult and durability set on a deliberate dramatic tier curve (Common→Rare→Epic→Legendary big power leaps, Legendary a huge windfall); spawn_weights sum to 100. Values are testable first-pass, NOT final; pending playtesting.",
+    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
+    "_balance_note": "Precision/Thermal/Resonance share one base curve; Burst is intentionally slightly slower and less durable per tier because it destroys 2 tiles per dig. Tier jumps are dramatic by design.",
     "fields": {
       "dig_time_mult": "multiplier on base terrain dig time (lower = faster). Per-terrain class strength lives in terrain_stats.json class_effectiveness.",
       "durability": "number of tile-breaks before the drill is consumed/needs an Upgrade Template",
@@ -15,10 +17,10 @@
       "_tbd": true,
       "spawn_weight": 40,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.00, "durability": 200 },
-        "Rare":      { "dig_time_mult": 0.80, "durability": 400 },
-        "Epic":      { "dig_time_mult": 0.62, "durability": 700 },
-        "Legendary": { "dig_time_mult": 0.45, "durability": 1200 }
+        "Common":    { "dig_time_mult": 1.00, "durability": 150 },
+        "Rare":      { "dig_time_mult": 0.72, "durability": 350 },
+        "Epic":      { "dig_time_mult": 0.50, "durability": 750 },
+        "Legendary": { "dig_time_mult": 0.32, "durability": 1600 }
       }
     },
     "Burst": {
@@ -26,10 +28,10 @@
       "_tbd": true,
       "spawn_weight": 28,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.08, "durability": 180 },
-        "Rare":      { "dig_time_mult": 0.88, "durability": 360 },
-        "Epic":      { "dig_time_mult": 0.70, "durability": 640 },
-        "Legendary": { "dig_time_mult": 0.52, "durability": 1100 }
+        "Common":    { "dig_time_mult": 1.10, "durability": 130 },
+        "Rare":      { "dig_time_mult": 0.80, "durability": 310 },
+        "Epic":      { "dig_time_mult": 0.56, "durability": 680 },
+        "Legendary": { "dig_time_mult": 0.36, "durability": 1450 }
       }
     },
     "Thermal": {
@@ -37,10 +39,10 @@
       "_tbd": true,
       "spawn_weight": 18,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.00, "durability": 200 },
-        "Rare":      { "dig_time_mult": 0.80, "durability": 400 },
-        "Epic":      { "dig_time_mult": 0.62, "durability": 700 },
-        "Legendary": { "dig_time_mult": 0.45, "durability": 1200 }
+        "Common":    { "dig_time_mult": 1.00, "durability": 150 },
+        "Rare":      { "dig_time_mult": 0.72, "durability": 350 },
+        "Epic":      { "dig_time_mult": 0.50, "durability": 750 },
+        "Legendary": { "dig_time_mult": 0.32, "durability": 1600 }
       }
     },
     "Resonance": {
@@ -48,10 +50,10 @@
       "_tbd": true,
       "spawn_weight": 14,
       "tiers": {
-        "Common":    { "dig_time_mult": 1.00, "durability": 200 },
-        "Rare":      { "dig_time_mult": 0.80, "durability": 400 },
-        "Epic":      { "dig_time_mult": 0.62, "durability": 700 },
-        "Legendary": { "dig_time_mult": 0.45, "durability": 1200 }
+        "Common":    { "dig_time_mult": 1.00, "durability": 150 },
+        "Rare":      { "dig_time_mult": 0.72, "durability": 350 },
+        "Epic":      { "dig_time_mult": 0.50, "durability": 750 },
+        "Legendary": { "dig_time_mult": 0.32, "durability": 1600 }
       }
     }
   }

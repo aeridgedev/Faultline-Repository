@@ -34,7 +34,20 @@
       "Bash(powershell -NoProfile -Command \"Get-ChildItem -Path 'C:\\\\Users' -Filter 'Godot*.exe' -Recurse -ErrorAction SilentlyContinue -Depth 6 | Select-Object -First 10 FullName\")",
       "Bash(powershell -NoProfile -Command \"Get-ChildItem -Path 'C:\\\\' -Filter 'Godot*.exe' -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 20 FullName\")",
       "Bash(grep -rn \"InventoryManager\" src/player/Player.tscn)",
-      "Bash(find . -name \"InventoryManager.tscn\")"
+      "Bash(find . -name \"InventoryManager.tscn\")",
+      "Bash(python -c \"import json; json.load\\(open\\(r'c:\\\\Users\\\\SRISUHAAS\\\\Desktop\\\\Atla Srisuhaas\\\\Personal\\\\aeridge\\\\faultline\\\\game\\\\data\\\\weapon_stats.json'\\)\\); print\\('VALID JSON'\\)\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\(String.raw\\\\`c:\\\\Users\\\\SRISUHAAS\\\\Desktop\\\\Atla Srisuhaas\\\\Personal\\\\aeridge\\\\faultline\\\\game\\\\data\\\\weapon_stats.json\\\\`,'utf8'\\)\\); console.log\\('VALID JSON'\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('data/drill_stats.json'\\)\\); c=d['classes']; print\\('VALID JSON'\\); s=sum\\(c[k]['spawn_weight'] for k in c\\); print\\('spawn_weight sum =', s\\); [print\\(k, c[k]['spawn_weight']\\) for k in c]\")",
+      "Bash(python -c \"import json;d=json.load\\(open\\('c:/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/game/data/armor_stats.json'\\)\\);print\\('VALID JSON'\\);print\\('classes:',list\\(d['classes'].keys\\(\\)\\)\\);[print\\(c,d['classes'][c]['passive']\\) for c in d['classes']]\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\(r'c:\\\\Users\\\\SRISUHAAS\\\\Desktop\\\\Atla Srisuhaas\\\\Personal\\\\aeridge\\\\faultline\\\\game\\\\data\\\\terrain_stats.json'\\)\\); print\\('VALID JSON'\\); print\\('terrain count:', len\\(d['terrain']\\)\\)\")",
+      "Bash(node -e \"const d=require\\('c:/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/game/data/terrain_stats.json'\\); console.log\\('VALID JSON'\\); console.log\\('terrain count:', Object.keys\\(d.terrain\\).length\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('c:/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/game/data/loot_tables.json'\\)\\); [print\\(l, sum\\(v.values\\(\\)\\), v\\) for l,e in d['layers'].items\\(\\) for k,v in [\\('rw', e['rarity_weights']\\)]]; print\\('OK VALID JSON'\\)\")",
+      "Bash(python -c \"import json; json.load\\(open\\('storm_timings.json', encoding='utf-8'\\)\\); print\\('storm_timings.json OK'\\)\")",
+      "Bash(python -c \"import json; json.load\\(open\\('spawn_rates.json', encoding='utf-8'\\)\\); print\\('spawn_rates.json OK'\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(open\\(r'c:\\\\Users\\\\SRISUHAAS\\\\Desktop\\\\Atla Srisuhaas\\\\Personal\\\\aeridge\\\\faultline\\\\game\\\\data\\\\world_config.json'\\)\\); print\\('VALID JSON'\\); print\\('keys:', len\\(d\\)\\); print\\('storm_dps', d['storm_dps']\\); print\\('depth', d['depth_hazard']['inner_core_dps']\\)\")",
+      "Bash(node -e \"const d=require\\('c:/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/game/data/world_config.json'\\); console.log\\('VALID JSON'\\); console.log\\('storm_dps',d.storm_dps\\);\")",
+      "Bash(echo \"=== check for //, NaN, Infinity, or literal # comments in data JSON ===\")",
+      "Bash(grep -rnE \"//|NaN|Infinity\" data/*.json)"
     ]
   }
 }

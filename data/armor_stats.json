@@ -1,64 +1,66 @@
 {
   "_meta": {
     "description": "Armor Class x Tier. 5 classes (Titan/Hellforge/Tempest/Echo/Expedition), 4 tiers (no Uncommon, no Mythic). Read by ArmorBase/ArmorTier via GameManager.data['armor'].",
-    "status": "PLACEHOLDER — every number below is a testable dev value, TBD pending balance pass. Do not treat as final.",
+    "status": "FIRST-PASS BALANCED (2026-07-05) — tier stats and class passives are now filled with dramatic-tier-jump first-pass values; still testable/pending playtesting, not locked final.",
+    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
     "schema": {
-      "tiers.<Tier>.flat_reduction": "flat damage subtracted BEFORE percent_reduction (TBD placeholder)",
-      "tiers.<Tier>.percent_reduction": "fraction 0.0-1.0 of remaining damage ignored (TBD placeholder)",
-      "tiers.<Tier>.durability": "hits absorbed before the armor breaks; degrades 1 per hit (TBD placeholder)",
-      "passive.<param>": "class-unique passive strength — INTENTIONALLY null; do not invent a final value"
+      "tiers.<Tier>.flat_reduction": "flat damage subtracted BEFORE percent_reduction",
+      "tiers.<Tier>.percent_reduction": "fraction 0.0-1.0 of remaining damage ignored",
+      "tiers.<Tier>.durability": "hits absorbed before the armor breaks; degrades 1 per hit",
+      "passive.<param>": "class-unique passive strength — now filled with first-pass balanced value"
     },
-    "tier_curve_note": "Values are identical across classes for now (monotonic Common<Rare<Epic<Legendary). Class identity is meant to come from the passive, which is TBD/null until the balance pass."
+    "tier_curve_note": "First-pass balanced: tier stats are identical across all 5 classes (monotonic Common<Rare<Epic<Legendary with dramatic tier jumps); class identity comes from the now-filled passive. Player has 100 HP; pipeline is armor flat -> armor percent -> durability -> Toughness relic -> HP.",
+    "_balance_note": "Dramatic tier jumps by design: Common is a light chip-blocker, Legendary is a major mitigation layer (11 flat + 40% + 180 durability). Passives are tuned to be noticeable but not overwhelming."
   },
   "classes": {
     "Titan": {
       "theme": "heavy physical protection",
-      "passive": { "name": "Bulwark", "_desc": "extra flat reduction on top of tier flat", "bonus_flat_reduction": null, "_tbd": true },
+      "passive": { "name": "Bulwark", "_desc": "extra flat reduction on top of tier flat", "bonus_flat_reduction": 3, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 1.0, "percent_reduction": 0.05, "durability": 40 },
-        "Rare":      { "flat_reduction": 2.0, "percent_reduction": 0.12, "durability": 70 },
-        "Epic":      { "flat_reduction": 3.0, "percent_reduction": 0.20, "durability": 110 },
-        "Legendary": { "flat_reduction": 4.0, "percent_reduction": 0.30, "durability": 160 }
+        "Common":    { "flat_reduction": 2,  "percent_reduction": 0.06, "durability": 40 },
+        "Rare":      { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 75 },
+        "Epic":      { "flat_reduction": 7,  "percent_reduction": 0.26, "durability": 120 },
+        "Legendary": { "flat_reduction": 11, "percent_reduction": 0.40, "durability": 180 }
       }
     },
     "Hellforge": {
       "theme": "thermal/heat resistance",
-      "passive": { "name": "Heat Ward", "_desc": "fraction 0-1 of burn (DoT) damage ignored", "burn_resist": null, "_tbd": true },
+      "passive": { "name": "Heat Ward", "_desc": "fraction 0-1 of burn (DoT) damage ignored", "burn_resist": 0.5, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 1.0, "percent_reduction": 0.05, "durability": 40 },
-        "Rare":      { "flat_reduction": 2.0, "percent_reduction": 0.12, "durability": 70 },
-        "Epic":      { "flat_reduction": 3.0, "percent_reduction": 0.20, "durability": 110 },
-        "Legendary": { "flat_reduction": 4.0, "percent_reduction": 0.30, "durability": 160 }
+        "Common":    { "flat_reduction": 2,  "percent_reduction": 0.06, "durability": 40 },
+        "Rare":      { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 75 },
+        "Epic":      { "flat_reduction": 7,  "percent_reduction": 0.26, "durability": 120 },
+        "Legendary": { "flat_reduction": 11, "percent_reduction": 0.40, "durability": 180 }
       }
     },
     "Tempest": {
       "theme": "speed/mobility",
-      "passive": { "name": "Tailwind", "_desc": "movement speed multiplier while worn (>1 faster)", "move_speed_mult": null, "_tbd": true },
+      "passive": { "name": "Tailwind", "_desc": "movement speed multiplier while worn (>1 faster)", "move_speed_mult": 1.12, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 1.0, "percent_reduction": 0.05, "durability": 40 },
-        "Rare":      { "flat_reduction": 2.0, "percent_reduction": 0.12, "durability": 70 },
-        "Epic":      { "flat_reduction": 3.0, "percent_reduction": 0.20, "durability": 110 },
-        "Legendary": { "flat_reduction": 4.0, "percent_reduction": 0.30, "durability": 160 }
+        "Common":    { "flat_reduction": 2,  "percent_reduction": 0.06, "durability": 40 },
+        "Rare":      { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 75 },
+        "Epic":      { "flat_reduction": 7,  "percent_reduction": 0.26, "durability": 120 },
+        "Legendary": { "flat_reduction": 11, "percent_reduction": 0.40, "durability": 180 }
       }
     },
     "Echo": {
       "theme": "stealth/detection resistance",
-      "passive": { "name": "Dampen", "_desc": "multiplier on incoming debuff durations (<1 shortens)", "debuff_duration_mult": null, "_tbd": true },
+      "passive": { "name": "Dampen", "_desc": "multiplier on incoming debuff durations (<1 shortens)", "debuff_duration_mult": 0.6, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 1.0, "percent_reduction": 0.05, "durability": 40 },
-        "Rare":      { "flat_reduction": 2.0, "percent_reduction": 0.12, "durability": 70 },
-        "Epic":      { "flat_reduction": 3.0, "percent_reduction": 0.20, "durability": 110 },
-        "Legendary": { "flat_reduction": 4.0, "percent_reduction": 0.30, "durability": 160 }
+        "Common":    { "flat_reduction": 2,  "percent_reduction": 0.06, "durability": 40 },
+        "Rare":      { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 75 },
+        "Epic":      { "flat_reduction": 7,  "percent_reduction": 0.26, "durability": 120 },
+        "Legendary": { "flat_reduction": 11, "percent_reduction": 0.40, "durability": 180 }
       }
     },
     "Expedition": {
       "theme": "balanced/utility (digging & survival)",
-      "passive": { "name": "Reinforced", "_desc": "max-durability multiplier (>1 more hits)", "durability_mult": null, "_tbd": true },
+      "passive": { "name": "Reinforced", "_desc": "max-durability multiplier (>1 more hits)", "durability_mult": 1.5, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 1.0, "percent_reduction": 0.05, "durability": 40 },
-        "Rare":      { "flat_reduction": 2.0, "percent_reduction": 0.12, "durability": 70 },
-        "Epic":      { "flat_reduction": 3.0, "percent_reduction": 0.20, "durability": 110 },
-        "Legendary": { "flat_reduction": 4.0, "percent_reduction": 0.30, "durability": 160 }
+        "Common":    { "flat_reduction": 2,  "percent_reduction": 0.06, "durability": 40 },
+        "Rare":      { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 75 },
+        "Epic":      { "flat_reduction": 7,  "percent_reduction": 0.26, "durability": 120 },
+        "Legendary": { "flat_reduction": 11, "percent_reduction": 0.40, "durability": 180 }
       }
     }
   }
