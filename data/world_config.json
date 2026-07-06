@@ -31,8 +31,8 @@
   "storm_heal_mult": 0.4,
   "storm_overlay_alpha": 0.35,
 
-  "_pressure_dps_base_meta": "FIRST-PASS BALANCED 2026-07-05 — pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8) → Crust 0 / Mantle 1.2 / Outer 2.4 / Inner 3.6 / Core Hollow 4.8 per sec.",
-  "pressure_dps_base": 6.0,
+  "_pressure_dps_base_meta": "FIRST-PASS BALANCED 2026-07-05; HALVED 2026-07-06 (playtest: too punishing) 6.0 → 3.0. pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8) → Crust 0 / Mantle 0.6 / Outer 1.2 / Inner 1.8 / Core Hollow 2.4 per sec.",
+  "pressure_dps_base": 3.0,
 
   "depth_hazard": {
     "_meta": "FIRST-PASS BALANCED 2026-07-05; layer DPS HALVED 2026-07-06 (playtest: too punishing). DPS/oxygen/visibility scale low Crust / moderate Mantle / noticeable Outer Core / high Inner Core; Core Hollow left to the storm. Testable, pending playtesting.",
