@@ -94,7 +94,10 @@ func _physics_process(delta: float) -> void:
 	var dps := _current_storm_dps()
 	if dps <= 0.0:
 		return
-	_stats.take_damage(dps * delta, "The Storm")
+	# armor_applies=false (2026-07-06): storm DPS is applied every physics frame, so it
+	# must bypass the armor block — flat reduction would zero each ~0.33-dmg tick (full
+	# storm immunity with any armor) and register_hit() would destroy armor in seconds.
+	_stats.take_damage(dps * delta, "The Storm", -1, false)
 
 
 ## Per-phase storm damage-per-second (2026-07-06). Previously the storm applied a
@@ -207,7 +210,9 @@ func _check_deadline() -> void:
 	if _stats == null or _stats.is_dead:
 		return
 	if _stats.get_layer() != Constants.Layer.CORE_HOLLOW:
-		_stats.take_damage(_stats.max_health + 1.0, "The Storm")
+		# armor_applies=false: the 17:30 deadline is a guaranteed kill for anyone not in
+		# the Core Hollow — armor flat/percent reduction must NOT let a player survive it.
+		_stats.take_damage(_stats.max_health + 1.0, "The Storm", -1, false)
 
 
 # --- Storm front position --------------------------------------------------

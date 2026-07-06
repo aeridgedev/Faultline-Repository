@@ -456,6 +456,42 @@ which item this session targets before writing code.
   values live ONLY in `data/*.json` (read via `GameManager.data`); the in-code numeric
   literals that remain are documented null-safe fallbacks and structural constants
   (tick intervals) — do not treat those as the balance source or duplicate them into JSON.
+- **RESOLVED (2026-07-06) — environmental (storm/depth/pressure) damage must BYPASS
+  the armor block; discrete hits (melee/burn DoT) must NOT.** `PlayerStats.take_damage()`
+  gained a 4th optional param `armor_applies: bool = true`. The storm/depth/pressure
+  systems call `take_damage()` every tick; with armor applying flat reduction per call,
+  the (now-buffed) flat reduction of 4–16 zeroes every sub-flat per-frame storm tick
+  (~0.33 dmg → full storm/hazard immunity with ANY armor), and `register_hit()` firing
+  60×/sec destroys even Legendary armor (180 durability) in ~3 seconds. All continuous
+  environmental sources now pass `armor_applies=false` — `StormSystem` (both the per-frame
+  passive tick AND the 17:30 deadline instakill, which armor must never let a player
+  survive), `DepthHazard`, `PressureSystem`. Melee (`PlayerController`) and the burn DoT
+  tick (`PlayerStats._tick_dot`) keep the default `true`. The Toughness relic's percent
+  `damage_reduction` still applies to everything (it scales fractional damage and never
+  zeroes it). **Locked rule going forward:** any NEW continuous/environmental damage source
+  (per-frame or per-tick hazards) MUST pass `armor_applies=false`; only discrete one-shot
+  hits go through armor. A guaranteed-kill (like the storm deadline) must also pass
+  `false` so armor/percent reduction can't let a player survive it.
+- **RESOLVED (2026-07-06) — storm now reads PER-PHASE damage, not a flat value.**
+  `StormSystem._current_storm_dps()` reads `data["storm"]["phases"][idx].damage_per_second`
+  from `storm_timings.json` (idx from the authoritative elapsed-time phase index), falling
+  back to the flat `storm_dps` in `world_config.json` only if the per-phase data is missing.
+  Previously the live storm applied one flat `storm_dps` at every depth, so it was neither
+  forgiving early nor dangerous late. Per-phase values were also reduced ≥50% (all TBD;
+  Core Hollow 20 dps ≈ 5 s TTK unarmored). **Phase TIMINGS remain LOCKED and untouched**
+  in `Constants.STORM_PHASES` (210 s/phase). **Locked rule going forward:** storm per-phase
+  damage lives ONLY in `storm_timings.json` `phases[].damage_per_second`; do not resurrect a
+  single flat storm damage as the primary source (the flat `storm_dps` is a null-safety
+  fallback only), and never edit the phase start/end timings — those are locked.
+- **RESOLVED (2026-07-06) — DEV TestDummies fell through the world (streaming), not a
+  spawn-position bug.** `WorldGenerator.generate()` now streams a 3-column collision
+  platform under each dummy (`stream_columns(dummy_col, 1)`) after computing positions,
+  because dummies spread across the full width / all layers had no collision tiles beneath
+  them (only ~97 columns near player spawn are streamed at startup) and dropped out of the
+  level on frame one. Also prints the real total dummy count at startup. `DUMMIES_PER_LAYER`
+  stays 8. **Locked rule going forward:** any DEV/AI body placed far from the player's spawn
+  column at startup needs its ground streamed explicitly, or it falls through the
+  lazily-streamed world — spawn-position correctness alone is not enough.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

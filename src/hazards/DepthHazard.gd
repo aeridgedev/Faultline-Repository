@@ -98,7 +98,10 @@ func _apply_damage(layer: int) -> void:
 	dmg *= (1.0 - _stats.hazard_resist())
 	if dmg <= 0.0:
 		return
-	_stats.take_damage(dmg, "The Depths")
+	# armor_applies=false (2026-07-06): ambient depth damage is continuous/environmental,
+	# so it bypasses the armor block — otherwise armor flat-reduction would zero these
+	# small per-tick amounts and register_hit() would drain armor durability over time.
+	_stats.take_damage(dmg, "The Depths", -1, false)
 	depth_hazard_tick.emit(dmg)
 
 

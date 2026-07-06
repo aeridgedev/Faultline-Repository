@@ -50,7 +50,10 @@ func _apply_tick() -> void:
 	dmg *= (1.0 - _stats.hazard_resist())
 	if dmg <= 0.0:
 		return
-	_stats.take_damage(dmg, "Crushing Pressure")
+	# armor_applies=false (2026-07-06): pressure is continuous/environmental — same
+	# reason as depth/storm; bypass the armor block so it isn't nullified and doesn't
+	# grind armor durability every tick.
+	_stats.take_damage(dmg, "Crushing Pressure", -1, false)
 	pressure_tick.emit(dmg)
 
 

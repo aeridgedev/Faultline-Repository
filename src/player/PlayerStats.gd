@@ -188,23 +188,32 @@ func is_revealed() -> bool:
 ## (step 8): source_id is the attacking PlayerController/TestDummy's GameManager
 ## roster id, or -1 for environmental damage (storm/hazard/DoT) which has no
 ## player to credit or spectate-follow.
-func take_damage(amount: float, source_name: String = "Unknown", source_id: int = -1) -> void:
+## armor_applies (2026-07-06 cross-check fix): armor mitigates DISCRETE hits (melee,
+## burn DoT ticks). Continuous ENVIRONMENTAL damage (storm/depth/pressure) passes
+## FALSE, because those call take_damage() every tick: applying the flat reduction
+## per tick would zero every sub-flat amount (full storm immunity — with the buffed
+## armor a 20-dps storm tick of ~0.33 dmg becomes maxf(0.33-16,0)=0), and calling
+## register_hit() 60x/sec would shred even Legendary armor (180 dur) in ~3 seconds.
+## Bypassing the armor block keeps the storm lethal and stops it from destroying
+## armor. The Toughness relic's percent damage_reduction still applies to everything
+## (it scales fractional damage fine and never zeroes it).
+func take_damage(amount: float, source_name: String = "Unknown", source_id: int = -1, armor_applies: bool = true) -> void:
 	if is_dead:
 		return
 	# Damage order: armor first (flat subtracted, then percent of the remainder), THEN
-	# the Toughness relic's flat multiplier on what armor let through. Armor takes one
+	# the Toughness relic's multiplier on what armor let through. Armor takes one
 	# durability point per take_damage() call — note a burn (DoT) applies once per tick,
 	# so each burn tick counts as a hit; accepted as-is for now (balance pass may revisit).
 	var effective := amount
-	var _dbg_post_flat := amount  # DEBUG (remove later): damage after flat, before percent
-	if equipped_armor != null and not equipped_armor.is_broken:
-		effective = maxf(effective - equipped_armor.flat_reduction(), 0.0)
-		_dbg_post_flat = effective
-		effective *= (1.0 - equipped_armor.percent_reduction())
+	if armor_applies and equipped_armor != null and not equipped_armor.is_broken:
+		var post_flat := maxf(effective - equipped_armor.flat_reduction(), 0.0)
+		effective = post_flat * (1.0 - equipped_armor.percent_reduction())
 		equipped_armor.register_hit()
+		# DEBUG — remove later: verify armor flat/percent reduction is actually applied.
+		# Inside the armor block on purpose so continuous storm/hazard ticks (which
+		# bypass armor) don't spam this print 60x/sec — it only fires on real hits.
+		print("[ARMOR DEBUG - remove later] incoming=%s post_flat=%s final=%s" % [amount, post_flat, effective])
 	effective *= (1.0 - clampf(damage_reduction, 0.0, 1.0))
-	# DEBUG — remove later: verify armor flat/percent reduction is actually applied.
-	print("[ARMOR DEBUG - remove later] incoming=%s post_flat=%s final=%s" % [amount, _dbg_post_flat, effective])
 	current_health = clampf(current_health - effective, 0.0, max_health)
 	if current_health == 0.0 and life_capsule_active:
 		life_capsule_active = false

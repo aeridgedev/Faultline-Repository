@@ -49,7 +49,11 @@
       "Bash(echo \"=== check for //, NaN, Infinity, or literal # comments in data JSON ===\")",
       "Bash(grep -rnE \"//|NaN|Infinity\" data/*.json)",
       "Bash(python -c \"import json; json.load\\(open\\('data/armor_stats.json'\\)\\); print\\('armor_stats.json OK'\\)\")",
-      "Bash(python -c \"import json; json.load\\(open\\('data/storm_timings.json'\\)\\); print\\('storm_timings.json OK'\\)\")"
+      "Bash(python -c \"import json; json.load\\(open\\('data/storm_timings.json'\\)\\); print\\('storm_timings.json OK'\\)\")",
+      "Bash(python -c \"import json; [json.load\\(open\\(f\\)\\) and print\\(f,'OK'\\) for f in ['data/armor_stats.json','data/storm_timings.json']]\")",
+      "Bash(claude config *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(echo \"---exit=$?---\")"
     ]
   }
 }

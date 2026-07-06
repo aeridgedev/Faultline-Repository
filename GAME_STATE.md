@@ -695,6 +695,68 @@ Phase schedule locked. Damage values TBD.
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
 
+### 2026-07-06
+
+**Four-bug fix pass (dummies / armor / storm / win-screen) + a discovered cross-system
+conflict.** Started as 4 file-disjoint parallel sub-agents; the armor agent was
+interrupted mid-run and the session continued in autonomous single-thread mode, so all
+four fixes (and the cross-check) were completed directly. Net result across HEAD commit
+`8a9cd01` (an intermediate auto-checkpoint) + the current working tree:
+
+1. **Dummies now actually appear (`WorldGenerator.gd`, `Main.gd` unchanged).** Root cause
+   was NOT the spawn-position math (that was always correct) — it was terrain streaming.
+   Dummies spawn across the FULL width and every non-hollow layer, but
+   `stream_columns(width/2, 48)` only places collision tiles in ~97 columns near the
+   player's spawn. Every dummy outside that band had no terrain tile beneath it and fell
+   straight through the (unstreamed, non-collidable) world on frame one — so they
+   "weren't spawning." Fix: after computing dummy positions, `generate()` streams a small
+   3-column platform under each dummy (`stream_columns(dummy_col, 1)`), so all rest on
+   solid ground immediately wherever they are. Added a startup `print()` of the real total
+   dummy count. `DUMMIES_PER_LAYER` stays 8 (32 total; ≥5/layer requirement satisfied).
+   Registration is unchanged — every dummy still `register_player()`s via `TestDummy.setup()`.
+2. **Armor reduction buffed to be felt (`armor_stats.json`, `PlayerStats.gd`).** Flat/percent
+   raised across all tiers+classes: Common 2→4 flat, 6%→15%; Legendary 11→16 flat, 40%→58%
+   (cuts a 20-dmg hit to <2). Pipeline order confirmed correct (armor flat → armor percent →
+   `register_hit()` → Toughness → HP). Temporary `[ARMOR DEBUG - remove later]` print added
+   (incoming/post-flat/final) — **flagged to remove after playtest**. All values still TBD.
+3. **Storm made forgiving-early / dangerous-late + per-phase damage WIRED
+   (`storm_timings.json`, `StormSystem.gd`).** The live storm previously read a single FLAT
+   `storm_dps` (12.0, world_config.json) at every depth — never escalating. `StormSystem`
+   now reads the escalating per-phase `damage_per_second` curve via new `_current_storm_dps()`
+   (indexed by the authoritative elapsed-time phase index; falls back to flat `storm_dps`
+   only if per-phase data is missing). All per-phase values reduced ≥50%: Atmosphere 0.5→0.2,
+   Crust 2→1, Mantle 5→2.5, Outer 10→5, Inner 20→9, Core Hollow 45→20 (~5s TTK unarmored —
+   dangerous, not instant). **Phase TIMINGS untouched** (LOCKED in `Constants.STORM_PHASES`,
+   210 s/phase, all 6 phases, dwells full 3.5 min at each boundary — verified, not a bug).
+   `StormTimer` HUD label already updates on `storm_advanced` — verified, no change needed.
+4. **Win-screen Play Again / Quit (`WinScreen.gd`; `WinScreen.tscn` unchanged).** Both buttons
+   were ALREADY present in the `.tscn` (ButtonRow → PlayAgainButton + QuitButton), wired to
+   emit signals in `WinScreen.gd`, and connected to `GameManager.restart_match()` /
+   `get_tree().quit()` in `HUD.gd` (lines 88-90); the WinScreen node in `HUD.tscn` is a real
+   instance of `WinScreen.tscn`. So in current code they were present + functional — the
+   reported "missing" state did not match the code (likely fixed earlier or seen in a stale
+   build). Hardened anyway to meet the spec unambiguously: Play Again now explicitly hides
+   the win screen (`visible=false`) before emitting; both buttons got a solid min-size +
+   larger font + accent styling so they read clearly on the dark modal. They sit in a
+   VBox-stacked ButtonRow below the ScrollContainer, so they structurally cannot overlap
+   the leaderboard.
+
+**Cross-check — a real conflict found and fixed (storm/hazard vs armor pipeline).** Storm,
+depth, and pressure all call `take_damage()` every tick. With armor applying flat reduction
+per call, the buffed armor (flat 4-16) would zero every sub-flat per-frame storm tick
+(~0.33 dmg) → **full storm/hazard immunity with ANY armor**, AND `register_hit()` firing
+60×/sec would **destroy even Legendary armor (180 dur) in ~3 s**. Resolved by adding a 4th
+optional param `armor_applies: bool = true` to `PlayerStats.take_damage()`: DISCRETE hits
+(melee, burn DoT) keep armor (default true); CONTINUOUS environmental damage passes `false`
+and bypasses the armor block entirely — `StormSystem` (both the per-frame tick AND the 17:30
+deadline instakill, which armor must never let a player survive), `DepthHazard`, and
+`PressureSystem` all updated. The `[ARMOR DEBUG]` print was moved INSIDE the armor block so
+the bypassing storm/hazard ticks don't spam it 60×/sec. Dummy registration + win condition
+verified unaffected: dummies now persist (don't fall through) so the roster/last-standing
+logic works as designed (player must kill them to win). No Godot binary in this environment
+— fixes verified by full-pipeline trace + JSON parse validation; a live boot check is
+recommended next session.
+
 ### 2026-07-05
 
 **First-pass balance pass — every TBD/null tunable in `data/*.json` filled (7 parallel
