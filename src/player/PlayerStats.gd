@@ -196,11 +196,15 @@ func take_damage(amount: float, source_name: String = "Unknown", source_id: int 
 	# durability point per take_damage() call — note a burn (DoT) applies once per tick,
 	# so each burn tick counts as a hit; accepted as-is for now (balance pass may revisit).
 	var effective := amount
+	var _dbg_post_flat := amount  # DEBUG (remove later): damage after flat, before percent
 	if equipped_armor != null and not equipped_armor.is_broken:
 		effective = maxf(effective - equipped_armor.flat_reduction(), 0.0)
+		_dbg_post_flat = effective
 		effective *= (1.0 - equipped_armor.percent_reduction())
 		equipped_armor.register_hit()
 	effective *= (1.0 - clampf(damage_reduction, 0.0, 1.0))
+	# DEBUG — remove later: verify armor flat/percent reduction is actually applied.
+	print("[ARMOR DEBUG - remove later] incoming=%s post_flat=%s final=%s" % [amount, _dbg_post_flat, effective])
 	current_health = clampf(current_health - effective, 0.0, max_health)
 	if current_health == 0.0 and life_capsule_active:
 		life_capsule_active = false

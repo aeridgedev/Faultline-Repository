@@ -33,8 +33,17 @@ var _row_style_normal: StyleBoxFlat
 func _ready() -> void:
 	visible = false
 	_style_static()
-	_play_again_btn.pressed.connect(func(): play_again_requested.emit())
+	# Play Again hides the win screen immediately, THEN asks the caller to restart
+	# (spec: "Play Again calls restart_match() and hides the win screen"). Hiding
+	# here makes the hide independent of the caller's restart path (which reloads
+	# the scene) so the overlay never lingers over the fresh match for a frame.
+	_play_again_btn.pressed.connect(_on_play_again_pressed)
 	_quit_btn.pressed.connect(func(): quit_requested.emit())
+
+
+func _on_play_again_pressed() -> void:
+	visible = false
+	play_again_requested.emit()
 
 
 ## leaderboard: Array of Dictionary shaped {id, name, node, kills,
@@ -140,3 +149,28 @@ func _style_static() -> void:
 	_panel.get_node("VBoxContainer").add_theme_constant_override("separation", 12)
 	_rows_container.add_theme_constant_override("separation", 5)
 	_button_row.add_theme_constant_override("separation", 14)
+
+	# Make Play Again / Quit unmistakably visible below the leaderboard. They already
+	# sit in a ButtonRow stacked under the ScrollContainer inside the VBox (so they
+	# can never overlap the leaderboard rows), but the default button theme is easy
+	# to miss on the dark modal — give them a solid min size + larger font so the
+	# match-end actions read clearly. Play Again uses the winner-gold accent.
+	_style_button(_play_again_btn, _COLOR_WINNER)
+	_style_button(_quit_btn, Color(0.60, 0.63, 0.70))
+
+
+func _style_button(btn: Button, accent: Color) -> void:
+	btn.custom_minimum_size = Vector2(150, 40)
+	btn.add_theme_font_size_override("font_size", 15)
+	btn.add_theme_color_override("font_color", Color(0.97, 0.97, 1.0))
+	var normal := StyleBoxFlat.new()
+	normal.set_corner_radius_all(5)
+	normal.set_content_margin_all(8)
+	normal.bg_color = accent.darkened(0.55)
+	normal.set_border_width_all(2)
+	normal.border_color = accent
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = accent.darkened(0.35)
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", hover)

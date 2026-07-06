@@ -51,6 +51,23 @@ func generate(terrain_manager: TerrainManager, layer_manager: LayerManager, seed
 	@warning_ignore("integer_division")
 	terrain_manager.stream_columns(width / 2, 48)
 
+	# DEV-ONLY dummy fix (2026-07-06): the TestDummies are spread across the FULL
+	# width and every non-hollow layer, but the stream_columns() call above only
+	# placed collision tiles in the ~97 columns near the player's spawn. Any dummy
+	# outside that band had NO terrain tile beneath it, so it fell straight through
+	# the (non-collidable, unstreamed) world and vanished — the root cause of
+	# "dummies not spawning": their positions were computed fine, but the bodies
+	# dropped out of the level on frame one. Stream a small 3-column platform under
+	# each dummy so every one rests on solid ground immediately, wherever it is.
+	for dpos: Vector2 in dummy_positions:
+		@warning_ignore("integer_division")
+		var dummy_col: int = int(dpos.x) / Constants.TILE_SIZE
+		terrain_manager.stream_columns(dummy_col, 1)
+
+	# DEV-ONLY: report the real dummy count actually handed to Main.gd for spawning.
+	print("[WorldGenerator] Spawned %d test dummies total (target %d per layer x %d layers)"
+		% [dummy_positions.size(), DUMMIES_PER_LAYER, Constants.Layer.values().size() - 1])
+
 	return dummy_positions
 
 

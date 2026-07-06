@@ -91,10 +91,31 @@ func _physics_process(delta: float) -> void:
 		return
 	if not _is_player_in_storm():
 		return
-	var dps: Variant = GameManager.data.get("storm_dps", null)
-	if dps == null:
+	var dps := _current_storm_dps()
+	if dps <= 0.0:
 		return
-	_stats.take_damage(float(dps) * delta, "The Storm")
+	_stats.take_damage(dps * delta, "The Storm")
+
+
+## Per-phase storm damage-per-second (2026-07-06). Previously the storm applied a
+## single flat `storm_dps` (world_config.json) at every depth, so it was neither
+## forgiving early nor dangerous late. It now reads the escalating per-phase curve
+## from storm_timings.json (`data["storm"]["phases"][idx].damage_per_second`),
+## indexed by the SAME authoritative elapsed-time phase index the UI/region use, so
+## damage scales: ignorable in the Crust, lethal in the Core Hollow. Falls back to
+## the legacy flat `storm_dps` only if the per-phase data is missing (null-safety).
+func _current_storm_dps() -> float:
+	var storm_data: Variant = GameManager.data.get("storm", null)
+	if storm_data is Dictionary:
+		var phases: Variant = storm_data.get("phases", null)
+		if phases is Array:
+			var idx := _compute_phase_idx(GameManager.match_elapsed)
+			if idx >= 0 and idx < phases.size():
+				var pd: Variant = phases[idx]
+				if pd is Dictionary and pd.get("damage_per_second", null) != null:
+					return float(pd["damage_per_second"])
+	var flat: Variant = GameManager.data.get("storm_dps", null)
+	return float(flat) if flat != null else 0.0
 
 
 # --- Visuals ---------------------------------------------------------------

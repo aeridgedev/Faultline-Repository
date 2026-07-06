@@ -47,7 +47,9 @@
       "Bash(python -c \"import json,sys; d=json.load\\(open\\(r'c:\\\\Users\\\\SRISUHAAS\\\\Desktop\\\\Atla Srisuhaas\\\\Personal\\\\aeridge\\\\faultline\\\\game\\\\data\\\\world_config.json'\\)\\); print\\('VALID JSON'\\); print\\('keys:', len\\(d\\)\\); print\\('storm_dps', d['storm_dps']\\); print\\('depth', d['depth_hazard']['inner_core_dps']\\)\")",
       "Bash(node -e \"const d=require\\('c:/Users/SRISUHAAS/Desktop/Atla Srisuhaas/Personal/aeridge/faultline/game/data/world_config.json'\\); console.log\\('VALID JSON'\\); console.log\\('storm_dps',d.storm_dps\\);\")",
       "Bash(echo \"=== check for //, NaN, Infinity, or literal # comments in data JSON ===\")",
-      "Bash(grep -rnE \"//|NaN|Infinity\" data/*.json)"
+      "Bash(grep -rnE \"//|NaN|Infinity\" data/*.json)",
+      "Bash(python -c \"import json; json.load\\(open\\('data/armor_stats.json'\\)\\); print\\('armor_stats.json OK'\\)\")",
+      "Bash(python -c \"import json; json.load\\(open\\('data/storm_timings.json'\\)\\); print\\('storm_timings.json OK'\\)\")"
     ]
   }
 }
