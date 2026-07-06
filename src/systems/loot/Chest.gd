@@ -341,4 +341,5 @@ func _item_name(type_str: String, cls_id: int) -> String:
 		"relic":      return Constants.RELIC_NAMES.get(cls_id, "?")
 		"throwable":  return Constants.THROWABLE_NAMES.get(cls_id, "?")
 		"consumable": return "Consumable"
+		"scanner":    return Constants.SCANNER_NAMES.get(cls_id, "Scanner")
 	return type_str.capitalize()

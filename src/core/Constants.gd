@@ -208,10 +208,19 @@ const CONSUMABLE_NAMES := {
 }
 
 # ---------------------------------------------------------------------------
-# SCANNERS — 8s scan/detection duration. Scanned players are NOT notified.
-# Range values TBD.
+# SCANNERS — 8s scan/detection duration (LOCKED). Scanned players are NOT
+# notified (LOCKED — never apply a "Revealed" status from a scanner; that
+# would show on the victim's HUD debuff panel). Range values live in
+# data/world_config.json (basic_scanner_range / deep_radar_range, TBD).
 # ---------------------------------------------------------------------------
 const SCANNER_DURATION_SECONDS := 8.0
+
+enum Scanner { BASIC_SCANNER, DEEP_RADAR }
+
+const SCANNER_NAMES := {
+	Scanner.BASIC_SCANNER: "Basic Scanner",
+	Scanner.DEEP_RADAR: "Deep Radar",
+}
 
 # ---------------------------------------------------------------------------
 # STORM — descends one layer every ~3.5 min. No Sudden Death.

@@ -506,6 +506,12 @@ func setup_hotbar() -> void:
 		# re-add one here if offline relic testing is needed again).
 		inv.add_item({"type": "consumable", "item_class": Constants.Consumable.BLOODSTIM,       "tier": Constants.Tier.COMMON})
 		inv.add_item({"type": "consumable", "item_class": Constants.Consumable.THERMAL_CAPSULE, "tier": Constants.Tier.COMMON})
+		# DEV scanner test item: scanners are not in any loot pool yet (the
+		# "special" loot category is unbuilt scope), so seed one here for offline
+		# testing. The 3 free hotbar slots are taken above, so this lands in
+		# backpack slot 6 — open the F panel and drag it onto a hotbar slot,
+		# select it (1–5), then press G to scan.
+		inv.add_item({"type": "scanner",    "item_class": Constants.Scanner.BASIC_SCANNER,      "tier": Constants.Tier.COMMON})
 		inv.slot_changed.connect(func(slot: int, _item: Variant) -> void:
 			_consumable_cache.erase(slot)
 			# If the item in the active slot changed (swap / drop / pickup), the
@@ -580,6 +586,9 @@ func _handle_item_use(delta: float) -> void:
 		"relic":
 			if use_just:
 				_use_relic(item)
+		"scanner":
+			if use_just:
+				_use_scanner(item)
 		_:
 			# drill / weapon slots are mouse-controlled; G has nothing to use here.
 			if use_just:
@@ -615,6 +624,48 @@ func _make_throwable(type: int) -> ThrowableBase:
 		Constants.Throwable.DUST_CAPSULE:   return DustCapsule.new()
 		Constants.Throwable.ECHO_CHARGE:    return EchoCharge.new()
 		Constants.Throwable.SEISMIC_CHARGE: return SeismicCharge.new()
+	return null
+
+
+# Cyan — visually distinct from the Echo Charge's magenta reveal, so a player
+# can tell "I scanned this" apart from "an Echo Charge revealed this".
+const _SCAN_MARK_COLOR := Color(0.25, 0.95, 0.95)
+
+
+## OFFLINE PLACEHOLDER scanner use (documented deviation — see GAME_STATE.md
+## Known Issues #7): detection queries the local GameManager roster and the
+## markers spawn on this client's tree only, which offline is trivially "only
+## the scanner user sees them". Step 9 must move the query server-side.
+## LOCKED: scanned players are NOT notified — no status is applied to targets
+## (unlike Echo Charge's "Revealed"); the reveal is purely scanner-side markers.
+func _use_scanner(item: Dictionary) -> void:
+	var scanner := _make_scanner(item.get("item_class", Constants.Scanner.BASIC_SCANNER))
+	if scanner == null:
+		return
+	var detected := scanner.activate(global_position, player_id)
+	var world := get_parent()
+	for body in detected:
+		var marker := EchoCharge.RevealMarker.new()
+		marker.target = body as Node2D
+		marker.duration = ScannerBase.DURATION
+		marker.mark_color = _SCAN_MARK_COLOR
+		world.add_child(marker)
+	var ping := EchoCharge.PingRing.new()
+	ping.max_radius = scanner.get_radius()
+	ping.ring_color = _SCAN_MARK_COLOR
+	world.add_child(ping)
+	ping.global_position = global_position
+	print("[Item] %s used — %d target(s) revealed for %.0fs." % [
+		Constants.SCANNER_NAMES.get(item.get("item_class"), "Scanner"),
+		detected.size(), ScannerBase.DURATION])
+	if _inventory != null:
+		_inventory.remove_item(_active_slot)   # single-use (placeholder decision — design doesn't specify; revisit at balance pass)
+
+
+func _make_scanner(item_class: int) -> ScannerBase:
+	match item_class:
+		Constants.Scanner.BASIC_SCANNER: return BasicScanner.new()
+		Constants.Scanner.DEEP_RADAR:    return DeepRadar.new()
 	return null
 
 
@@ -666,6 +717,7 @@ func _debug_item_name(item: Dictionary) -> String:
 		"relic":      item_name = Constants.RELIC_NAMES.get(cls_id, "?")
 		"throwable":  item_name = Constants.THROWABLE_NAMES.get(cls_id, "?")
 		"consumable": item_name = Constants.CONSUMABLE_NAMES.get(cls_id, "Consumable")
+		"scanner":    item_name = Constants.SCANNER_NAMES.get(cls_id, "Scanner")
 		_:            item_name = type_str.capitalize()
 	return "%s %s" % [tier_name, item_name]
 

@@ -79,7 +79,7 @@ game/
 │   │   ├── throwables/      ThrowableBase + 7 throwables
 │   │   ├── consumables/     Lytes, Medkit, ThermalCapsule, Bloodstim, FaultBeacon
 │   │   ├── special/         LayerBreachDevice, LifeCapsule, UpgradeTemplate
-│   │   └── scanners/        BasicScanner, DeepRadar
+│   │   └── scanners/        ScannerBase, BasicScanner, DeepRadar
 │   ├── hazards/             DepthHazard, StormSystem, PressureSystem
 │   ├── sound/               SoundManager, TerrainAudio, PlayerAudio (detection layer)
 │   ├── ui/                  HUD, LayerIndicator, StormTimer, DeathScreen, SpectatorView
@@ -492,6 +492,69 @@ which item this session targets before writing code.
   stays 8. **Locked rule going forward:** any DEV/AI body placed far from the player's spawn
   column at startup needs its ground streamed explicitly, or it falls through the
   lazily-streamed world — spawn-position correctness alone is not enough.
+- **RESOLVED (2026-07-06) — DEV TestDummies now actively attack the player (`TestDummy.gd`
+  only).** The dummy had NO offensive logic (pure damage sponge); added a self-contained
+  attack loop. A child `Area2D` (`collision_layer=0`, `collision_mask=1`, `DETECT_RADIUS`
+  56px circle) detects the player — the player's `Player.tscn` `collision_layer = 5`
+  includes bit value 1 (`5 = 1 + 4`, layers 1 & 3), so a mask-1 sensor sees it, identical
+  to how the existing melee hitbox (mask 1) already detects player bodies. `body_entered`/
+  `body_exited` keep `_targets_in_range`, filtered to `body is PlayerController` so dummies
+  never target each other or TileMap collision. `_process_attack()` (each physics frame,
+  after `move_and_slide`) faces the nearest in-range player and, on `ATTACK_COOLDOWN`
+  (1.5s) expiry, calls `target_stats.take_damage(ATTACK_DAMAGE, _display_name(),
+  player_id)` — **`source_id` is THIS dummy's roster `player_id`** so a lethal dummy hit
+  sets the correct `last_killer_name`/`last_killer_id` (this is why a player CAN now die
+  to a dummy and reach the DeathScreen/spectator flow with correct attribution). Visual:
+  `_sprite.modulate` flashes bright red on each hit, subtle red while a target is in
+  range, white otherwise. **Locked rule going forward:** `DETECT_RADIUS`/`ATTACK_DAMAGE`/
+  `ATTACK_COOLDOWN`/`FLASH_TIME` are TBD dev placeholders held as `const`s in the script,
+  **deliberately NOT in `data/*.json`** — a TestDummy is a DEV testing aid, not a balanced
+  enemy, so its numbers do not belong in the balance data. When step 9 replaces dummies
+  with real networked players, this attack loop (like the rest of TestDummy) goes away;
+  any real enemy/player must instead pass its own real `source_id` into `take_damage()`.
+- **RESOLVED (2026-07-06) — win-screen flow was already correctly wired; added DEBUG
+  prints + a wipe-case guard (`GameManager.gd`, `HUD.gd`).** Traced the full chain and
+  confirmed it was NOT broken: `match_won` signal → `_check_win_condition()` (fires at
+  `alive.size()==1`) → `HUD.init()` connects `match_won → _on_match_won` and wires Play
+  Again → `GameManager.restart_match()` / Quit → `get_tree().quit()` (HUD lines 88-90) →
+  the `WinScreen` node is a real instance in `HUD.tscn` at `Control/WinScreen` (added
+  last, renders on top) → `show_results()` builds the leaderboard and sets `visible=true`.
+  Two additive changes only: (1) **temporary DEBUG prints** bracket the signal — one at
+  each `match_won.emit()` in `GameManager` and one in `HUD._on_match_won` — so the Output
+  panel confirms it fires AND reaches the HUD (both flagged `TEMP DEBUG (remove after
+  win-screen testing)`). (2) `_check_win_condition()` gained an `elif alive.size()==0 and
+  not _players.is_empty()` branch: if the last participants die on the SAME frame (17:30
+  storm deadline / Seismic charge jumping 2→0 alive) the screen would otherwise be
+  silently skipped; the branch ends the match and credits the top-of-leaderboard
+  (most-kills) participant. The normal sole-survivor path is unchanged. **Locked rule
+  going forward:** WinScreen never talks to `GameManager` directly — the integration
+  layer (`HUD`) listens for `match_won`, fetches `get_leaderboard()`, calls
+  `show_results()`, and owns the actual `restart_match()`/`quit()` calls; WinScreen's
+  buttons only emit `play_again_requested`/`quit_requested`. Keep the two DEBUG prints
+  until a live win-screen boot check is done, then remove them.
+- **RESOLVED (2026-07-06) — scanners functional offline (Option C placeholder,
+  user-approved).** Scanners were orphaned (signals only). Now: new `ScannerBase.gd`
+  holds all shared logic (`BasicScanner`/`DeepRadar` are thin `_range_key()` overrides);
+  `activate(world_pos, exclude_id) -> Array` does real detection against the
+  `GameManager` roster (living participants within `basic_scanner_range`/
+  `deep_radar_range` from `world_config.json`, TBD-null-safe → 0.0). New `"scanner"`
+  item type (`Constants.Scanner` enum + `SCANNER_NAMES`); `PlayerController._use_scanner()`
+  (G key) spawns **cyan** `EchoCharge.RevealMarker`s (through-terrain, 8s LOCKED
+  duration) + a cyan `PingRing` on the scanner user's side, then consumes the item
+  (single-use = placeholder decision). `RevealMarker`/`PingRing` gained overridable
+  `mark_color`/`ring_color` (Echo's magenta defaults unchanged). **Locked rules going
+  forward:** (1) a scanner must NEVER apply a status to scanned targets — scanned
+  players are not notified (LOCKED), and any status renders on the victim's HUD debuff
+  panel, which IS a notification; the reveal is scanner-side markers only (this is the
+  deliberate difference from Echo Charge's `"Revealed"` status). (2) Detection is
+  client-local as a documented step-9 deviation — networking must run the roster query
+  server-side and send results only to the scanning player; do not "fix" the offline
+  version by broadcasting markers. (3) Scanners are in NO loot pool: the `"special"`
+  loot category exists in `loot_tables.json`/`spawn_rates.json` data but
+  `LootTable._CATEGORIES` deliberately doesn't roll it yet — wiring the special
+  category (LayerBreachDevice/LifeCapsule/DeepRadar) is its own future task, not a
+  scanner bug; the DEV `BASIC_SCANNER` in `setup_hotbar()` is the offline test path
+  (backpack slot 6 → drag to hotbar via F → G).
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

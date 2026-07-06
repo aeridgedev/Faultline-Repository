@@ -35,6 +35,9 @@ func _dev_tint() -> Color:
 class RevealMarker extends Node2D:
 	var target: Node2D = null
 	var duration: float = 8.0
+	# Overridable so other reveal sources can distinguish themselves — the
+	# scanner system (ScannerBase users) reuses this marker in cyan.
+	var mark_color: Color = MARK
 	var _elapsed: float = 0.0
 	var _pulse: float = 0.0
 
@@ -64,18 +67,20 @@ class RevealMarker extends Node2D:
 		# Pulsing hollow ring + a small filled diamond pinned to the body center.
 		var pulse := 0.5 + 0.5 * sin(_pulse * 6.0)
 		var r := 12.0 + pulse * 4.0
-		var col := MARK
+		var col := mark_color
 		col.a = 0.55 + 0.35 * pulse
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 32, col, 2.0, true)
 		var d := 3.0
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(0.0, -d), Vector2(d, 0.0), Vector2(0.0, d), Vector2(-d, 0.0),
-		]), MARK)
+		]), mark_color)
 
 
 ## One-shot expanding magenta ping showing the scanned radius, then frees itself.
 class PingRing extends Node2D:
 	var max_radius: float = 220.0
+	# Overridable for the same reason as RevealMarker.mark_color (scanner reuse).
+	var ring_color: Color = Color(0.95, 0.30, 0.90)
 	const LIFETIME := 0.5
 	var _elapsed: float = 0.0
 
@@ -92,5 +97,6 @@ class PingRing extends Node2D:
 	func _draw() -> void:
 		var t := clampf(_elapsed / LIFETIME, 0.0, 1.0)
 		var r := lerpf(6.0, max_radius, t)
-		var col := Color(0.95, 0.30, 0.90, 1.0 - t)
+		var col := ring_color
+		col.a = 1.0 - t
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, col, 2.0, true)

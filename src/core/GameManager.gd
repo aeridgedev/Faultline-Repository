@@ -133,7 +133,22 @@ func _check_win_condition() -> void:
 	var alive := get_living_player_ids()
 	if alive.size() == 1:
 		end_match()
+		# TEMP DEBUG (remove after win-screen testing): confirms the signal fires.
+		print("[Faultline][DEBUG] match_won FIRING — sole survivor id=%d, name=%s" % [
+			alive[0], _players[alive[0]].get("name", "?")])
 		match_won.emit(alive[0])
+	elif alive.size() == 0 and not _players.is_empty():
+		# Simultaneous final wipe (e.g. the 17:30 storm deadline or a Seismic
+		# charge kills the last remaining participants on the SAME frame, so we
+		# jump straight from 2-alive to 0-alive without ever passing through
+		# exactly 1). Without this branch the win screen would be silently
+		# skipped when the very last participant dies. Credit the top-of-
+		# leaderboard participant (most kills) as the nominal winner so results
+		# still show meaningfully.
+		end_match()
+		var winner_id: int = get_leaderboard()[0]["id"]
+		print("[Faultline][DEBUG] match_won FIRING (wipe) — no survivors; crediting id=%d" % winner_id)
+		match_won.emit(winner_id)
 
 
 ## Resets the roster and reloads the match scene fresh (Play Again). Main.gd's

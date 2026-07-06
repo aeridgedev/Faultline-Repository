@@ -12,8 +12,22 @@ extends CharacterBody2D
 
 var _stats: PlayerStats = null
 var _label: Label = null
+var _sprite: Sprite2D = null
 var _gravity: float = 0.0
 var player_id: int = -1
+
+# DEV-ONLY attack behaviour so dummies act as live threats during testing.
+# All three numbers are TBD placeholders — dummies are a dev aid, not a balanced
+# enemy, so these are deliberately gentle and not sourced from data/*.json.
+const DETECT_RADIUS: float = 56.0     # ~3.5 tiles; player must be this close to be attacked (TBD)
+const ATTACK_DAMAGE: float = 5.0      # per hit (TBD placeholder)
+const ATTACK_COOLDOWN: float = 1.5    # seconds between hits (TBD)
+const FLASH_TIME: float = 0.18        # how long the red attack flash lasts
+
+var _detect_area: Area2D = null
+var _targets_in_range: Array = []     # PlayerController bodies currently within DETECT_RADIUS
+var _attack_cooldown: float = 0.0     # counts down; a hit fires when it reaches 0
+var _flash_timer: float = 0.0         # >0 while showing the red attack flash
 
 
 func _ready() -> void:
@@ -61,6 +75,7 @@ func _ready() -> void:
 			img.set_pixel(i, 1, ST)
 	spr.texture = ImageTexture.create_from_image(img)
 	add_child(spr)
+	_sprite = spr
 
 	# Named "PlayerStats" so PlayerController._try_attack's get_node_or_null finds it.
 	_stats = PlayerStats.new()
@@ -75,6 +90,21 @@ func _ready() -> void:
 	add_child(_label)
 	_refresh_label()
 
+	# Detection radius: an Area2D on collision_mask bit 1 (the same bit the player
+	# body lives on and that the player's melee hitbox already scans), so the player
+	# reliably registers. body_entered/exited keep _targets_in_range current.
+	_detect_area = Area2D.new()
+	_detect_area.collision_layer = 0   # the sensor itself is not detectable
+	_detect_area.collision_mask = 1    # detect bodies on bit 1 (players + dummies)
+	var det_col := CollisionShape2D.new()
+	var det_shape := CircleShape2D.new()
+	det_shape.radius = DETECT_RADIUS
+	det_col.shape = det_shape
+	_detect_area.add_child(det_col)
+	add_child(_detect_area)
+	_detect_area.body_entered.connect(_on_body_entered)
+	_detect_area.body_exited.connect(_on_body_exited)
+
 
 func _physics_process(delta: float) -> void:
 	if not is_on_floor():
@@ -82,6 +112,79 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 	move_and_slide()
+	_process_attack(delta)
+
+
+## DEV-ONLY: face the nearest in-range player and deal damage on a cooldown.
+## Damage is attributed to this dummy (source_id = player_id) so PlayerStats sets
+## the correct killer for the DeathScreen / spectator target if the player dies.
+func _process_attack(delta: float) -> void:
+	if _flash_timer > 0.0:
+		_flash_timer -= delta
+		if _flash_timer <= 0.0:
+			_update_flash()
+
+	var target := _nearest_target()
+	if target == null:
+		_attack_cooldown = 0.0   # reset so a fresh approach can hit promptly
+		_update_flash()
+		return
+
+	# Face the target (attack-mode indicator #1: the dummy turns toward the player).
+	if _sprite:
+		_sprite.flip_h = target.global_position.x < global_position.x
+
+	_attack_cooldown -= delta
+	if _attack_cooldown <= 0.0:
+		_attack_cooldown = ATTACK_COOLDOWN
+		var target_stats := target.get_node_or_null("PlayerStats") as PlayerStats
+		if target_stats != null and not target_stats.is_dead:
+			target_stats.take_damage(ATTACK_DAMAGE, _display_name(), player_id)
+			_flash_timer = FLASH_TIME   # attack-mode indicator #2: red flash on each hit
+			_update_flash()
+
+
+## Nearest living PlayerController within range, or null. Other TestDummies share
+## collision bit 1 and get filtered out here so dummies never fight each other.
+func _nearest_target() -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
+	for body in _targets_in_range:
+		if not is_instance_valid(body) or not (body is PlayerController):
+			continue
+		var d := global_position.distance_squared_to(body.global_position)
+		if d < best_d:
+			best_d = d
+			best = body
+	return best
+
+
+func _on_body_entered(body: Node) -> void:
+	if body is PlayerController and not _targets_in_range.has(body):
+		_targets_in_range.append(body)
+
+
+func _on_body_exited(body: Node) -> void:
+	_targets_in_range.erase(body)
+
+
+func _display_name() -> String:
+	if player_id != -1:
+		return str(GameManager.get_player(player_id).get("name", "Dummy"))
+	return "Dummy"
+
+
+## Red while flashing a hit, a subtle aggressive tint while a target is in range,
+## normal otherwise — so it's visible at a glance when a dummy is targeting you.
+func _update_flash() -> void:
+	if _sprite == null:
+		return
+	if _flash_timer > 0.0:
+		_sprite.modulate = Color(1.6, 0.5, 0.5)
+	elif _nearest_target() != null:
+		_sprite.modulate = Color(1.25, 0.85, 0.85)
+	else:
+		_sprite.modulate = Color(1, 1, 1)
 
 
 func _on_health_changed(_hp: float, _max_hp: float) -> void:

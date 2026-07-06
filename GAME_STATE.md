@@ -4,7 +4,7 @@
 > and CLAUDE.md before finishing. Treat any discrepancy between this file and the
 > actual code as a bug in this file — fix it immediately.
 
-**Last updated:** 2026-07-05 · **Build:** functional offline single-player. A
+**Last updated:** 2026-07-06 · **Build:** functional offline single-player. A
 **first-pass balance pass** (2026-07-05) has filled every previously-null/placeholder
 tunable in `data/*.json` with concrete testable numbers — these are first-pass /
 pre-playtest values, still NOT final (see the Session Change Log). `Constants.gd`
@@ -186,7 +186,9 @@ Signals: `layer_changed(int)`, `descent_blocked(int)`, `kill_progress_changed(cu
 On `player_died`: freezes `PlayerController` physics and input, calls `GameManager.mark_player_dead(_controller.player_id)` (checks the win condition), then emits `death_processed(player_id)`/`died`. The DeathScreen/SpectatorView UI flow itself is driven separately by `HUD`, which listens to the same `PlayerStats.player_died` signal directly (see HUD below) — `PlayerDeath`'s job is purely the freeze + roster notification.
 
 ### TestDummy (`src/player/TestDummy.gd`)
-DEV-ONLY stationary combat target (remove once real networked players exist). **Step 8 deviation:** also registers as a `GameManager` roster participant via `setup(index, layer)` (called by `Main.gd` right after spawn+positioning) — `register_player("Dummy %d" % index, self, true)` plus `record_layer_reached()` with its spawn layer (dummies don't move, so spawn layer IS their deepest layer reached). `_on_died()` calls `GameManager.mark_player_dead(player_id)` before `queue_free()`. This exists purely so the leaderboard/win-condition/spectator flow has real multi-participant data before step 9 — see Known Issues #11.
+DEV-ONLY **stationary** combat target that now **actively attacks** (remove once real networked players exist). **Step 8 deviation:** also registers as a `GameManager` roster participant via `setup(index, layer)` (called by `Main.gd` right after spawn+positioning) — `register_player("Dummy %d" % index, self, true)` plus `record_layer_reached()` with its spawn layer (dummies don't move, so spawn layer IS their deepest layer reached). `_on_died()` calls `GameManager.mark_player_dead(player_id)` before `queue_free()`. This exists purely so the leaderboard/win-condition/spectator flow has real multi-participant data before step 9 — see Known Issues #11.
+
+**Attack behaviour (added 2026-07-06, DEV-ONLY):** the dummy stays put but now retaliates. A child `Area2D` (`collision_layer=0`, `collision_mask=1`) with a `DETECT_RADIUS` (56px) circle detects the player — the player's `Player.tscn` `collision_layer = 5` includes bit value 1, so a mask-1 sensor sees it, same as the melee hitbox. `body_entered`/`body_exited` maintain `_targets_in_range`, filtered to `body is PlayerController` (dummies never target each other or terrain). `_process_attack()` (each physics frame) faces the nearest in-range player (`_sprite.flip_h`), ticks `ATTACK_COOLDOWN` (1.5s), and on expiry calls `target_stats.take_damage(ATTACK_DAMAGE, _display_name(), player_id)` — **`source_id = this dummy's roster `player_id`** so a lethal dummy hit sets the correct `last_killer_name`/`last_killer_id` for the DeathScreen + spectator target. First contact hits immediately (cooldown starts at 0). Visual indicator via `_sprite.modulate`: bright red flash `(1.6,0.5,0.5)` for `FLASH_TIME` (0.18s) on each hit, subtle aggressive red `(1.25,0.85,0.85)` while a target is in range, white otherwise. **All four numbers (`DETECT_RADIUS`/`ATTACK_DAMAGE`/`ATTACK_COOLDOWN`/`FLASH_TIME`) are TBD dev placeholders held as consts in the script — a dummy is a test aid, not a balanced enemy, so they are deliberately NOT in `data/*.json`.**
 
 ---
 
@@ -517,10 +519,13 @@ Permanent. `activate(stats)` sets `stats.damage_reduction` from `relic_strength.
 
 ## Scanner System
 
-### BasicScanner / DeepRadar (`src/systems/scanners/`)
-Resource-based. `activate(world_pos)` → 8-second scan window. Emits `scan_started(pos, radius)` and `scan_ended`. Scanned players are **not** notified. Radius values TBD.
+### ScannerBase / BasicScanner / DeepRadar (`src/systems/scanners/`)
+**Functional offline (2026-07-06, Option C placeholder — see Known Issues #7).** Shared logic now lives in a new `ScannerBase` (Resource); `BasicScanner`/`DeepRadar` are thin subclasses that only override `_range_key()` (`basic_scanner_range` 220 / `deep_radar_range` 460 in `world_config.json`, first-pass TBD values).
 
-**Deviation:** Signals fire but no actual player detection or denial-of-knowledge mechanic is wired. Scanners are non-functional beyond signal emission.
+- `activate(world_pos, exclude_id) -> Array` — **real detection**: emits `scan_started(pos, radius)`, then returns every living `GameManager` roster participant (Node2D) within radius of `world_pos`, excluding the scanning player. Radius is TBD-null-safe (null → 0.0, scan succeeds but detects nothing — never invents a fallback). `tick()`/`scan_ended`/`is_active()` unchanged (8s LOCKED duration).
+- **Use path:** scanners are now a real `"scanner"` item type (`Constants.Scanner` enum: `BASIC_SCANNER`/`DEEP_RADAR`, `SCANNER_NAMES`). `PlayerController._use_scanner()` (G on an active scanner slot) runs the scan from the player's position, spawns a **cyan** `EchoCharge.RevealMarker` (through-terrain, self-expiring after the 8s duration) on each detected participant plus a cyan `PingRing` showing the radius, then consumes the item (**single-use — placeholder decision, design doesn't specify; revisit at balance pass**). Cyan vs Echo's magenta distinguishes "I scanned this" from "an Echo Charge revealed this" (the marker/ring colors were parametrized in `EchoCharge.gd`, defaults unchanged).
+- **LOCKED honored:** scanned players are NOT notified — `_use_scanner` applies **no status** to targets (unlike Echo Charge's `"Revealed"` status, which renders on the victim's HUD debuff panel). The reveal is purely scanner-side markers.
+- **Offline placeholder (deviation):** detection queries the *local* roster and markers spawn on the local tree — trivially correct offline (one screen). Step 9 must move the query server-side and send results only to the scanner. Scanners are in **no loot pool yet** (the `"special"` loot category in `loot_tables.json` exists in data but `LootTable._CATEGORIES` doesn't roll it — separate unbuilt scope; `spawn_rates.json` already lists `deep_radar: 4` there for when it lands). A DEV `BASIC_SCANNER` is seeded in `setup_hotbar()` (lands in backpack slot 6; drag to a hotbar slot via the F panel to use).
 
 ---
 
@@ -680,11 +685,11 @@ Phase schedule locked. Damage values TBD.
 | 4 | `armor_stats.json` / armor files | ~~Armor system is entirely non-functional; stubs only.~~ **Resolved** — full armor implemented: flat+percent damage reduction, durability (1/hit, breaks at 0), 5 class passives scaffolded (strengths `TBD`/null), auto-equip + drop-old on pickup, HUD durability bar. Passive strength values remain `null` pending balance pass. | Fixed |
 | 5 | All throwable files | ~~All 7 throwable effects print to console only.~~ **Resolved** — each is a `ThrowableBase` subclass with a real Area2D impact effect (arc to cursor, deferred `_on_impact`, `targets_in_radius`). Magnitudes `TBD`. | Fixed |
 | 6 | `Bloodstim.gd`, `ThermalCapsule.gd`, `FaultBeacon.gd` | ~~Signals fire but hookups not implemented.~~ **Resolved** — Bloodstim (speed+damage), ThermalCapsule (hazard resist wired into DepthHazard + PressureSystem), FaultBeacon (world marker) all apply real effects; items consumed on use. | Fixed |
-| 7 | `BasicScanner.gd`, `DeepRadar.gd` | Signals fire but no detection or denial-of-knowledge mechanic wired. | Medium |
+| 7 | `ScannerBase.gd`, `BasicScanner.gd`, `DeepRadar.gd` | ~~Signals fire but no detection or denial-of-knowledge mechanic wired.~~ **Resolved offline (2026-07-06, Option C placeholder):** real roster-query detection + cyan through-terrain markers + G-key use path + `"scanner"` item type; scanned players get NO status (LOCKED: not notified). **Remaining deviation:** detection is client-local (must move server-side at step 9, results sent only to the scanner); scanners are in no loot pool (the `"special"` loot category is unbuilt — DEV item seeded in `setup_hotbar()`); single-use is a placeholder decision. | Low (step 9) |
 | 8 | `KillCounter.gd` | Tracks any `player_died` signal in tree — no official kill-attribution system. Inflates count in multi-player. | Low (step 9) |
 | 9 | `PlayerDeath.gd`, `SpectatorView.gd` | ~~Spectator follow-cam and player-list not implemented.~~ **Resolved** — `SpectatorView.start_spectating()` reparents the local player's `Camera2D` onto any living `GameManager` roster participant; Left/Right cycle, auto-advance on target death. | Fixed |
-| 10 | `GameManager.gd` | ~~POST_MATCH state has no UI or logic (no win screen, no leaderboard).~~ **Resolved** — `GameManager` roster + `match_won` signal + `WinScreen.show_results()` (Play Again → `restart_match()`, Quit → `get_tree().quit()`). | Fixed |
-| 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (8 per layer, 32 total — raised from 6 on 2026-07-04 for testing visibility; Core Hollow intentionally gets none, see CLAUDE.md) must be removed when networked players exist. **Widened scope (2026-07-04):** dummies now also register as `GameManager` roster participants (`TestDummy.setup()`) so the step 8 leaderboard/win-condition/spectator flow has real multi-participant data to exercise — a deliberate deviation from "DEV-ONLY combat target, not a player." Since dummies never attack, the win condition in practice only fires if the local player kills every dummy (or dies leaving exactly one other participant alive); this whole roster wiring should be revisited once step 9 replaces dummies with real networked players. | Low (step 9) |
+| 10 | `GameManager.gd`, `HUD.gd` | ~~POST_MATCH state has no UI or logic (no win screen, no leaderboard).~~ **Resolved** — `GameManager` roster + `match_won` signal + `WinScreen.show_results()` (Play Again → `restart_match()`, Quit → `get_tree().quit()`). **Hardened 2026-07-06:** temporary DEBUG prints bracket the signal (at each `match_won.emit()` and in `HUD._on_match_won`) — remove after testing; `_check_win_condition()` also handles the 0-alive simultaneous-wipe case so the screen isn't skipped when the last participants die on the same frame. | Fixed |
+| 11 | `TestDummy.gd`, `WorldGenerator.DUMMIES_PER_LAYER` | DEV-ONLY offline combat targets (8 per layer, 32 total — raised from 6 on 2026-07-04 for testing visibility; Core Hollow intentionally gets none, see CLAUDE.md) must be removed when networked players exist. **Widened scope (2026-07-04):** dummies now also register as `GameManager` roster participants (`TestDummy.setup()`) so the step 8 leaderboard/win-condition/spectator flow has real multi-participant data to exercise — a deliberate deviation from "DEV-ONLY combat target, not a player." **Further widened (2026-07-06):** dummies now also actively attack the player (detection Area2D + cooldown damage crediting the dummy as killer) — still stationary, but no longer harmless, so a player CAN now die to a dummy and hit the DeathScreen/spectator flow. The last-standing win condition still only fires if the player is the sole survivor (kills every dummy) or dies leaving exactly one participant. This whole roster+attack wiring should be revisited once step 9 replaces dummies with real networked players. | Low (step 9) |
 | 12 | `Main.gd` | Player always spawns at world centre X. Needs per-player scatter for 100-player drops. | Low (step 9) |
 | 13 | `DrillClass.gd`, `terrain_stats.json` | Thermal's `class_effectiveness` (now set to excel at soft/organic terrain) is inert at runtime: `ignores_terrain_effectiveness(THERMAL)` makes the dig calc use uniform speed, ignoring the JSON values. Data reflects intent; runtime does not. Decide later whether Thermal keeps uniform speed or honours its terrain values. | Low |
 | 14 | `InventoryManager.gd`, `PlayerController.gd` | ~~Drill/weapon current durability lost on drop → re-pickup.~~ **Resolved** — dropped items carry live `current_durability` (`_with_current_durability`), restored on re-equip (`_restore_saved_durability`), broken re-flagged at 0. | Fixed |
@@ -696,6 +701,77 @@ Phase schedule locked. Damage values TBD.
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
 
 ### 2026-07-06
+
+**Scanner detection wired offline (Option C placeholder — user-approved).** Scanners
+were fully orphaned: signals only, no item type, no use path, no loot category. Now
+functional offline. New `ScannerBase.gd` (Resource) holds all shared logic;
+`BasicScanner`/`DeepRadar` shrink to `_range_key()` overrides (`basic_scanner_range`
+220 / `deep_radar_range` 460, first-pass TBD). `activate(world_pos, exclude_id)` does
+real detection: returns living `GameManager` roster participants within radius,
+excluding the scanner (TBD-null-safe: null radius → detects nothing, no invented
+fallback). New `"scanner"` item type (`Constants.Scanner` enum + `SCANNER_NAMES`);
+`PlayerController._use_scanner()` (G) scans from the player's position, spawns a
+**cyan** `EchoCharge.RevealMarker` per detected participant (through-terrain, expires
+with the LOCKED 8s duration) + a cyan `PingRing`, and consumes the item (single-use =
+placeholder decision, flagged). `EchoCharge.gd`'s `RevealMarker`/`PingRing` gained
+overridable `mark_color`/`ring_color` (defaults unchanged — Echo stays magenta; cyan
+distinguishes scans from Echo reveals). **LOCKED honored: no status applied to scanned
+targets** (a status would show on the victim's HUD = notification). Display-name cases
+added in `InventoryManager`/`HUD`/`Chest` helpers + `_debug_item_name`. DEV
+`BASIC_SCANNER` seeded in `setup_hotbar()` (free hotbar slots are full → lands in
+backpack 6; drag to hotbar via F panel, select, G to scan — also exercises drag-drop).
+**Explicitly NOT done (flagged, not forgotten):** loot-pool integration — the
+`"special"` category exists in `loot_tables.json`/`spawn_rates.json` data but
+`LootTable._CATEGORIES` doesn't roll it; that's separate scope (also covers
+LayerBreachDevice/LifeCapsule). Detection is client-local — step 9 must run it
+server-side with results sent only to the scanning player. No Godot binary available;
+verified by trace (roster API calls match GameManager's real signatures; marker reuse
+matches EchoCharge's working impact path) — live boot check recommended next session.
+
+**TestDummy attack behaviour + win-screen signal hardening (two-mission session).**
+No Godot binary in this environment — both changes verified by full-signal/type trace
+and collision-bit math, not a live boot; a visual confirm is recommended next session.
+
+1. **DEV dummies now actively attack the player (`TestDummy.gd` only).** The dummy
+   previously had ZERO offensive logic — it was a pure damage sponge. Added a
+   self-contained attack loop (all numbers are TBD dev placeholders, deliberately NOT
+   sourced from `data/*.json` since a dummy is a test aid, not a balanced enemy):
+   `DETECT_RADIUS` 56px, `ATTACK_DAMAGE` 5.0/hit, `ATTACK_COOLDOWN` 1.5s, `FLASH_TIME`
+   0.18s. Detection is a child `Area2D` (`collision_layer=0`, `collision_mask=1`) — the
+   same bit the player body lives on. **Collision-bit check:** the player's
+   `Player.tscn` `collision_layer = 5` (bits for layer 1 **and** 3; `5 = 1 + 4`), so it
+   includes bit value 1 and is detected by a mask-1 sensor exactly like the existing
+   melee hitbox (`PlayerController` mask 1) already detects player bodies. `body_entered`/
+   `body_exited` maintain `_targets_in_range`, filtered to `body is PlayerController` so
+   other dummies (also layer 1) and TileMap collision never count as targets — dummies
+   never fight each other. `_process_attack()` (called each physics frame after
+   `move_and_slide`) faces the nearest in-range player (`_sprite.flip_h`), ticks the
+   cooldown, and on expiry calls `target_stats.take_damage(ATTACK_DAMAGE, _display_name(),
+   player_id)` — passing THIS dummy's roster `player_id` as `source_id` so a lethal dummy
+   hit correctly sets `last_killer_name`/`last_killer_id` for the DeathScreen + spectator
+   target (kill attribution requirement). Guards on `target_stats.is_dead`.
+   **Visual attack indicator:** `_update_flash()` tints `_sprite.modulate` red-bright
+   `(1.6,0.5,0.5)` for `FLASH_TIME` on each hit, a subtle aggressive red `(1.25,0.85,0.85)`
+   while a target is merely in range, and white otherwise — so it's obvious at a glance
+   when a dummy is targeting you. First contact hits immediately (cooldown starts at 0),
+   so the reaction is instant. No file other than `TestDummy.gd` was touched.
+2. **Win-screen signal made verifiable + wipe-robust (`GameManager.gd`, `HUD.gd`).**
+   Investigation first: the whole flow was ALREADY correctly wired — `match_won` signal,
+   `_check_win_condition()` firing at `alive.size()==1`, `HUD.init()` connecting
+   `match_won → _on_match_won` and the Play Again → `restart_match()` / Quit →
+   `get_tree().quit()` button handlers (HUD lines 88-90), the `WinScreen` node instanced
+   in `HUD.tscn` at `Control/WinScreen` (rendered last, on top), and `show_results()`
+   building the leaderboard + setting `visible=true`. Nothing was broken. Two additive
+   changes: (a) **temporary DEBUG prints** bracketing the signal — one at each
+   `match_won.emit()` in `GameManager._check_win_condition()` and one in
+   `HUD._on_match_won()` — so the Output panel confirms the signal both fires AND reaches
+   the HUD during testing (flagged `TEMP DEBUG (remove after win-screen testing)`).
+   (b) **Wipe robustness:** `_check_win_condition()` previously only handled
+   `alive.size()==1`; if the last participants died on the SAME frame (17:30 storm
+   deadline / Seismic charge jumping 2-alive → 0-alive), the win screen was silently
+   skipped. Added an `elif alive.size()==0 and not _players.is_empty()` branch that ends
+   the match and credits the top-of-leaderboard (most-kills) participant so results still
+   show. The normal sole-survivor path (e.g. player kills every dummy) is unchanged.
 
 **Four-bug fix pass (dummies / armor / storm / win-screen) + a discovered cross-system
 conflict.** Started as 4 file-disjoint parallel sub-agents; the armor agent was

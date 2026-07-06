@@ -433,6 +433,9 @@ func _on_spectate_requested() -> void:
 ## whoever's HUD instance is running: the winner (still playing, gets frozen
 ## here) or a spectator (already mid-SpectatorView).
 func _on_match_won(winner_id: int) -> void:
+	# TEMP DEBUG (remove after win-screen testing): confirms the signal reached
+	# the HUD instance and the WinScreen is about to be shown.
+	print("[Faultline][DEBUG] HUD received match_won — winner_id=%d; showing WinScreen" % winner_id)
 	_hide_match_hud()
 	_death_screen.visible = false
 	_spectator_view.stop_spectating()
@@ -679,6 +682,7 @@ func _item_short_name(item, slot_idx: int) -> String:
 		"throwable":  return Constants.THROWABLE_NAMES.get(item_class, "?").left(6)
 		"relic":      return Constants.RELIC_NAMES.get(item_class, "?").left(6)
 		"consumable": return Constants.CONSUMABLE_NAMES.get(item_class, "?").left(6)
+		"scanner":    return Constants.SCANNER_NAMES.get(item_class, "?").left(6)
 	return "?"
 
 
