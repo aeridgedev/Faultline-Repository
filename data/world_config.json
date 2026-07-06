@@ -35,13 +35,13 @@
   "pressure_dps_base": 6.0,
 
   "depth_hazard": {
-    "_meta": "FIRST-PASS BALANCED 2026-07-05 — DPS/oxygen/visibility scale low Crust / moderate Mantle / noticeable Outer Core / high Inner Core; Core Hollow left to the storm. Testable, pending playtesting.",
-    "_balance_note": "Layer DPS (depth_hazard only): Crust 0 / Mantle 1 / Outer Core 4 / Inner Core 12 / Core Hollow 0. Combined with pressure this yields the intended forgiving-early, punishing-deep curve.",
+    "_meta": "FIRST-PASS BALANCED 2026-07-05; layer DPS HALVED 2026-07-06 (playtest: too punishing). DPS/oxygen/visibility scale low Crust / moderate Mantle / noticeable Outer Core / high Inner Core; Core Hollow left to the storm. Testable, pending playtesting.",
+    "_balance_note": "Layer DPS (depth_hazard only), halved 2026-07-06: Crust 0 / Mantle 0.5 / Outer Core 2 / Inner Core 6 / Core Hollow 0 (was 0/1/4/12/0). Combined with pressure this yields the intended forgiving-early, punishing-deep curve. Oxygen drain and pressure_dps_base unchanged.",
 
     "crust_dps": 0.0,
-    "mantle_dps": 1.0,
-    "outer_core_dps": 4.0,
-    "inner_core_dps": 12.0,
+    "mantle_dps": 0.5,
+    "outer_core_dps": 2.0,
+    "inner_core_dps": 6.0,
     "core_hollow_dps": 0.0,
 
     "crust_oxygen_drain": 0.0,

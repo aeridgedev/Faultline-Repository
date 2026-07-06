@@ -91,7 +91,7 @@ func _reparent_camera(target_node: Node) -> void:
 	target_node.add_child(_camera)
 	_camera.position = Vector2.ZERO
 	_camera.reset_smoothing()
-	_camera.current = true
+	_camera.make_current()   # Godot 4: `current` is not an assignable property; use make_current()
 
 
 func _disconnect_current() -> void:

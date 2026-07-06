@@ -702,6 +702,14 @@ Phase schedule locked. Damage values TBD.
 
 ### 2026-07-06
 
+**Playtest bugfix — `SpectatorView` crashed on spectate (Godot 3 → 4 Camera2D API).**
+`_reparent_camera()` (SpectatorView.gd:94) called `_camera.current = true`, but in Godot 4
+`Camera2D.current` is not an assignable property (it's read-only `is_current()` + the
+`make_current()` method). Clicking SPECTATE on the DeathScreen threw "Invalid assignment
+of property or key 'current'" and aborted the reparent, so the spectator camera never
+activated. Fixed to `_camera.make_current()`. Grep confirms this was the only `.current`
+assignment in `src/`. Caught in a live playtest (Godot boot now available).
+
 **Scanner detection wired offline (Option C placeholder — user-approved).** Scanners
 were fully orphaned: signals only, no item type, no use path, no loot category. Now
 functional offline. New `ScannerBase.gd` (Resource) holds all shared logic;
