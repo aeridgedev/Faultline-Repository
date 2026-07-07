@@ -3,33 +3,43 @@
 Working brief for Claude when building this project. Read this first every session.
 
 > **NEXT SESSION PRIORITY (when the user opens a new session and asks "what should
-> I do" / "what's next", lead with this):** **Build step 8 (UI) is now complete,
-> including the death/spectator/win-screen flow.** Dying shows a `DeathScreen` with
-> killer name, killing-blow damage, layer died in, and match kill count; its SPECTATE
-> button hands a `SpectatorView` the local player's `Camera2D`, which reparents it
-> onto the killer (or the first living participant if the death was environmental)
-> and lets Left/Right cycle every living participant, auto-advancing off anyone who
-> dies while spectated. A new **`GameManager` match roster** (`register_player`/
-> `record_kill`/`record_layer_reached`/`mark_player_dead`/`get_leaderboard`/
-> `match_won` signal) tracks every participant's kills + deepest layer reached and
-> fires `match_won` the instant exactly one participant remains alive, which shows a
-> `WinScreen` leaderboard (winner pinned gold at rank 1, everyone else by kills) with
-> Play Again (`GameManager.restart_match()` — clears the roster, reloads the scene)
-> and Quit buttons. **Deliberate DEV-scope decision:** since real networked players
-> don't exist yet (step 9), the DEV-ONLY `TestDummy` targets were promoted to full
-> roster participants too, purely so this whole flow has real multi-participant data
-> to exercise end-to-end today — this is a documented deviation from "TestDummy is a
-> combat target, not a player" (see Known Issues #11 in GAME_STATE.md) and should be
-> revisited/removed once step 9 lands. `PlayerStats.take_damage()` gained
-> `source_name`/`source_id` params (every hazard/melee call site updated) so deaths
-> can report who/what killed the player. All armor + storm work from prior sessions
-> is also done (see GAME_STATE.md Overall Status table).
-> Recommended next: **Step 9 — Networking** (retrofit an authoritative headless
-> server onto these proven offline systems: terrain streaming/chunking, the input
-> model, and — new this session — the `GameManager` roster becoming the real
-> multi-client participant list instead of local player + dummies). This is the last
-> build step and the biggest one; confirm scope/approach with the user before writing
-> code rather than assuming a specific networking architecture.
+> I do" / "what's next", lead with this):** **All offline build steps (1–8) are
+> complete and have been live-playtested in Godot.** The game is a fully functional
+> offline single-player loop: descend through 5 layers, drill/loot/fight, dodge the
+> storm + depth/pressure hazards, die → DeathScreen → spectate → WinScreen/leaderboard
+> → Play Again. Only **step 9 (Networking)** remains from the build order.
+>
+> **What the 2026-07-06 playtest session added on top of the step-1–8 base:** (1)
+> DEV `TestDummy`s now **actively attack** (detection `Area2D` + 1.5s-cooldown damage
+> that credits the dummy as killer, so a player can die to one and hit the death/
+> spectator flow with correct attribution); (2) the **win-screen** signal chain was
+> confirmed wired end-to-end + hardened (DEBUG prints bracket `match_won`; a 0-alive
+> simultaneous-wipe branch so the screen never gets skipped); (3) **scanners are
+> functional offline** (new `ScannerBase` with real roster-query detection, cyan
+> through-terrain reveal markers, G-key use path, `"scanner"` item type — Option C
+> placeholder, detection still client-local pending step 9); (4) a **Godot-4 fix** to
+> `SpectatorView` (`Camera2D.current` → `make_current()`); (5) a **balance-tuning
+> pass** — per-layer depth-hazard DPS and `pressure_dps_base` both halved, and loot
+> rarity tightened so **Epic/Legendary can no longer drop in Crust** (see the two
+> RESOLVED entries dated 2026-07-06 at the end of Working Conventions).
+>
+> **Two open directions — the user chooses:**
+> - **Step 9 — Networking** (the last build-order step; the biggest and riskiest).
+>   Retrofit an authoritative headless server onto these proven offline systems:
+>   terrain streaming/chunking, the input model, and the `GameManager` roster becoming
+>   the real multi-client participant list instead of local player + dummies. **Confirm
+>   scope/approach with the user before writing code** — do not assume an architecture.
+> - **Visual / art polish pass** (currently under consideration). Everything on screen
+>   today is **dev-art placeholder**: terrain tiles, player, dummy, and loot sprites are
+>   all built procedurally in code (`TerrainManager._build_dev_tileset`, the in-code
+>   `Image`/`Sprite2D` art in `PlayerController`/`TestDummy`/`LootDrop`), and the UI uses
+>   plain code-built panels. This is **independent of networking** (art assets aren't
+>   invalidated by the server retrofit), so on a 3-dev team it can run in parallel with
+>   step 9. Keep the locked art direction: pixel art, 16px tile grid, world on the TileMap.
+>
+> **Small cleanup owed before "final":** two `[Faultline][DEBUG]` prints (in
+> `GameManager._check_win_condition` and `HUD._on_match_won`) are flagged temporary —
+> remove them once a live win-screen fire is confirmed.
 
 ## Game overview
 
@@ -555,6 +565,47 @@ which item this session targets before writing code.
   category (LayerBreachDevice/LifeCapsule/DeepRadar) is its own future task, not a
   scanner bug; the DEV `BASIC_SCANNER` in `setup_hotbar()` is the offline test path
   (backpack slot 6 → drag to hotbar via F → G).
+- **RESOLVED (2026-07-06) — `SpectatorView` crashed on SPECTATE (Godot 3 → 4 Camera2D
+  API).** `_reparent_camera()` set `_camera.current = true`, but in Godot 4 `Camera2D.current`
+  is not an assignable property (it is read-only `is_current()` + the `make_current()`
+  method). Clicking SPECTATE threw "Invalid assignment of property or key 'current'" and
+  aborted the reparent, so the spectator camera never activated. Fixed to
+  `_camera.make_current()` (the only `.current` assignment in `src/`). **Locked rule going
+  forward:** to switch the active `Camera2D` in Godot 4 call `make_current()` (never assign
+  `.current`); this project sets the spectator camera exactly this way.
+- **RESOLVED (2026-07-06) — playtest balance tuning: hazard damage halved + loot rarity
+  tightened (data only; no `.gd` changes).** Two live-playtest adjustments, both in
+  `data/*.json` (read via `GameManager.data`, so no code touched): (1) **per-layer damage
+  was too punishing** — `world_config.json` `depth_hazard.{layer}_dps` halved (Mantle 1→0.5,
+  Outer Core 4→2, Inner Core 6, i.e. 12→6; Crust/Core Hollow stay 0) AND `pressure_dps_base`
+  halved 6.0→3.0 (pressure scales by depth factor, so every layer's pressure tick halves
+  too). Oxygen drain and storm per-phase damage were left as-is. (2) **high tiers dropped
+  too early** (Epic was findable in Crust) — `loot_tables.json` `rarity_weights` pushed
+  toward Common/Rare early so **Crust is now Common/Rare only (Epic 0, Legendary 0)**,
+  Mantle tops out at 5% Epic / 0 Legendary, and Legendary is a lottery 2% at Outer Core /
+  8% Inner Core (each row still sums to 100). This also moves closer to the "Legendary only
+  appears deep" design line. **Still first-pass / TBD** — these remain testable placeholders
+  (the "TBD — do NOT invent values" rule stands); the `_meta`/`_balance_note` fields in both
+  files record the old→new values. **Locked rule going forward:** all such balance edits stay
+  in `data/*.json` only; when changing a per-layer or per-phase curve, update that file's
+  `_meta`/`_balance_note` with the before→after so the change is auditable.
+- **RESOLVED (2026-07-06) — terrain tiles can now load real PNG art (visual-polish
+  Phase 1 hook).** `TerrainManager._make_tile()` now tries `_load_tile_png(type)` first
+  — an imported `res://assets/tilesets/<name>.png` (16×16, names in `_tile_file()`:
+  `soil`/`clay`/…/`core_hollow_shell`) — and only falls back to the procedural dev art
+  (renamed `_make_tile_codegen`) when the file is absent, unimported, or the wrong size
+  (a size mismatch `push_warning`s rather than silently scaling). Nothing else changed:
+  `place_tile()` still keys the TileSet source purely by terrain enum value (source ID =
+  `TerrainType`, one tile at (0,0)), so a dropped-in PNG needs no other wiring, and tiles
+  can migrate to real art one at a time. `assets/tilesets/README.md` documents the
+  filenames + 16×16/Nearest-filter spec for the artist. **Locked rules going forward:**
+  (1) terrain art files stay **exactly 16×16 PNG, Nearest filter**, named per
+  `_tile_file()` — the loader rejects other sizes. (2) This is **flat-tile replacement
+  only**; edge/corner **autotiling** is a separate, larger task that would replace the
+  `set_cell(0, cell, type, Vector2i.ZERO)` call in `place_tile`/`destroy_tile`/streaming
+  with `set_cells_terrain_connect()` + neighbor re-evaluation — do not conflate the two.
+  (3) Keep the codegen path (`_make_tile_codegen` + the `_tile_*()` painters) as the
+  fallback; do not delete it.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

@@ -63,7 +63,60 @@ func _build_dev_tileset() -> void:
 	tile_map.tile_set = ts
 
 
+# --- Terrain art source: imported PNG first, procedural dev art as fallback ---
+# Drop a 16×16 PNG in assets/tilesets/ named per _tile_file() (e.g. soil.png)
+# and it automatically replaces the code-drawn tile — nothing else changes,
+# because place_tile() keys the TileSet source purely by the terrain enum value
+# (source ID = TerrainType), and each source still holds one tile at (0,0).
+# A missing / unimported / wrong-size PNG falls back to the code art below
+# (wrong size warns), so tiles can be migrated to real art one at a time.
+const _TILESET_DIR := "res://assets/tilesets/"
+
+
 func _make_tile(type: Constants.TerrainType) -> Image:
+	var png := _load_tile_png(type)
+	return png if png != null else _make_tile_codegen(type)
+
+
+# Loads assets/tilesets/<name>.png as an Image, or null if absent / not yet
+# imported / not the expected 16×16 (a size mismatch warns and falls back so a
+# bad drop-in is obvious rather than silently scaled by the atlas region).
+func _load_tile_png(type: Constants.TerrainType) -> Image:
+	var path := _TILESET_DIR + _tile_file(type) + ".png"
+	if not ResourceLoader.exists(path):
+		return null
+	var tex := load(path) as Texture2D
+	if tex == null:
+		return null
+	var img := tex.get_image()
+	if img == null:
+		return null
+	if img.get_width() != Constants.TILE_SIZE or img.get_height() != Constants.TILE_SIZE:
+		push_warning("[TerrainManager] %s is %d×%d, expected %d×%d — using code art." % [
+			path, img.get_width(), img.get_height(), Constants.TILE_SIZE, Constants.TILE_SIZE])
+		return null
+	return img
+
+
+# Filename (without extension) expected in assets/tilesets/ for each terrain type.
+func _tile_file(type: Constants.TerrainType) -> String:
+	match type:
+		Constants.TerrainType.SOIL:              return "soil"
+		Constants.TerrainType.CLAY:              return "clay"
+		Constants.TerrainType.LIMESTONE:         return "limestone"
+		Constants.TerrainType.ROCK:              return "rock"
+		Constants.TerrainType.BASALT:            return "basalt"
+		Constants.TerrainType.GRANITE:           return "granite"
+		Constants.TerrainType.OBSIDIAN:          return "obsidian"
+		Constants.TerrainType.IRON_FORMATION:    return "iron_formation"
+		Constants.TerrainType.DENSE_CRYSTAL:     return "dense_crystal"
+		Constants.TerrainType.ULTRA_DENSE:       return "ultra_dense"
+		Constants.TerrainType.BEDROCK:           return "bedrock"
+		Constants.TerrainType.CORE_HOLLOW_SHELL: return "core_hollow_shell"
+		_:                                       return "fallback"
+
+
+func _make_tile_codegen(type: Constants.TerrainType) -> Image:
 	match type:
 		Constants.TerrainType.SOIL:           return _tile_soil()
 		Constants.TerrainType.CLAY:           return _tile_clay()

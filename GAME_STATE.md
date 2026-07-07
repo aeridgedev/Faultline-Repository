@@ -232,6 +232,8 @@ Owns and mutates the Godot `TileMap`. Single interface for all terrain reads/wri
 
 Dev tileset built in code (no external asset needed): all 12 terrain types as pixel-art 16×16 images (incl. `CORE_HOLLOW_SHELL` — armored blue-black plate with molten-cyan energy seams, visually distinct from dull-gray Bedrock). Source IDs are keyed by the `TerrainType` enum value in `add_source(source, terrain_type)`, so the new type gets source ID 11 and `place_tile`/`destroy_tile` handle it with no special-casing.
 
+**Real PNG art hook (2026-07-06):** `_make_tile()` now loads `res://assets/tilesets/<name>.png` (16×16) via `_load_tile_png()`/`_tile_file()` if present, else falls back to the procedural painters (renamed `_make_tile_codegen()`). Wrong-size files warn and fall back. No change to `place_tile`/streaming — source ID is still the terrain enum value. See `assets/tilesets/README.md` for filenames/spec. This is flat-tile replacement only; autotiling (edge/corner transitions) remains a separate future task.
+
 ### LayerManager (`src/world/LayerManager.gd`)
 Maps world-space pixel Y coordinates to `Constants.Layer` enum values.
 
@@ -701,6 +703,20 @@ Phase schedule locked. Damage values TBD.
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
 
 ### 2026-07-06
+
+**Balance tuning + visual-polish Phase 1 hook (post-playtest).** Two data-only balance
+edits from live playtest feedback (no `.gd` change): per-layer depth-hazard DPS halved
+(`world_config.json` `depth_hazard.{layer}_dps`: Mantle 1→0.5, Outer 4→2, Inner 12→6) AND
+`pressure_dps_base` halved 6.0→3.0; loot rarity tightened (`loot_tables.json`
+`rarity_weights`) so **Crust is Common/Rare only** (Epic/Legendary 0) and Legendary is a
+deep-only lottery (Outer 2%, Inner 8%) — each row still sums to 100, `_meta`/`_balance_note`
+record old→new. Then, entering a visual-polish phase (all art is currently procedural
+dev-art), added the **terrain real-art hook**: `TerrainManager._make_tile()` loads
+`assets/tilesets/<name>.png` (16×16) if present, else the renamed `_make_tile_codegen()`
+painters; `place_tile`/streaming untouched (source ID still = terrain enum value).
+`assets/tilesets/README.md` specs the filenames. Flat-tile replacement only — autotiling is
+a separate future task. A full visual-polish roadmap (terrain autotiling → character
+animation → loot/FX → UI → 2D lighting) was mapped in discussion; not yet a repo doc.
 
 **Playtest bugfix — `SpectatorView` crashed on spectate (Godot 3 → 4 Camera2D API).**
 `_reparent_camera()` (SpectatorView.gd:94) called `_camera.current = true`, but in Godot 4
