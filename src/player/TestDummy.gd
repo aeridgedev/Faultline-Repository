@@ -16,14 +16,6 @@ var _sprite: Sprite2D = null
 var _gravity: float = 0.0
 var player_id: int = -1
 
-# Real art first: assets/sprites/dummy.png (frame 0 = idle, frame 1 = alert).
-# The engine still tints _sprite.modulate for the attack flash; the alert frame
-# just gives that flash a warmer base to read against. Falls back to code art.
-const DUMMY_SHEET := "res://assets/sprites/dummy.png"
-const DUMMY_FRAME := 32
-var _dummy_sheet: Texture2D = null
-var _sprite_frame: int = -1
-
 # DEV-ONLY attack behaviour so dummies act as live threats during testing.
 # All three numbers are TBD placeholders — dummies are a dev aid, not a balanced
 # enemy, so these are deliberately gentle and not sourced from data/*.json.
@@ -50,63 +42,7 @@ func _ready() -> void:
 	add_child(col)
 
 	var spr := Sprite2D.new()
-	var sheet := _load_dummy_sheet()
-	if sheet != null:
-		_dummy_sheet = sheet
-		spr.texture = sheet
-		spr.region_enabled = true
-		spr.region_rect = Rect2(0, 0, DUMMY_FRAME, DUMMY_FRAME)
-		_sprite_frame = 0
-	else:
-		spr.texture = ImageTexture.create_from_image(_make_dummy_codegen())
-	add_child(spr)
-	_sprite = spr
-
-	# Named "PlayerStats" so PlayerController._try_attack's get_node_or_null finds it.
-	_stats = PlayerStats.new()
-	_stats.name = "PlayerStats"
-	add_child(_stats)
-	_stats.health_changed.connect(_on_health_changed)
-	_stats.player_died.connect(_on_died)
-
-	_label = Label.new()
-	_label.position = Vector2(-18, -42)
-	_label.add_theme_font_size_override("font_size", 10)
-	add_child(_label)
-	_refresh_label()
-
-	# Detection radius: an Area2D on collision_mask bit 1 (the same bit the player
-	# body lives on and that the player's melee hitbox already scans), so the player
-	# reliably registers. body_entered/exited keep _targets_in_range current.
-	_detect_area = Area2D.new()
-	_detect_area.collision_layer = 0   # the sensor itself is not detectable
-	_detect_area.collision_mask = 1    # detect bodies on bit 1 (players + dummies)
-	var det_col := CollisionShape2D.new()
-	var det_shape := CircleShape2D.new()
-	det_shape.radius = DETECT_RADIUS
-	det_col.shape = det_shape
-	_detect_area.add_child(det_col)
-	add_child(_detect_area)
-	_detect_area.body_entered.connect(_on_body_entered)
-	_detect_area.body_exited.connect(_on_body_exited)
-
-
-# Loads assets/sprites/dummy.png, or null if absent / unimported / wrong-size.
-func _load_dummy_sheet() -> Texture2D:
-	if not ResourceLoader.exists(DUMMY_SHEET):
-		return null
-	var tex := load(DUMMY_SHEET) as Texture2D
-	if tex == null:
-		return null
-	if tex.get_height() != DUMMY_FRAME or tex.get_width() % DUMMY_FRAME != 0:
-		push_warning("[TestDummy] %s is %d×%d, expected %d-tall multiple of %d — using code art." % [
-			DUMMY_SHEET, tex.get_width(), tex.get_height(), DUMMY_FRAME, DUMMY_FRAME])
-		return null
-	return tex
-
-
-# Straw-filled target dummy fallback: burlap body with a red X on the chest.
-func _make_dummy_codegen() -> Image:
+	# Straw-filled target dummy: burlap body with a red X on the chest
 	const W := 16; const H := 28
 	var K  := Color(0.06, 0.04, 0.02)   # outline
 	var BU := Color(0.58, 0.46, 0.26)   # burlap base
@@ -137,15 +73,37 @@ func _make_dummy_codegen() -> Image:
 	for i in [3, 7, 10, 13]:
 		if i < W - 1:
 			img.set_pixel(i, 1, ST)
-	return img
+	spr.texture = ImageTexture.create_from_image(img)
+	add_child(spr)
+	_sprite = spr
 
+	# Named "PlayerStats" so PlayerController._try_attack's get_node_or_null finds it.
+	_stats = PlayerStats.new()
+	_stats.name = "PlayerStats"
+	add_child(_stats)
+	_stats.health_changed.connect(_on_health_changed)
+	_stats.player_died.connect(_on_died)
 
-# Switches the sheet region between idle (0) and alert (1). No-op on code art.
-func _set_frame(frame: int) -> void:
-	if _dummy_sheet == null or frame == _sprite_frame or _sprite == null:
-		return
-	_sprite_frame = frame
-	_sprite.region_rect = Rect2(frame * DUMMY_FRAME, 0, DUMMY_FRAME, DUMMY_FRAME)
+	_label = Label.new()
+	_label.position = Vector2(-18, -42)
+	_label.add_theme_font_size_override("font_size", 10)
+	add_child(_label)
+	_refresh_label()
+
+	# Detection radius: an Area2D on collision_mask bit 1 (the same bit the player
+	# body lives on and that the player's melee hitbox already scans), so the player
+	# reliably registers. body_entered/exited keep _targets_in_range current.
+	_detect_area = Area2D.new()
+	_detect_area.collision_layer = 0   # the sensor itself is not detectable
+	_detect_area.collision_mask = 1    # detect bodies on bit 1 (players + dummies)
+	var det_col := CollisionShape2D.new()
+	var det_shape := CircleShape2D.new()
+	det_shape.radius = DETECT_RADIUS
+	det_col.shape = det_shape
+	_detect_area.add_child(det_col)
+	add_child(_detect_area)
+	_detect_area.body_entered.connect(_on_body_entered)
+	_detect_area.body_exited.connect(_on_body_exited)
 
 
 func _physics_process(delta: float) -> void:
@@ -221,15 +179,12 @@ func _display_name() -> String:
 func _update_flash() -> void:
 	if _sprite == null:
 		return
-	var aggressive := _nearest_target() != null
 	if _flash_timer > 0.0:
 		_sprite.modulate = Color(1.6, 0.5, 0.5)
-	elif aggressive:
+	elif _nearest_target() != null:
 		_sprite.modulate = Color(1.25, 0.85, 0.85)
 	else:
 		_sprite.modulate = Color(1, 1, 1)
-	# Show the warmer "alert" frame while targeting/attacking, idle otherwise.
-	_set_frame(1 if (aggressive or _flash_timer > 0.0) else 0)
 
 
 func _on_health_changed(_hp: float, _max_hp: float) -> void:
