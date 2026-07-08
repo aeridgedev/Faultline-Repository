@@ -33,6 +33,14 @@ func _ready() -> void:
 	# Resources. No separate equip-starter step is needed.
 	player.get_node("DescentTracker").init(layer_manager)
 
+	# Per-layer ambient lighting (Part A visual polish): one world CanvasModulate
+	# tweened between each layer's approved tint on descent (Core Hollow pulses).
+	# Added under _world so the tint lands on canvas layer 0 (the world), not the HUD.
+	var layer_visuals := LayerVisuals.new()
+	layer_visuals.name = "LayerVisuals"
+	_world.add_child(layer_visuals)
+	layer_visuals.init(player.stats, _world)
+
 	var stamina := player.get_node("Stamina") as Stamina
 	var storm := _init_hazards(player.stats, stamina, layer_manager)
 	player.init_storm(storm)

@@ -16,6 +16,14 @@ var _sprite: Sprite2D = null
 var _gravity: float = 0.0
 var player_id: int = -1
 
+# Real art first: assets/sprites/dummy.png (frame 0 = idle, frame 1 = alert).
+# The engine still tints _sprite.modulate for the attack flash; the alert frame
+# just gives that flash a warmer base to read against. Falls back to code art.
+const DUMMY_SHEET := "res://assets/sprites/dummy.png"
+const DUMMY_FRAME := 32
+var _dummy_sheet: Texture2D = null
+var _sprite_frame: int = -1
+
 # DEV-ONLY attack behaviour so dummies act as live threats during testing.
 # All three numbers are TBD placeholders — dummies are a dev aid, not a balanced
 # enemy, so these are deliberately gentle and not sourced from data/*.json.
@@ -42,38 +50,15 @@ func _ready() -> void:
 	add_child(col)
 
 	var spr := Sprite2D.new()
-	# Straw-filled target dummy: burlap body with a red X on the chest
-	const W := 16; const H := 28
-	var K  := Color(0.06, 0.04, 0.02)   # outline
-	var BU := Color(0.58, 0.46, 0.26)   # burlap base
-	var BL := Color(0.70, 0.56, 0.32)   # burlap lit
-	var BD := Color(0.42, 0.32, 0.16)   # burlap shadow
-	var RX := Color(0.84, 0.18, 0.18)   # red X mark
-	var ST := Color(0.74, 0.64, 0.32)   # straw wisps
-	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	for y in H:
-		for x in W:
-			if x == 0 or y == 0 or x == W - 1 or y == H - 1:
-				img.set_pixel(x, y, K)
-			elif x <= 2 or x >= W - 3:
-				img.set_pixel(x, y, BD)
-			elif y <= 3:
-				img.set_pixel(x, y, BL)
-			else:
-				img.set_pixel(x, y, BU if (x + y) % 4 != 0 else BD)
-	# Red X on chest (y=8..18, x=4..11)
-	for i in range(8):
-		var cx := 4 + i; var cy1 := 8 + i; var cy2 := 16 - i
-		if cx < W - 1 and cy1 < H - 1 and cy1 > 0:
-			img.set_pixel(cx, cy1, RX)
-		if cx < W - 1 and cy2 < H - 1 and cy2 > 0:
-			img.set_pixel(cx, cy2, RX)
-	# Straw wisps poking out of head
-	for i in [3, 7, 10, 13]:
-		if i < W - 1:
-			img.set_pixel(i, 1, ST)
-	spr.texture = ImageTexture.create_from_image(img)
+	var sheet := _load_dummy_sheet()
+	if sheet != null:
+		_dummy_sheet = sheet
+		spr.texture = sheet
+		spr.region_enabled = true
+		spr.region_rect = Rect2(0, 0, DUMMY_FRAME, DUMMY_FRAME)
+		_sprite_frame = 0
+	else:
+		spr.texture = ImageTexture.create_from_image(_make_dummy_codegen())
 	add_child(spr)
 	_sprite = spr
 
@@ -104,6 +89,63 @@ func _ready() -> void:
 	add_child(_detect_area)
 	_detect_area.body_entered.connect(_on_body_entered)
 	_detect_area.body_exited.connect(_on_body_exited)
+
+
+# Loads assets/sprites/dummy.png, or null if absent / unimported / wrong-size.
+func _load_dummy_sheet() -> Texture2D:
+	if not ResourceLoader.exists(DUMMY_SHEET):
+		return null
+	var tex := load(DUMMY_SHEET) as Texture2D
+	if tex == null:
+		return null
+	if tex.get_height() != DUMMY_FRAME or tex.get_width() % DUMMY_FRAME != 0:
+		push_warning("[TestDummy] %s is %d×%d, expected %d-tall multiple of %d — using code art." % [
+			DUMMY_SHEET, tex.get_width(), tex.get_height(), DUMMY_FRAME, DUMMY_FRAME])
+		return null
+	return tex
+
+
+# Straw-filled target dummy fallback: burlap body with a red X on the chest.
+func _make_dummy_codegen() -> Image:
+	const W := 16; const H := 28
+	var K  := Color(0.06, 0.04, 0.02)   # outline
+	var BU := Color(0.58, 0.46, 0.26)   # burlap base
+	var BL := Color(0.70, 0.56, 0.32)   # burlap lit
+	var BD := Color(0.42, 0.32, 0.16)   # burlap shadow
+	var RX := Color(0.84, 0.18, 0.18)   # red X mark
+	var ST := Color(0.74, 0.64, 0.32)   # straw wisps
+	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for y in H:
+		for x in W:
+			if x == 0 or y == 0 or x == W - 1 or y == H - 1:
+				img.set_pixel(x, y, K)
+			elif x <= 2 or x >= W - 3:
+				img.set_pixel(x, y, BD)
+			elif y <= 3:
+				img.set_pixel(x, y, BL)
+			else:
+				img.set_pixel(x, y, BU if (x + y) % 4 != 0 else BD)
+	# Red X on chest (y=8..18, x=4..11)
+	for i in range(8):
+		var cx := 4 + i; var cy1 := 8 + i; var cy2 := 16 - i
+		if cx < W - 1 and cy1 < H - 1 and cy1 > 0:
+			img.set_pixel(cx, cy1, RX)
+		if cx < W - 1 and cy2 < H - 1 and cy2 > 0:
+			img.set_pixel(cx, cy2, RX)
+	# Straw wisps poking out of head
+	for i in [3, 7, 10, 13]:
+		if i < W - 1:
+			img.set_pixel(i, 1, ST)
+	return img
+
+
+# Switches the sheet region between idle (0) and alert (1). No-op on code art.
+func _set_frame(frame: int) -> void:
+	if _dummy_sheet == null or frame == _sprite_frame or _sprite == null:
+		return
+	_sprite_frame = frame
+	_sprite.region_rect = Rect2(frame * DUMMY_FRAME, 0, DUMMY_FRAME, DUMMY_FRAME)
 
 
 func _physics_process(delta: float) -> void:
@@ -179,12 +221,15 @@ func _display_name() -> String:
 func _update_flash() -> void:
 	if _sprite == null:
 		return
+	var aggressive := _nearest_target() != null
 	if _flash_timer > 0.0:
 		_sprite.modulate = Color(1.6, 0.5, 0.5)
-	elif _nearest_target() != null:
+	elif aggressive:
 		_sprite.modulate = Color(1.25, 0.85, 0.85)
 	else:
 		_sprite.modulate = Color(1, 1, 1)
+	# Show the warmer "alert" frame while targeting/attacking, idle otherwise.
+	_set_frame(1 if (aggressive or _flash_timer > 0.0) else 0)
 
 
 func _on_health_changed(_hp: float, _max_hp: float) -> void:

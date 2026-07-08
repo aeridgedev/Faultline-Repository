@@ -46,6 +46,18 @@ var _held_sprite: Sprite2D = null   # the in-hand drill / sword visual
 var _drill_tex: Texture2D = null
 var _sword_tex: Texture2D = null
 
+# Body sprite sheet (assets/sprites/player.png). Region-animated: 32×32 frames,
+# [idle0 idle1 walk0 walk1 walk2 walk3]. Falls back to the code-drawn sprite when
+# the PNG is absent / wrong-size (mirrors TerrainManager's tile PNG hook).
+const BODY_SHEET := "res://assets/sprites/player.png"
+const BODY_FRAME := 32
+const BODY_IDLE_FRAMES: Array[int] = [0, 1]
+const BODY_WALK_FRAMES: Array[int] = [2, 3, 4, 5]
+var _body_sheet: Texture2D = null
+var _body_anim_time: float = 0.0
+var _body_frame: int = -1
+var _facing_left: bool = false
+
 # Active in-hand tool: derived from the SELECTED hotbar slot (keys 1-5 / scroll).
 # A drill slot -> TOOL_DRILL, a weapon slot -> TOOL_SWORD, anything else (empty,
 # throwable, consumable, relic) -> TOOL_NONE. Left-click acts on this tool; a
@@ -93,6 +105,58 @@ func _ready() -> void:
 
 
 func _build_dev_sprite() -> void:
+	# Real art first: assets/sprites/player.png (region-animated). Fall back to the
+	# code-drawn miner if the sheet is missing / not yet imported / wrong height.
+	var sheet := _load_body_sheet()
+	if sheet != null:
+		_body_sheet = sheet
+		var spr := $Sprite2D as Sprite2D
+		spr.texture = sheet
+		spr.region_enabled = true
+		spr.region_rect = Rect2(0, 0, BODY_FRAME, BODY_FRAME)
+		_body_frame = 0
+		return
+	_build_body_codegen()
+
+
+# Loads assets/sprites/player.png, or null if absent / unimported / not the
+# expected 32px-tall N-frame strip (warns and falls back, like the tile loader).
+func _load_body_sheet() -> Texture2D:
+	if not ResourceLoader.exists(BODY_SHEET):
+		return null
+	var tex := load(BODY_SHEET) as Texture2D
+	if tex == null:
+		return null
+	if tex.get_height() != BODY_FRAME or tex.get_width() % BODY_FRAME != 0:
+		push_warning("[PlayerController] %s is %d×%d, expected %d-tall multiple of %d — using code art." % [
+			BODY_SHEET, tex.get_width(), tex.get_height(), BODY_FRAME, BODY_FRAME])
+		return null
+	return tex
+
+
+# Selects the visible sheet frame and horizontal facing each physics frame.
+# No-op when the code-drawn sprite is in use (no sheet loaded).
+func _update_body_anim(delta: float) -> void:
+	if _body_sheet == null:
+		return
+	_body_anim_time += delta
+	if velocity.x < -1.0:
+		_facing_left = true
+	elif velocity.x > 1.0:
+		_facing_left = false
+	($Sprite2D as Sprite2D).flip_h = _facing_left
+	var moving := absf(velocity.x) > 5.0 or (_zero_gravity and absf(velocity.y) > 5.0)
+	var frame: int
+	if moving:
+		frame = BODY_WALK_FRAMES[int(_body_anim_time / 0.12) % BODY_WALK_FRAMES.size()]
+	else:
+		frame = BODY_IDLE_FRAMES[int(_body_anim_time / 0.5) % BODY_IDLE_FRAMES.size()]
+	if frame != _body_frame:
+		_body_frame = frame
+		($Sprite2D as Sprite2D).region_rect = Rect2(frame * BODY_FRAME, 0, BODY_FRAME, BODY_FRAME)
+
+
+func _build_body_codegen() -> void:
 	const W := 14; const H := 28
 	var K  := Color(0.04, 0.05, 0.08)   # outline
 	var HM := Color(0.28, 0.34, 0.46)   # helmet base
@@ -769,6 +833,7 @@ func _physics_process(delta: float) -> void:
 	_handle_tool_use(delta)
 	_handle_item_use(delta)
 	_update_held_visual()
+	_update_body_anim(delta)
 	move_and_slide()
 	_try_step_up()
 	_wrap_horizontal()

@@ -29,6 +29,7 @@ static func load_all() -> Dictionary:
 		"spawn_rates": load_json("spawn_rates.json"),
 		"storm":       load_json("storm_timings.json"),
 		"terrain":     load_json("terrain_stats.json"),
+		"layer_visuals": load_json("layer_visuals.json"),
 	}
 	# Merge flat world/player config keys directly into the top level so code
 	# can do GameManager.data.get("world_width_tiles"), etc.

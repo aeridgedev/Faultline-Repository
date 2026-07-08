@@ -79,12 +79,16 @@ const LAYER_DEPTH_FACTOR := {
 
 # ---------------------------------------------------------------------------
 # CHEST / LOOT SPAWN FORMULA
-#   spawnChance = 0.8 * (1 - depthFactor)^2
-#   -> Crust 80%, Mantle 51.2%, Outer Core 28.8%, Inner Core 12.8%
+#   spawnChance = 0.4 * (1 - depthFactor)^2
+#   -> Crust 40%, Mantle 25.6%, Outer Core 14.4%, Inner Core 6.4%
+# Base multiplier reduced 0.8 -> 0.4 (2026-07-07 visual-polish session) to thin
+# out loot density; the (1 - depthFactor)^2 depth curve is UNCHANGED, so the
+# relative per-layer drop-off is preserved and this stays the single knob to
+# retune density (do not add per-layer overrides). Prior curve: 80/51.2/28.8/12.8.
 # Independent of terrain type. Upgrade Template = 10% weight in the relevant
 # rarity loot pool (handled in data/loot_tables.json, NOT a flat per-chest roll).
 # ---------------------------------------------------------------------------
-const CHEST_BASE_SPAWN := 0.8
+const CHEST_BASE_SPAWN := 0.4
 
 func chest_spawn_chance(depth_factor: float) -> float:
 	return CHEST_BASE_SPAWN * pow(1.0 - depth_factor, 2.0)

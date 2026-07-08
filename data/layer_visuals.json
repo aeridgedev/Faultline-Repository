@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "_purpose": "Part A visual polish — per-layer background + ambient lighting tint. These are FINAL approved art-direction values (visual-polish brief), NOT TBD balance numbers, so they are not marked _balanced and must not be treated as tunable placeholders.",
+    "_applied_by": "src/world/LayerVisuals.gd (one world CanvasModulate, tweened 1.5s on descent; Core Hollow slow-pulses ±0.05 opacity)",
+    "_note": "background = viewport backdrop mood; ambient = hue the world tint pulls toward; opacity = how far (0-1). The CanvasModulate multiplies every world canvas item incl. the z=-100 backdrop gradient, so background + world retint together."
+  },
+  "layers": {
+    "crust":       { "background": "#2b2418", "ambient": "#e8dcc0", "opacity": 0.15, "pulse": false },
+    "mantle":      { "background": "#3a1f14", "ambient": "#ffcf8a", "opacity": 0.20, "pulse": false },
+    "outer_core":  { "background": "#3d0f0a", "ambient": "#ff7a3d", "opacity": 0.28, "pulse": false },
+    "inner_core":  { "background": "#210508", "ambient": "#ff2e2e", "opacity": 0.35, "pulse": false },
+    "core_hollow": { "background": "#0a0e2e", "ambient": "#8a5cff", "opacity": 0.30, "pulse": true }
+  }
+}
