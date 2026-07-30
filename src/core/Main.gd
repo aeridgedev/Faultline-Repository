@@ -37,6 +37,7 @@ func _ready() -> void:
 	var storm := _init_hazards(player.stats, stamina, layer_manager)
 	player.init_storm(storm)
 	(_world.get_node("PressureSystem") as PressureSystem).zero_gravity_changed.connect(player.set_zero_gravity)
+	_init_layer_visuals(terrain_manager, player.stats)
 	ChestSpawner.spawn(terrain_manager, layer_manager, _world)
 	for i in dummy_positions.size():
 		_spawn_test_dummy(dummy_positions[i], i, layer_manager)
@@ -95,6 +96,18 @@ func _bit_list(mask: int) -> String:
 		if mask & (1 << i):
 			bits.append(str(i + 1))
 	return "none" if bits.is_empty() else ", ".join(bits)
+
+
+# Per-layer ambient tint. Created in code (no node in World.tscn) and given the
+# TerrainManager + the local player's stats; it tints ONLY terrain_manager.tile_map's
+# modulate, following PlayerStats.layer_changed. Deliberately NOT a CanvasModulate —
+# that would multiply the player, dummies, loot and the "Background" gradient too and
+# collapse figure/ground. See src/world/LayerVisuals.gd.
+func _init_layer_visuals(terrain_manager: TerrainManager, stats: PlayerStats) -> void:
+	var layer_visuals := LayerVisuals.new()
+	layer_visuals.name = "LayerVisuals"
+	add_child(layer_visuals)
+	layer_visuals.init(terrain_manager, stats)
 
 
 func _init_hazards(stats: PlayerStats, stamina: Stamina, layer_manager: LayerManager) -> StormSystem:

@@ -77,7 +77,7 @@ game/
 ├── README.md
 ├── src/
 │   ├── core/                Constants.gd, GameManager.gd, DataLoader.gd, Main.gd/.tscn
-│   ├── world/               WorldGenerator, TerrainManager, TerrainTypes, LayerManager, ChestSpawner
+│   ├── world/               WorldGenerator, TerrainManager, TerrainTypes, LayerManager, ChestSpawner, LayerVisuals
 │   ├── player/              PlayerController, PlayerStats, Stamina, DescentTracker, PlayerDeath
 │   ├── systems/
 │   │   ├── inventory/       InventoryManager, Hotbar, AutoCollect
@@ -89,7 +89,8 @@ game/
 │   │   ├── throwables/      ThrowableBase + 7 throwables
 │   │   ├── consumables/     Lytes, Medkit, ThermalCapsule, Bloodstim, FaultBeacon
 │   │   ├── special/         LayerBreachDevice, LifeCapsule, UpgradeTemplate
-│   │   └── scanners/        ScannerBase, BasicScanner, DeepRadar
+│   │   ├── scanners/        ScannerBase, BasicScanner, DeepRadar
+│   │   └── vfx/             VFXManager, DebrisBurst, CameraShake  ← client-local only
 │   ├── hazards/             DepthHazard, StormSystem, PressureSystem
 │   ├── sound/               SoundManager, TerrainAudio, PlayerAudio (detection layer)
 │   ├── ui/                  HUD, LayerIndicator, StormTimer, DeathScreen, SpectatorView
@@ -644,6 +645,76 @@ which item this session targets before writing code.
   in `TestDummy`/`LootDrop`/`PlayerController` if/when they return) must gate on
   `FileAccess.file_exists()` so "no source file on disk" reliably means "use the codegen
   fallback" — `ResourceLoader.exists()` alone is not a file-existence test in Godot.
+- **RESOLVED (2026-07-30) — figure/ground collapse: the per-layer ambient tint is a
+  `modulate` on the TileMap, NEVER a `CanvasModulate`.** New `src/world/LayerVisuals.gd`
+  (`class_name LayerVisuals`, created in code by `Main._init_layer_visuals()`, no node in
+  `World.tscn`) cross-fades `terrain_manager.tile_map.modulate` toward the current layer's
+  tint, following the local player's `PlayerStats.layer_changed`. Tunables live in the new
+  `data/layer_visuals.json` (registered in `DataLoader` as the nested key `layer_visuals`).
+  **Why the shape matters:** a scene-wide `CanvasModulate` multiplies *every* canvas item —
+  player, TestDummies, LootDrop gems and `Main._build_background()`'s gradient included — so
+  actors and loot stop reading as distinct silhouettes and the authored backdrop gets muddied.
+  Tinting the single TileMap node gets the same ambient read while everything else stays
+  true-colour for free, with **zero** node reparenting, `CanvasLayer` membership or `z_index`
+  changes — which is also why camera-following is untouched. **Locked rules going forward:**
+  (1) never reintroduce a `CanvasModulate`, and never solve an ambient-colour problem by
+  tinting a whole canvas; tint the specific node. (2) Nothing may be added as a child of
+  `TerrainManager.tile_map` — `modulate` propagates to canvas-item children, so a child node
+  would silently inherit the terrain tint (today the TileMap has no children, and loot,
+  chests, markers and throwable clouds all parent above it). (3) Tint values are **visual,
+  not balance** — they stay roughly 0.75–1.0 per channel with each layer's brightest channel
+  near 1.0, so the tint reads as a hue shift rather than dimming; depth *darkening* is already
+  owned by `DepthHazard`'s screen-space vignette and doubling up would black out the terrain.
+  (4) Absent/null/partial colour data → `Color.WHITE` (no tint), never an invented colour.
+- **RESOLVED (2026-07-30) — baked tile grid stripped; per-cell art variants added (still NOT
+  autotiling).** The terrain read as a 16px checkerboard for two reasons, both in the
+  `TerrainManager._tile_*()` painters: a 1px near-black perimeter outlining every cell, and
+  fixed catch-light pixels at constant coordinates repeating in every cell. Both are removed
+  from the **10 fill terrains**; `BEDROCK` and `CORE_HOLLOW_SHELL` deliberately **keep** their
+  plate perimeter (they are meant to read as engineered plates, not natural fill). Each
+  terrain image is now a horizontal STRIP atlas of N 16×16 variants (N=3 fill, N=2 for the two
+  plate terrains → 34 atlas tiles); `_build_dev_tileset()` registers one atlas tile per variant
+  and `place_tile()` selects one via `_variant_for(cell, type)`. `tools/gen_tileset.py`
+  (Python 3 **stdlib only** — `zlib`+`struct`, no Pillow) regenerates the matching
+  `assets/tilesets/*.png` strips. **Locked rules going forward:** (1) `_variant_for()` must
+  stay a **pure deterministic function of the cell** — columns stream in and out, so
+  re-placing a cell later must pick the same variant; it masks with `& 0x7FFFFFFF` rather than
+  `abs()` because streaming places **negative** columns. (2) Any repeating pattern in a painter
+  must use a modulo period that **divides 16** (2/4/8/16) — a period of 5, 7 or 11 jumps at
+  every cell edge and re-creates the grid. (3) No perimeter borders and no fixed-coordinate
+  highlights on fill terrains; keep bright detail off the cell edges (an interior-only
+  highlight leaves a dark rim, which is the same lattice in softer form). (4) **Still no
+  autotiling** — no `set_cells_terrain_connect()`, no terrain sets, no neighbour
+  re-evaluation; too expensive at 100-player scale. `destroy_tile()` keeps its O(1)
+  `erase_cell` model. (5) After changing any painter, re-run `python tools/gen_tileset.py`
+  so the PNGs match the code art, and delete the stale `.import` files (the generator does
+  this itself). (6) The **codegen path is the primary renderer** whenever the PNGs are not
+  imported (e.g. any session without the Godot editor), so codegen must always carry the
+  same de-gridding and variant count as the PNGs — never let them diverge.
+- **RESOLVED (2026-07-30) — drilling impact VFX (debris + screen shake), entirely
+  client-local.** New `src/systems/vfx/`: `VFXManager.gd` (a `Node2D` in `World.tscn`, sibling
+  of `TerrainManager`, `z_index` 20) listens to the existing `TerrainManager.tile_destroyed`
+  signal and fires a `DebrisBurst.gd` — ONE pooled `Node2D` drawing a whole burst of tinted
+  rectangles in a single `_draw()` (flat `Packed*Array` particle state, never one node per
+  particle), tinted by `TerrainManager.base_color_for(type)` (new, total over the enum).
+  `CameraShake.gd` is a trauma driver on the player's `Camera2D`, triggered by tile destroy /
+  melee hit landed / drill break. **Locked rules going forward:** (1) **VFX are cosmetic and
+  client-local — zero server cost.** No RPCs, no multiplayer API, no replicated VFX state;
+  every effect must be derivable from an already-authoritative event (`tile_destroyed`), so
+  each client reproduces its own and a dropped burst diverges only cosmetically. VFX must
+  never touch match state. (2) `CameraShake` writes **`Camera2D.offset` only** — never
+  `position`/`global_position` (which would fight `position_smoothing_enabled` and break
+  following) and never reparents the camera; it snaps `offset` back to `Vector2.ZERO` exactly
+  once when trauma hits 0 so the camera can never be left displaced. It survives
+  `SpectatorView._reparent_camera()` because it holds the camera *node*. (3) The burst pool is
+  **fixed-size and capped** (built once, zero per-tile allocation) with a documented
+  **recycle-oldest** policy — a Burst drill destroys 2 tiles per dig and a Seismic Charge a
+  whole radius, so an uncapped system spikes. (4) Pure VFX-feel numbers (lifetimes, gravity,
+  trauma magnitudes, cap sizes) are `const`s in `src/systems/vfx/`, **deliberately NOT in
+  `data/*.json`** — they are not balance values, same rationale as `TestDummy`'s dev consts.
+  (5) Debris is NOT a child of the TileMap, so it is deliberately **not** subject to
+  `LayerVisuals`' terrain tint; keep it that way and keep debris legible on its own (the
+  colour helper lifts HSV *value*, not toward white, so obsidian stays obsidian).
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

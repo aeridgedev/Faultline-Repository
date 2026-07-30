@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "description": "Per-layer ambient tint for the world. Applied by src/world/LayerVisuals.gd to TerrainManager.tile_map.modulate — the TERRAIN TileMap and nothing else.",
+    "status": "FIRST-PASS VISUAL VALUES — pending an art pass. These are VISUAL values, not balance values; they do not belong to the balance pass and are tuned by eye.",
+    "_first_pass": "2026-07-30 first-pass visual values. Rebuilt from scratch after the original file was lost to a git clean.",
+    "_scope_note": "Deliberately NOT a CanvasModulate. A scene-wide CanvasModulate multiplies every canvas item — player, TestDummies, LootDrop gems and the Main.gd background gradient included — which muddies them all with the ambient colour and collapses figure/ground readability. Tinting only the TileMap gives the same ambient read while every actor, item and the backdrop stay true-colour for free.",
+    "_range_note": "These are MULTIPLIED onto the terrain art, so every channel stays roughly in 0.75-1.0. Anything heavier crushes the tile art's own detail and hue. Each layer also keeps its brightest channel at or near 1.0 so the tint reads as a hue shift, not as dimming — depth darkening is already handled separately by DepthHazard's screen-space vignette, and doubling up would black out the terrain.",
+    "_null_rule": "Any layer that is absent, null, or missing/non-numeric r/g/b leaves the terrain at Color.WHITE (no tint). LayerVisuals never invents a colour."
+  },
+
+  "_transition_note": "Seconds to cross-fade the terrain tint on a layer change. Short enough to land while the player is still near the boundary, long enough not to pop. 0 = snap instantly. LayerVisuals falls back to 1.2 only if this key is absent or null.",
+  "transition_seconds": 1.2,
+
+  "ambient_tint": {
+    "_note": "r/g/b in 0.0-1.0. Alpha is intentionally not configurable — a translucent TileMap would show the backdrop gradient through solid rock.",
+
+    "crust":       { "r": 1.00, "g": 0.98, "b": 0.94 },
+    "mantle":      { "r": 0.96, "g": 0.91, "b": 0.86 },
+    "outer_core":  { "r": 1.00, "g": 0.88, "b": 0.80 },
+    "inner_core":  { "r": 1.00, "g": 0.82, "b": 0.75 },
+    "core_hollow": { "r": 0.82, "g": 0.87, "b": 0.98 }
+  }
+}

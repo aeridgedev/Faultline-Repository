@@ -41,6 +41,14 @@ var _dig_fill: Sprite2D = null      # fills up as the tile is mined
 
 var _resonance_overlay: ResonanceOverlay = null
 
+# Trauma-based screen shake driver for THIS player's Camera2D. Client-local
+# cosmetic only — see src/systems/vfx/CameraShake.gd. It writes the camera's
+# `offset` and nothing else, so camera-following and position smoothing are
+# untouched. Tile-destruction shake is driven world-side by VFXManager (which
+# finds this node via the "camera_shake" group); the two triggers that originate
+# here — a melee hit landing and the drill breaking — call add_trauma() directly.
+var _camera_shake: CameraShake = null
+
 var _held_pivot: Node2D = null      # rotates the held tool toward the aim point
 var _held_sprite: Sprite2D = null   # the in-hand drill / sword visual
 var _drill_tex: Texture2D = null
@@ -82,6 +90,7 @@ func _ready() -> void:
 	_build_notify_label()
 	_build_resonance_overlay()
 	_build_attack_hitbox()
+	_build_camera_shake()
 	# Cache the collision-box half-extents so drill targeting can probe from the body
 	# surface (not the centre) — the player is 1.75 tiles tall, which matters for reach.
 	var col := get_node_or_null("CollisionShape2D") as CollisionShape2D
@@ -349,6 +358,21 @@ func _build_notify_label() -> void:
 	add_child(_notify_label)
 
 
+# Attaches the screen-shake driver to this player's existing Camera2D. Built in
+# code (not in Player.tscn) so the scene is unchanged. The camera is NOT reparented
+# and its transform is never written — CameraShake only ever assigns `offset`,
+# which is applied on top of the smoothed follow position, so shake is instant and
+# following keeps working with position_smoothing_enabled = true.
+func _build_camera_shake() -> void:
+	var cam := get_node_or_null("Camera2D") as Camera2D
+	if cam == null:
+		return
+	_camera_shake = CameraShake.new()
+	_camera_shake.name = "CameraShake"
+	add_child(_camera_shake)
+	_camera_shake.setup(cam)
+
+
 func _build_resonance_overlay() -> void:
 	_resonance_overlay = ResonanceOverlay.new()
 	_resonance_overlay.top_level = true
@@ -413,6 +437,11 @@ func equip_drill_from_item(item: Variant) -> void:
 
 func _on_drill_broken() -> void:
 	_show_notify("DRILL BROKEN\nNeeds Upgrade Template")
+	# Heaviest of the three shake triggers: this fires once and it is the moment the
+	# player loses the ability to dig at all, so it should land harder than anything
+	# else they routinely feel. Client-local cosmetic only.
+	if _camera_shake != null:
+		_camera_shake.add_trauma(CameraShake.TRAUMA_DRILL_BREAK)
 	print("[Drill] Broken — all %d blocks used." % int(_equipped_drill.max_durability if _equipped_drill.max_durability != null else 0))
 	_update_resonance_visibility()
 
@@ -1111,6 +1140,12 @@ func _process_hitbox_overlaps() -> void:
 		total_dmg *= stats.status_damage_output_mult()
 		var attacker_name: String = GameManager.get_player(player_id).get("name", "Unknown")
 		target_stats.take_damage(total_dmg, attacker_name, player_id)
+		# Impact feedback for the swing connecting. Fires per body hit, so an arc
+		# that catches several targets stacks into a heavier jolt (trauma clamps at
+		# 1.0). Whiffs never reach here, so a miss is silent — which is the point.
+		# Client-local cosmetic only: nothing here touches match state.
+		if _camera_shake != null:
+			_camera_shake.add_trauma(CameraShake.TRAUMA_MELEE_HIT)
 		if target_stats.is_dead:
 			stats.add_kill()
 			GameManager.record_kill(player_id)

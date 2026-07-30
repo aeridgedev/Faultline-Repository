@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://src/hazards/DepthHazard.gd" id="3_depthhaz"]
 [ext_resource type="Script" path="res://src/hazards/PressureSystem.gd" id="4_pressure"]
 [ext_resource type="Script" path="res://src/hazards/StormSystem.gd" id="5_storm"]
+[ext_resource type="Script" path="res://src/systems/vfx/VFXManager.gd" id="6_vfx"]
 
 [node name="World" type="Node2D"]
 
@@ -24,3 +25,6 @@ script = ExtResource("4_pressure")
 
 [node name="StormSystem" type="Node" parent="."]
 script = ExtResource("5_storm")
+
+[node name="VFXManager" type="Node2D" parent="."]
+script = ExtResource("6_vfx")

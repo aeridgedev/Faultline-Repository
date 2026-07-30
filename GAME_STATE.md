@@ -718,7 +718,172 @@ Phase schedule locked. Damage values TBD.
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
 
-### 2026-07-30
+### 2026-07-30 (b) — visual polish pass: figure/ground, tile grid, impact VFX
+
+Three visual fixes that existed before but were never committed and were wiped by the
+`git clean` recorded in the previous entry. **All three were rebuilt from scratch** — no
+documentation of the lost internals survived, so these are new implementations, not
+restorations. Built by three parallel agents with disjoint file ownership, then verified
+and integrated sequentially.
+
+#### FIX 1 — figure/ground collapse (`src/world/LayerVisuals.gd`, `data/layer_visuals.json`)
+
+The lost implementation applied the per-layer ambient tint with a scene-wide
+`CanvasModulate`, which multiplies **every** canvas item — so the player, TestDummies,
+LootDrop gems and `Main._build_background()`'s gradient all got muddied by the ambient
+colour and stopped reading as distinct figures against the terrain.
+
+Rebuilt as `LayerVisuals` (`class_name`, extends `Node`), created in code by
+`Main._init_layer_visuals()` — **no node in `World.tscn`**, so it does not collide with the
+VFX work below. It writes `terrain_manager.tile_map.modulate` and **nothing else**
+(single write site, `_apply()`), cross-fading with `smoothstep` easing over
+`transition_seconds` (1.2) on `PlayerStats.layer_changed` — the same signal `DescentTracker`
+and `DepthHazard` use. Snaps to the starting layer at `init()` so frame one is correct
+rather than fading in from white; `set_process(false)` when idle so it costs nothing
+between layer changes; a mid-transition layer change picks up from the live `modulate`.
+Null-safe throughout: absent/null/partial `r`/`g`/`b` → `Color.WHITE`, no invented colour.
+
+`data/layer_visuals.json` (new; registered in `DataLoader.load_all()` as the nested key
+`layer_visuals`) — first-pass **visual** values, not balance values:
+
+| Layer | r | g | b | Intent |
+|---|---|---|---|---|
+| crust | 1.00 | 0.98 | 0.94 | near-neutral, a hair warm |
+| mantle | 0.96 | 0.91 | 0.86 | dustier |
+| outer_core | 1.00 | 0.88 | 0.80 | heat, red-shifted |
+| inner_core | 1.00 | 0.82 | 0.75 | strongest heat |
+| core_hollow | 0.82 | 0.87 | 0.98 | cold blue — alien shell |
+
+Every channel stays in 0.75–1.0 and each layer keeps its brightest channel near 1.0, so the
+tint reads as a **hue shift, not dimming** — `DepthHazard`'s vignette already owns depth
+darkening and doubling up would black out the terrain.
+
+**Camera-following verified intact:** nothing was reparented, no `CanvasLayer` created, no
+`z_index` touched, `Player.tscn` untouched. Grep confirms **zero `CanvasModulate` in `src/`**
+and that `tile_map` has no children anywhere (loot, chests, scanner/beacon markers and
+throwable clouds all parent above it), so the tint reaches terrain tiles only.
+
+#### FIX 2 — baked tile grid stripped + coord-hashed variants (`TerrainManager.gd`, `tools/gen_tileset.py`)
+
+Terrain read as an obvious 16px checkerboard from two baked-in causes: a 1px near-black
+perimeter outlining every cell, and fixed catch-light pixels at constant coordinates
+repeating identically in every cell. Both removed from all **10 fill terrains**;
+`BEDROCK` and `CORE_HOLLOW_SHELL` keep their plate perimeter deliberately. Several
+painters also had latent lattice sources that were fixed: `dense_crystal`'s per-cell
+`(x+y)/32` gradient (every cell ramped light-corner → dark-corner), `rock`'s per-cell
+shading ramp, and modulo periods that don't divide 16 (`clay`/`iron_formation` `y%5`,
+`ultra_dense` `%11`/`%7`) which jumped at every cell edge.
+
+Each terrain is now a horizontal strip atlas of N 16×16 variants — **N=3** for the ten fill
+terrains, **N=2** for the two plate terrains → **34 atlas tiles**. `_variant_count` is derived
+from the *actual image width*, so a hand-authored PNG with a different N still works.
+`place_tile()` selects via `_variant_for(cell, type)`, a pure deterministic hash of the cell
+(masked `& 0x7FFFFFFF`, **not** `abs()`, because streaming places negative columns).
+Distribution verified over a 400×400 block including negatives: 33.3/33.2/33.5% for N=3,
+49.9/50.1% for N=2, 66.8% of horizontal neighbours differ (ideal 66.7%), and re-placing a
+cell returns the identical variant.
+
+**No autotiling** (grep-confirmed: `set_cells_terrain_connect` appears only in comments) and
+`destroy_tile()` keeps its O(1) `erase_cell` model unchanged.
+
+`tools/gen_tileset.py` (new; Python 3 **stdlib only** — `zlib`+`struct`; checks for Pillow,
+reports it, never uses it) regenerates all 12 PNGs and deletes the stale `.import` files on
+each run. Output verified: 10 files at 48×16, bedrock + core_hollow_shell at 32×16, all RGBA
+and fully opaque, decoded independently against the painters with **0 mismatching pixels**.
+All 12 stale `.png.import` files are gone, so Godot performs a clean reimport on next open.
+`_load_tile_png()` now accepts height 16 + width a multiple of 16 with N in 1..3.
+
+**Collision preserved — the invariant from entry (a) held.** `create_tile()` loop →
+`ts.add_source()` (line 116) → collision writes (lines 117-120). Every variant tile gets its
+own full-tile square polygon, and every collision write happens *after* `add_source()`.
+`_report_tileset_collision()` was extended to count **terrain types** (a type counts OK only
+when *all* its variants have a polygon) alongside atlas tiles. Expected startup line:
+```
+[Faultline][Collision] TileSet built: 12/12 terrain types have collision [OK]  (34/34 atlas tiles)
+```
+Also added `TerrainManager.base_color_for(type) -> Color` — public, total over the enum with
+a neutral-gray default, consumed by the debris VFX below.
+
+#### FIX 3 — drilling impact feedback (`src/systems/vfx/`, `PlayerController.gd`, `World.tscn`)
+
+New `src/systems/vfx/` with three scripts. `VFXManager.gd` is a `Node2D` in `World.tscn`
+(sibling of `TerrainManager`, `z_index` 20 — above terrain at 0, below the dig highlight at
+50) that self-discovers the TerrainManager as a sibling and connects the **existing**
+`tile_destroyed` signal, so `TerrainManager.gd` and `Main.gd` needed no changes.
+
+`DebrisBurst.gd` — **one pooled `Node2D` draws an entire burst**: particle state lives in flat
+`PackedVector2Array`/`PackedFloat32Array` sized once, rendered in a single `_draw()` with
+`draw_set_transform()` + `draw_rect()`. Never one node per particle. Gravity 430 px/s²,
+exponential drag, spin, shrink to 0.30×, alpha `1 − t^2.2`. Pool is **12 bursts built once
+(zero allocation for the rest of the match), max 10 particles each**, policy **recycle-oldest**
+(documented in-file: skipping would make rapid drilling silently stop responding once the
+pool filled, and the oldest burst is the most faded). Off-screen bursts are skipped entirely
+(viewport rect ÷ camera zoom + margin, correct at any zoom). Because it pools, a finished
+burst self-*retires* (hide + `set_process(false)` + `finished` signal → free-list) rather than
+`queue_free()`ing.
+
+`CameraShake.gd` — trauma model, `trauma^2` × `MAX_OFFSET (14, 11)`, linear decay 1.5/s,
+offsets from two rows of a `FastNoiseLite` Simplex field at 26 Hz. Trauma clamps at 1.0, so a
+Burst drill's 2 tiles or a multi-target swing stack into a bigger jolt.
+
+| Trigger | Const | Value | Hook |
+|---|---|---|---|
+| Tile destroyed | `TRAUMA_TILE_DESTROY` | 0.28 | `VFXManager._on_tile_destroyed` (via `"camera_shake"` group) |
+| Melee hit landed | `TRAUMA_MELEE_HIT` | 0.45 | `PlayerController._process_hitbox_overlaps()`, right after `take_damage()` |
+| Drill broken | `TRAUMA_DRILL_BREAK` | 0.85 | `PlayerController._on_drill_broken()`, after the existing notify |
+
+**Camera-following verified intact:** `CameraShake` writes `_camera.offset` and nothing else —
+never `position`/`global_position`, never `rotation`, never `make_current`. It is a *new
+sibling* of the camera built in code (`Player.tscn` untouched, no reparenting), so `offset`
+applies on top of the smoothed follow and `position_smoothing_enabled` still works; offset
+snaps back to `Vector2.ZERO` exactly once at trauma 0. No rotation term (Godot 4's
+`Camera2D.ignore_rotation` defaults true, and rotating a 16px pixel-art view resamples every
+tile off-axis). It holds the camera *node*, so it survives `SpectatorView._reparent_camera()`.
+
+**Zero networking cost** — banner comment in `VFXManager.gd`. No RPCs, no multiplayer API, no
+replicated VFX state; everything derives from `tile_destroyed`, already an authoritative
+replicated fact, so each client reproduces its own and a dropped burst diverges only
+cosmetically.
+
+#### Integration cross-checks (run after all three landed)
+
+- **Collision self-check:** verified structurally — `add_source()` precedes every collision
+  write for all 34 variant tiles; `_report_tileset_collision()` re-reads the finished TileSet
+  and `push_error`s on any gap.
+- **FIX 1 × FIX 3:** no conflict. `_tile_map.modulate` (LayerVisuals.gd:115) is the only
+  tilemap modulate write in `src/`; the TileMap has **no children** (0 hits for
+  `tile_map.add_child`), and `VFXManager` is a sibling of `TerrainManager`, not a child of the
+  TileMap — so debris renders **untinted** above tinted terrain, which is the intent. Agent C
+  independently chose a colour helper that lifts HSV *value* rather than blending toward
+  white, so near-black terrains (obsidian, ultra dense) still read as debris without turning
+  gray.
+- **FIX 1 × FIX 2:** tile art avoids pure-white highlights and rests legibility on base-tone
+  contrast, so it survives being multiplied by a 0.75–1.0 tint.
+- Indentation checked (tabs, 0 space-indented lines) across all new/changed `.gd` files;
+  `data/layer_visuals.json` parses.
+
+#### Known limitations (accepted, not bugs)
+
+1. **Spectator tint is stale.** `LayerVisuals` follows the *local* player's `PlayerStats`, so
+   after death — while `SpectatorView` follows another participant — terrain keeps the dead
+   player's last layer tint instead of the spectated target's depth. Fixing it means having
+   `SpectatorView` re-point `LayerVisuals` at the spectated node's `PlayerStats`;
+   `LayerVisuals.init()` is already shaped to allow that cheaply.
+2. **Boundary terrain shares one tint.** Terrain from an adjacent layer visible near a
+   boundary uses the current layer's tint — inherent to modulating a single TileMap node.
+   Per-region tinting would need separate TileMap layers, a much larger change.
+3. **PNGs render only after a Godot editor pass.** With no Godot binary in this environment
+   the new strips stay unimported, so `_load_tile_png()` returns null and the **codegen path
+   renders** — which is why codegen carries the same de-gridding and variant count and was
+   treated as the primary deliverable. First editor open will import the PNGs and swap them in.
+
+**Not verified live.** No Godot binary is installed (`godot` not on PATH, no install found),
+so nothing was booted. All verification was by code reading, hand-traced signal chains, and
+running the Python generator + independently decoding its PNG output. The startup collision
+self-check and `Main._print_collision_diagnostics()` exist so the next real boot confirms or
+refutes this in one glance.
+
+### 2026-07-30 (a)
 
 **CRITICAL bugfix — player fell through all terrain from spawn (zero collision).**
 
