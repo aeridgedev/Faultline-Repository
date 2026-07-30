@@ -48,7 +48,53 @@ func _ready() -> void:
 	# After the HUD is listening, populate the hotbar so its slot labels update.
 	player.setup_hotbar()
 
+	_print_collision_diagnostics(player, terrain_manager)
+
 	GameManager.start_match()
+
+
+# Startup collision report — prints the player body's physics layer/mask next to
+# the terrain TileMap's, and states plainly whether they intersect. Added after
+# the 2026-07-30 fall-through regression, where terrain rendered normally but had
+# no collision polygons: the symptom (player falls through the world) looks
+# identical whether the cause is a layer/mask mismatch or missing tile collision,
+# and this printout distinguishes the two at a glance instead of by bisecting.
+func _print_collision_diagnostics(player: PlayerController, terrain_manager: TerrainManager) -> void:
+	var cfg: Dictionary = terrain_manager.get_physics_config()
+	var terrain_layer: int = int(cfg.get("collision_layer", 0))
+	var terrain_mask: int = int(cfg.get("collision_mask", 0))
+	var player_layer: int = player.collision_layer
+	var player_mask: int = player.collision_mask
+
+	print("[Faultline][Collision] TileMap  tile_set=%s  layer0_enabled=%s  physics_layers=%d" % [
+		cfg.get("tile_set_assigned", false), cfg.get("layer_0_enabled", false), int(cfg.get("physics_layers", 0))])
+	print("[Faultline][Collision] Terrain  collision_layer=%d (bits %s)  collision_mask=%d (bits %s)" % [
+		terrain_layer, _bit_list(terrain_layer), terrain_mask, _bit_list(terrain_mask)])
+	print("[Faultline][Collision] Player   collision_layer=%d (bits %s)  collision_mask=%d (bits %s)" % [
+		player_layer, _bit_list(player_layer), player_mask, _bit_list(player_mask)])
+
+	# A CharacterBody2D collides with the TileMap when the player's MASK overlaps
+	# the terrain's LAYER. (The terrain's own mask is irrelevant here — static tile
+	# bodies never initiate collision — but it is printed above for completeness.)
+	var overlap: int = player_mask & terrain_layer
+	if int(cfg.get("physics_layers", 0)) < 1:
+		print("[Faultline][Collision] VERDICT: MISMATCH — terrain TileSet has no physics layer; nothing is solid.")
+	elif overlap == 0:
+		print("[Faultline][Collision] VERDICT: MISMATCH — player mask %d does not include terrain layer %d; player WILL fall through." % [
+			player_mask, terrain_layer])
+	else:
+		print("[Faultline][Collision] VERDICT: MATCH — player mask ∩ terrain layer = %d (bits %s); player collides with terrain." % [
+			overlap, _bit_list(overlap)])
+
+
+# "1, 3" for a bitmask of 5. Physics layers are 1-indexed in the Godot inspector,
+# so bit 0 of the mask is reported as layer 1 to match what the editor shows.
+func _bit_list(mask: int) -> String:
+	var bits: Array[String] = []
+	for i in 32:
+		if mask & (1 << i):
+			bits.append(str(i + 1))
+	return "none" if bits.is_empty() else ", ".join(bits)
 
 
 func _init_hazards(stats: PlayerStats, stamina: Stamina, layer_manager: LayerManager) -> StormSystem:

@@ -606,6 +606,44 @@ which item this session targets before writing code.
   with `set_cells_terrain_connect()` + neighbor re-evaluation — do not conflate the two.
   (3) Keep the codegen path (`_make_tile_codegen` + the `_tile_*()` painters) as the
   fallback; do not delete it.
+- **RESOLVED (2026-07-30) — CRITICAL: player fell through all terrain (zero collision).
+  Root cause = collision polygons written to `TileData` BEFORE the atlas source was
+  added to the `TileSet`.** A multi-variant tileset refactor (horizontal N×16×16 art
+  strips + coord-hashed per-cell variants) restructured `TerrainManager._build_dev_tileset()`
+  so the per-variant `create_tile()` / `add_collision_polygon()` loop ran and only *then*
+  called `ts.add_source(source, terrain_type)`. **Why that kills collision:** a `TileData`
+  sizes its physics-layer array from the `TileSet` that owns it. An unattached
+  `TileSetAtlasSource` has `tile_set == null`, so every `TileData` it creates has **zero**
+  physics layers and `add_collision_polygon(0)` fails its bounds check (silent no-op);
+  worse, the later `add_source()` re-runs `TileData.set_tile_set()`, which **resizes** that
+  array and wipes anything written beforehand. Either way the tiles end up with no collision
+  polygon — terrain **renders perfectly but is not solid**, so the player falls straight
+  through the world from spawn. Fixed by restoring the ordering (`create_tile` →
+  `add_source` → `get_tile_data` → `add_collision_polygon`) and adding
+  `_report_tileset_collision()`, a startup self-check that re-reads the **finished**
+  `TileSet` and `push_error`s naming any terrain whose tiles lack a polygon.
+  **Locked rules going forward:** (1) **every `add_collision_polygon()` /
+  `set_collision_polygon_points()` call must happen AFTER `ts.add_source()` for that
+  source** — this is the single invariant; a tileset refactor that reorders the loop
+  reintroduces the bug. (2) Never gauge terrain solidity by looking at the screen — art
+  and collision are independent, so trust `_report_tileset_collision()`'s startup line,
+  not the rendered tiles. (3) The verification pass walks every atlas tile of every
+  source, so it already covers a future multi-variant tileset; keep it that way rather
+  than hardcoding one tile per terrain.
+- **RESOLVED (2026-07-30) — `ResourceLoader.exists()` lies about deleted art; asset
+  loaders must test the real file.** `.gitignore` ignores `*.import` but **not** the
+  source PNGs, so any `git clean -fd` (or a reverted asset commit) deletes
+  the `assets/` PNGs while leaving the `.import` files **and** their
+  `.godot/imported/*.ctex` behind. `ResourceLoader.exists("res://…/soil.png")` resolves
+  through the `.import` remap and returns **true** for a PNG that is not on disk, and
+  `load()` then hands back the **stale** cached texture (this tree hit exactly that: 12
+  orphaned `assets/tilesets/*.png.import` remapping to stale 48×16 strip art after the
+  PNGs were cleaned). `TerrainManager._load_tile_png()` now tests
+  `FileAccess.file_exists(path)` **before** `ResourceLoader.exists()`. **Locked rule
+  going forward:** every optional-art loader (`_load_tile_png`, and the sprite loaders
+  in `TestDummy`/`LootDrop`/`PlayerController` if/when they return) must gate on
+  `FileAccess.file_exists()` so "no source file on disk" reliably means "use the codegen
+  fallback" — `ResourceLoader.exists()` alone is not a file-existence test in Godot.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

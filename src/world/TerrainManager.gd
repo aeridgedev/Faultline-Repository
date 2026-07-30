@@ -16,6 +16,13 @@ var _canonical_by_col: Dictionary = {}    # col_int -> { row_int: TerrainType }
 var _world_width: int = 0
 var _streamed_cols: Dictionary = {}       # set of col ints that have been placed
 
+# Physics bits the terrain TileSet is built with. The player body (Player.tscn:
+# collision_layer = 5 → bits 1 and 3, collision_mask = 1 → bit 1) must have bit 1
+# in its MASK for terrain to be solid to it. Named here so the startup diagnostic
+# in Main.gd can report the real configured value instead of a hardcoded guess.
+const TERRAIN_PHYSICS_LAYER: int = 1   # terrain lives on physics layer bit 1
+const TERRAIN_PHYSICS_MASK: int = 1    # terrain scans physics layer bit 1
+
 # All terrain types that receive tiles. Order must match enum values so source IDs align.
 const _TILE_TYPES: Array[Constants.TerrainType] = [
 	Constants.TerrainType.SOIL,
@@ -37,12 +44,30 @@ func _ready() -> void:
 	_build_dev_tileset()
 
 
+## Builds the terrain TileSet in code and installs it on the TileMap.
+##
+## COLLISION ORDERING IS LOAD-BEARING — read before touching this loop.
+## A TileData sizes its physics-layer array from the TileSet that OWNS it. A
+## TileSetAtlasSource that has not been added to a TileSet yet has tile_set ==
+## null, so every TileData it creates has ZERO physics layers, and
+## add_collision_polygon(0) fails its bounds check (silent no-op + engine error).
+## Worse, a later add_source() re-runs TileData.set_tile_set(), which RESIZES
+## that array and wipes anything written beforehand.
+##
+## THE INVARIANT: every add_collision_polygon() / set_collision_polygon_points()
+## call must happen AFTER ts.add_source() for that source. Getting this backwards
+## produces terrain that RENDERS NORMALLY BUT HAS NO COLLISION — the player falls
+## straight through the world from spawn. That is exactly the 2026-07-30
+## regression (a multi-variant tileset refactor moved add_source() below the
+## collision writes). _report_tileset_collision() re-reads the FINISHED TileSet
+## and turns that silent failure into a loud startup error, so it can never ship
+## again no matter how this loop is later restructured.
 func _build_dev_tileset() -> void:
 	var ts := TileSet.new()
 	ts.tile_size = Vector2i(Constants.TILE_SIZE, Constants.TILE_SIZE)
 	ts.add_physics_layer(0)
-	ts.set_physics_layer_collision_layer(0, 1)
-	ts.set_physics_layer_collision_mask(0, 1)
+	ts.set_physics_layer_collision_layer(0, TERRAIN_PHYSICS_LAYER)
+	ts.set_physics_layer_collision_mask(0, TERRAIN_PHYSICS_MASK)
 
 	var half := Constants.TILE_SIZE / 2.0
 	var square := PackedVector2Array([
@@ -56,11 +81,72 @@ func _build_dev_tileset() -> void:
 		source.texture = tex
 		source.texture_region_size = Vector2i(Constants.TILE_SIZE, Constants.TILE_SIZE)
 		source.create_tile(Vector2i.ZERO)
+		# add_source() must come BEFORE the two collision calls below — see the
+		# invariant in the docstring. Source ID stays == terrain enum value, so
+		# get_cell_source_id → type is unchanged.
 		ts.add_source(source, terrain_type)
 		var tile_data: TileData = source.get_tile_data(Vector2i.ZERO, 0)
 		tile_data.add_collision_polygon(0)
 		tile_data.set_collision_polygon_points(0, 0, square)
+
 	tile_map.tile_set = ts
+	_report_tileset_collision(ts)
+
+
+# Startup self-check for terrain solidity, run against the FINISHED TileSet so it
+# is independent of how _build_dev_tileset() is structured internally. The failure
+# mode being guarded is silent — a tile with no collision polygon still renders
+# perfectly, so the only symptom is bodies falling through the map. Always prints
+# a one-line summary; push_error()s (red in the Output panel) naming the offending
+# terrains if any tile came out non-solid. Walks every atlas tile per source, so
+# it still covers a future multi-variant tileset (N tiles per terrain).
+func _report_tileset_collision(ts: TileSet) -> void:
+	if ts.get_physics_layers_count() < 1:
+		push_error("[Faultline][Collision] TileSet has NO physics layer — ALL terrain is non-solid.")
+		return
+	var total := 0
+	var solid := 0
+	var broken: Array[String] = []
+	for terrain_type in _TILE_TYPES:
+		var source := ts.get_source(terrain_type) as TileSetAtlasSource
+		if source == null:
+			broken.append("%s(no source)" % _tile_file(terrain_type))
+			continue
+		var src_missing := 0
+		for i in source.get_tiles_count():
+			var coord := source.get_tile_id(i)
+			var tile_data: TileData = source.get_tile_data(coord, 0)
+			total += 1
+			if tile_data != null and tile_data.get_collision_polygons_count(0) > 0:
+				solid += 1
+			else:
+				src_missing += 1
+		if src_missing > 0:
+			broken.append("%s(%d)" % [_tile_file(terrain_type), src_missing])
+
+	if not broken.is_empty():
+		push_error("[Faultline][Collision] %d/%d terrain tiles have NO collision polygon — terrain is NOT solid (bodies will fall through). Affected: %s" % [
+			total - solid, total, ", ".join(broken)])
+	print("[Faultline][Collision] TileSet built: %d/%d terrain tiles solid, physics layer 0 → layer=%d mask=%d [%s]" % [
+		solid, total,
+		ts.get_physics_layer_collision_layer(0),
+		ts.get_physics_layer_collision_mask(0),
+		"OK" if broken.is_empty() else "BROKEN"])
+
+
+# Physics configuration actually installed on the TileMap, for the startup
+# collision diagnostic in Main.gd. Reports live values (not the constants above)
+# so the printout reflects reality even if something reassigns the TileSet.
+func get_physics_config() -> Dictionary:
+	var ts: TileSet = tile_map.tile_set if tile_map != null else null
+	var has_layer: bool = ts != null and ts.get_physics_layers_count() > 0
+	return {
+		"tile_set_assigned": ts != null,
+		"layer_0_enabled": tile_map.is_layer_enabled(0) if tile_map != null else false,
+		"physics_layers": ts.get_physics_layers_count() if ts != null else 0,
+		"collision_layer": ts.get_physics_layer_collision_layer(0) if has_layer else 0,
+		"collision_mask": ts.get_physics_layer_collision_mask(0) if has_layer else 0,
+	}
 
 
 # --- Terrain art source: imported PNG first, procedural dev art as fallback ---
@@ -81,8 +167,18 @@ func _make_tile(type: Constants.TerrainType) -> Image:
 # Loads assets/tilesets/<name>.png as an Image, or null if absent / not yet
 # imported / not the expected 16×16 (a size mismatch warns and falls back so a
 # bad drop-in is obvious rather than silently scaled by the atlas region).
+#
+# The FileAccess.file_exists() check is deliberate and must stay: ResourceLoader
+# .exists() resolves an imported texture through its .import remap, so it returns
+# TRUE for a source PNG that has been deleted while a stale .import (and its
+# .godot/imported/*.ctex) is left behind — load() then hands back the OLD texture
+# data. This tree currently contains exactly that: 12 orphaned .png.import files
+# in assets/tilesets/ whose PNGs are gone, still remapping to stale 48×16 art.
+# Testing the real source file makes "no PNG on disk" mean "use the code art".
 func _load_tile_png(type: Constants.TerrainType) -> Image:
 	var path := _TILESET_DIR + _tile_file(type) + ".png"
+	if not FileAccess.file_exists(path):
+		return null
 	if not ResourceLoader.exists(path):
 		return null
 	var tex := load(path) as Texture2D

@@ -4,7 +4,7 @@
 > and CLAUDE.md before finishing. Treat any discrepancy between this file and the
 > actual code as a bug in this file — fix it immediately.
 
-**Last updated:** 2026-07-06 · **Build:** functional offline single-player. A
+**Last updated:** 2026-07-30 · **Build:** functional offline single-player. A
 **first-pass balance pass** (2026-07-05) has filled every previously-null/placeholder
 tunable in `data/*.json` with concrete testable numbers — these are first-pass /
 pre-playtest values, still NOT final (see the Session Change Log). `Constants.gd`
@@ -231,6 +231,22 @@ Owns and mutates the Godot `TileMap`. Single interface for all terrain reads/wri
 - **`init_streaming(world_width)`** — legacy path (not called in current flow; kept for reference).
 
 Dev tileset built in code (no external asset needed): all 12 terrain types as pixel-art 16×16 images (incl. `CORE_HOLLOW_SHELL` — armored blue-black plate with molten-cyan energy seams, visually distinct from dull-gray Bedrock). Source IDs are keyed by the `TerrainType` enum value in `add_source(source, terrain_type)`, so the new type gets source ID 11 and `place_tile`/`destroy_tile` handle it with no special-casing.
+
+**Terrain collision (2026-07-30).** There is no tileset asset and no scene-assigned
+`tile_set` — the TileMap's entire physics setup is built in code by
+`_build_dev_tileset()`: one physics layer (`collision_layer` 1 / `collision_mask` 1, named
+`TERRAIN_PHYSICS_LAYER`/`TERRAIN_PHYSICS_MASK`) plus a full-tile square collision polygon
+per atlas tile. **Ordering invariant:** every `add_collision_polygon()` /
+`set_collision_polygon_points()` call must run **after** `ts.add_source()` for that source,
+because a `TileData` only gains its physics-layer array once the `TileSet` owns it (and
+`add_source()` resizes/clears that array). Violating it yields terrain that renders
+normally but is entirely non-solid — the 2026-07-30 fall-through regression.
+`_report_tileset_collision()` re-reads the finished `TileSet` at startup, walks every atlas
+tile of every source, prints a one-line summary and `push_error`s if any tile lacks a
+polygon; `get_physics_config()` exposes the live installed config to `Main.gd`'s startup
+collision diagnostic. `_load_tile_png()` gates on `FileAccess.file_exists()` before
+`ResourceLoader.exists()`, because `.import` files are gitignored and outlive deleted
+source PNGs, making `ResourceLoader.exists()` return true for files that aren't there.
 
 **Real PNG art hook (2026-07-06):** `_make_tile()` now loads `res://assets/tilesets/<name>.png` (16×16) via `_load_tile_png()`/`_tile_file()` if present, else falls back to the procedural painters (renamed `_make_tile_codegen()`). Wrong-size files warn and fall back. No change to `place_tile`/streaming — source ID is still the terrain enum value. See `assets/tilesets/README.md` for filenames/spec. This is flat-tile replacement only; autotiling (edge/corner transitions) remains a separate future task.
 
@@ -701,6 +717,103 @@ Phase schedule locked. Damage values TBD.
 ## Session Change Log
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
+
+### 2026-07-30
+
+**CRITICAL bugfix — player fell through all terrain from spawn (zero collision).**
+
+**Root cause (found, mechanism-level).** `TerrainManager._build_dev_tileset()` wrote each
+tile's collision polygon **before** the atlas source was added to the `TileSet`. The
+multi-variant tileset refactor (horizontal N×16×16 PNG strips + coord-hashed per-cell
+variants) restructured the loop into `create_tile` → `get_tile_data` →
+`add_collision_polygon` → … → `ts.add_source(...)` last. A `TileData` sizes its
+physics-layer array from the `TileSet` that **owns** it; an unattached
+`TileSetAtlasSource` has `tile_set == null`, so its `TileData` has **zero** physics
+layers and `add_collision_polygon(0)` fails its bounds check as a silent no-op — and the
+later `add_source()` re-runs `TileData.set_tile_set()`, which **resizes** (and clears)
+that array anyway. Net effect: every terrain tile rendered normally but carried **no
+collision polygon**, so the world was entirely non-solid. This is a pure ordering bug —
+nothing about the art, the PNGs, or the variants themselves was wrong.
+
+**Investigation result for each item in the brief (all four ruled out except #2):**
+1. **`TestDummy.gd` — not the cause.** Its scale/collision work is fully self-contained:
+   it sets its *own* `collision_layer = 1` / `collision_mask = 1`, builds its own 16×28
+   `CollisionShape2D`, and its detect `Area2D` is `layer 0 / mask 1`. It touches no player
+   or terrain state. `Constants.gd` defines **no** collision constants at all, so there is
+   no shared value it could have perturbed.
+2. **`TerrainManager.gd` / TileMap config — THE CAUSE** (see above). The TileMap node in
+   `World.tscn` has no `tile_set` in the scene; the whole tileset (and therefore all
+   collision) is built in code, so a code ordering error is the only way collision can go
+   missing. Physics layer itself was configured correctly the whole time
+   (`add_physics_layer(0)`, layer 1 / mask 1).
+3. **`.import` files — not the cause, but a real latent hazard, now fixed.** Collision
+   polygons are never stored in `.import` files here (the tileset is code-built), so a
+   reimport could not drop them. However `.gitignore` ignores `*.import` but not the source
+   PNGs, so a `git clean -fd` leaves **orphaned** `.import` files behind pointing at stale
+   `.godot/imported/*.ctex` data — exactly the state this tree is in now (12 orphaned
+   `assets/tilesets/*.png.import`, PNGs gone, stale 48×16 art still cached).
+   `ResourceLoader.exists()` resolves through the remap and returns **true** for a PNG that
+   is not on disk, and `load()` returns the stale texture. Fixed by gating
+   `_load_tile_png()` on `FileAccess.file_exists()` first.
+4. **`PlayerController.gd` / `Player.tscn` — not the cause, unchanged.** `Player.tscn`
+   (`collision_layer = 5` → bits 1+3, `collision_mask` default `1` → bit 1) was never
+   modified; `PlayerController` never assigns `collision_layer`/`collision_mask` in code,
+   it only reads the `CollisionShape2D` extents for drill-targeting reach. Player mask
+   bit 1 ∩ terrain layer bit 1 = match, so the layers were correct all along.
+
+**Fixes applied (3 files):**
+- `TerrainManager._build_dev_tileset()` — restored the correct ordering (`create_tile` →
+  `add_source` → `get_tile_data` → `add_collision_polygon`) and documented **the
+  invariant** in a docstring: *every collision write must happen after `ts.add_source()`
+  for that source*. Physics bits are now named consts (`TERRAIN_PHYSICS_LAYER` /
+  `TERRAIN_PHYSICS_MASK`, both 1) instead of inline literals.
+- `TerrainManager._report_tileset_collision()` — **new startup self-check.** Re-reads the
+  **finished** `TileSet` (so it is immune to however the builder is later restructured),
+  walks every atlas tile of every source (so it already covers a future multi-variant
+  tileset), and `push_error`s naming any terrain whose tiles lack a polygon. Always prints
+  a one-line summary. This is the guard that makes the regression un-shippable: the
+  failure mode is otherwise **completely silent**, since a polygon-less tile renders
+  identically to a solid one.
+- `TerrainManager._load_tile_png()` — added a `FileAccess.file_exists()` gate before
+  `ResourceLoader.exists()` (see investigation item 3).
+- `TerrainManager.get_physics_config()` — **new** accessor returning the live installed
+  physics config (`tile_set_assigned`, `layer_0_enabled`, `physics_layers`,
+  `collision_layer`, `collision_mask`) for the diagnostic below.
+- `Main.gd._print_collision_diagnostics()` + `_bit_list()` — **new**, called at the end of
+  `_ready()`. Prints the TileMap's tileset/physics state, the terrain's collision
+  layer/mask, the player's collision layer/mask (both as raw ints **and** as
+  editor-style 1-indexed bit lists), then an explicit `VERDICT: MATCH` / `MISMATCH` line
+  computed from `player_mask & terrain_layer`. Distinguishes "layer/mask mismatch" from
+  "missing tile collision" at a glance — the two causes look identical on screen.
+
+**Expected Output-panel lines on a healthy boot:**
+```
+[Faultline][Collision] TileSet built: 12/12 terrain tiles solid, physics layer 0 → layer=1 mask=1 [OK]
+[Faultline][Collision] TileMap  tile_set=true  layer0_enabled=true  physics_layers=1
+[Faultline][Collision] Terrain  collision_layer=1 (bits 1)  collision_mask=1 (bits 1)
+[Faultline][Collision] Player   collision_layer=5 (bits 1, 3)  collision_mask=1 (bits 1)
+[Faultline][Collision] VERDICT: MATCH — player mask ∩ terrain layer = 1 (bits 1); player collides with terrain.
+```
+
+**Working-tree note (important, not a code issue).** Partway through this session the
+tree was `git reset --hard`'d to HEAD (`f4ce63d`) and `git clean -fd`'d — reflog shows
+4× `reset: moving to HEAD`. That discarded the entire uncommitted HUD/dummy-scale/
+visual-polish session: the multi-variant `TerrainManager`, all `assets/tilesets/*.png` and
+`assets/sprites/*.png`, `tools/`, `src/systems/vfx/`, `src/world/LayerVisuals.gd`,
+`data/layer_visuals.json`, and doc edits. Because those files were **untracked**, they are
+not recoverable from git (no stash exists). The regression was diagnosed from the diff
+captured **before** the reset, and the fix above is applied to the current tree — so if
+that work is restored from elsewhere, the ordering invariant and the startup guard are
+already in place to keep it from recurring. Side effect of the clean: the orphaned
+`.import` files in investigation item 3 (harmless now that the loader is gated, and they
+disappear on the next Godot filesystem scan or when the PNGs are restored and reimported).
+
+**Not verified live.** No Godot binary is installed in this environment (`godot` is not on
+PATH and no install was found), so this session could **not** boot the game to watch the
+player land on terrain. The fix was derived from the engine's `TileData`/`TileSet`
+ownership semantics and applied by restoring the exact ordering that shipped working in
+every prior session; the startup self-check + diagnostic exist precisely so the next boot
+confirms or refutes it in one glance rather than by inspection.
 
 ### 2026-07-06
 
