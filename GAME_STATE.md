@@ -161,12 +161,16 @@ Signals: `health_changed`, `player_died`, `layer_changed`, `active_effects_chang
 ### DescentTracker (`src/player/DescentTracker.gd`)
 Polls player Y position each physics frame; queries `LayerManager.layer_at_y()`; enforces the kill gate; emits `layer_changed(new_layer)` when the layer changes. Wires into `PlayerStats.set_layer()`.
 
-**Kill gate:** Before allowing a layer transition, checks `PlayerStats.kill_count` against `Constants.LAYER_KILL_REQUIREMENTS` for the current layer. If the requirement is not met:
-- Player's `global_position.y` is clamped to `layer_bottom_y - 1px` (just above the boundary).
-- Player's `velocity.y` is zeroed (prevents gravity from immediately re-crossing the boundary).
-- `descent_blocked(required_kills)` signal is emitted with a 2-second cooldown to avoid spam.
+**Kill gate (rewritten 2026-07-31 — collider, not a position clamp):** while `PlayerStats.kill_count` is below `Constants.LAYER_KILL_REQUIREMENTS` for the current layer, `_update_gate()` places a real `StaticBody2D` named `KillGateFloor` across the current layer's bottom edge and enables its collision shape. Meeting the requirement (or entering a layer with no requirement, i.e. Core Hollow) disables it.
+- Shape: `RectangleShape2D`, `world_width_px() + 2×512px` wide (overhang so the cylindrical wrap can't put the player past its end) × `GATE_THICKNESS_PX` (64px) tall, centred so its **top edge sits exactly on `get_layer_bottom_y(current_layer)`**. The player rests with their feet on the boundary line.
+- Physics: `collision_layer = 8` (bit 4, `GATE_COLLISION_LAYER`) / `collision_mask = 0`. Bit 4 is used by nothing else in the project, and `_init_gate()` OR-s it into the **local player's** `collision_mask` only — so a player's gate floor is invisible to TestDummies, chests, throwables and loot drops.
+- The body is a child of `DescentTracker` with `top_level = true`, so its lifetime follows the player while its transform stays in world space.
+- `descent_blocked(required_kills)` is emitted (2-second cooldown) while the player's feet are within `GATE_CONTACT_EPSILON_PX` (3px) of the gate's top edge. Normal terrain fills the layer's last tile row, so this only fires once the player has actually drilled down to the boundary.
+- `_recover_above_boundary()` remains as a **safety net only** (reachable if a body is already below the boundary before the gate's first physics frame). It places the player's **feet** on the boundary — `boundary_y − half_collision_height` — never the origin.
 
-Execution order: DescentTracker is a child of PlayerController, so Godot processes it AFTER the parent's `_physics_process`. The position clamp therefore overrides any `move_and_slide()` movement from the same frame.
+Execution order: DescentTracker is a child of PlayerController, so Godot processes it AFTER the parent's `_physics_process`. Descent blocking no longer depends on that ordering, because the gate is resolved inside `move_and_slide()` itself.
+
+**Startup diagnostic note:** because `_init_gate()` OR-s bit 4 into the player's mask, `Main._print_collision_diagnostics()` now prints `Player collision_layer=5 (bits 1, 3) collision_mask=9 (bits 1, 4)` instead of `collision_mask=1 (bits 1)`. The VERDICT line is unaffected (`9 & 1 = 1` → MATCH). This is expected, not a regression.
 
 **Kill progress signal:** `_last_kill_count` (initialised to -1) is compared against `_stats.kill_count` each physics frame, before the `_layer_manager == null` guard, so the initial emit fires on the very first frame regardless of init order. When a change is detected, `_emit_kill_progress()` fires `kill_progress_changed`. The same method is called from `_on_layer_changed` so the display updates immediately when the player crosses into a new layer.
 
@@ -717,6 +721,85 @@ Phase schedule locked. Damage values TBD.
 ## Session Change Log
 
 > Newest first, grouped by date. Add new entries directly under the relevant date heading.
+
+### 2026-07-31 — kill gate no longer breaks step-up (and no longer traps the player)
+
+**Bug (as reported).** Standing inside a **locked** layer-boundary gate trench, the player
+could walk left/right but the single-block step-up would not fire — they could not climb a
+1-tile ledge that step-up handles correctly everywhere else in the world. A harsher variant
+of the same bug had also been observed: the player frozen completely, unable to move on any
+axis, while **drilling still worked**. Both were specific to the pre-unlock gate state and
+both resolved the moment the kill requirement was met and the gate opened.
+
+**Root cause — one defect, two symptoms.** The gate did not use a collider at all. It was a
+per-frame position write in `DescentTracker._clamp_to_boundary()`:
+
+```gdscript
+if player_node.global_position.y >= float(boundary_y):
+    player_node.global_position.y = float(boundary_y) - 1.0
+```
+
+Writing `global_position` is invisible to the physics engine, and this particular write was
+also geometrically wrong:
+
+1. **Step-up dead (the reported bug).** The player was held at the boundary by the position
+   write rather than by *resting on* anything. `move_and_slide()` therefore reported no
+   floor contact, so `is_on_floor()` stayed **false** — and that is the very first guard in
+   `PlayerController._try_step_up()` (`if not is_on_floor(): return`). Step-up was disabled
+   for the entire time the gate was locked. Horizontal movement survived because
+   `velocity.x` still carried the body through the air of the trench, which is exactly the
+   reported "can move sideways, can't step up" signature. Meeting the kill requirement
+   "fixed" it only because `_clamp_to_boundary()` then stopped being called.
+2. **Fully frozen (the harsher variant).** The write targets the body **origin**, but the
+   player's collision box is a `RectangleShape2D` of `14 × 28` **centred on that origin**
+   (`Player.tscn`). Clamping the origin to `boundary_y − 1` therefore put the feet at
+   `boundary_y + 13` — 13px deep inside the tile row the player was being blocked from
+   entering. `move_and_slide()` cannot walk a body that already overlaps solid geometry, so
+   every axis died at once. Drilling still worked because `_handle_drill()` queries
+   `TerrainManager.has_tile()` and never touches physics, which is what isolated the fault
+   to collision rather than input.
+
+**Fix — enforce the gate with real collision (`DescentTracker.gd`).** `_clamp_to_boundary()`
+is gone. While the requirement is unmet, `_update_gate()` positions and enables a
+`StaticBody2D` (`KillGateFloor`) whose top edge sits exactly on `get_layer_bottom_y()`; it is
+disabled the instant the requirement is met, on entering a layer with no requirement, or on
+death. The player now rests on the gate like any other floor, so `is_on_floor()` is true,
+step-up behaves identically to everywhere else, and nothing is ever teleported into terrain.
+Descent blocking is *stronger* than before — it is resolved inside `move_and_slide()` rather
+than corrected after the crossing has already happened. See the DescentTracker section above
+for shape/layer details. Supporting changes:
+
+- `descent_blocked` needed a new trigger, since with a solid floor the player never crosses
+  the boundary any more. It now fires (same 2s cooldown) when the feet are within 3px of the
+  gate's top edge, so the "Need N kills to descend" HUD message is preserved.
+- `_recover_above_boundary()` replaces the old clamp as a **safety net only**, and places the
+  **feet** on the boundary rather than the origin. Unlike the old clamp it is self-healing:
+  the player lands on the gate floor the next frame, so `is_on_floor()` recovers by itself.
+- `_player_half_height` is read from the real `CollisionShape2D` in `_ready()` instead of
+  being hardcoded, so the origin-vs-box mistake cannot be reintroduced by a resize.
+- `PlayerController._try_step_up()`: **comment only, no logic change.** The old comment
+  claimed DescentTracker "still clamps any attempt to cross a layer boundary"; it now
+  describes the gate collider and records why the `is_on_floor()` guard was the failure point.
+
+**Deliberately NOT changed** (per brief constraints): kill counting/incrementing, the LOCKED
+`LAYER_KILL_REQUIREMENTS` values, layer transition/unlock logic, and the descend-only rule.
+No ascent mechanic was added — the "vertical escape is manual via the drill" decision
+recorded in the 2026-07-01 entry stands, and this fix only restores the step-up that was
+already supposed to work in the trench.
+
+**Needs live confirmation on Suhaas's machine** (no Godot binary in this environment; all of
+the below verified by code tracing only):
+1. Drill down to a locked boundary and confirm the player **lands and stands** on the
+   invisible gate floor instead of hovering — then confirm step-up onto a 1-tile ledge works
+   inside the trench.
+2. Confirm the startup line now reads `Player ... collision_mask=9 (bits 1, 4)` with VERDICT
+   still MATCH.
+3. Confirm the "Need N kills to descend" message still appears on reaching the boundary.
+4. Watch for a spurious step-up while walking along the gate floor with no ledge ahead. The
+   forward `test_move()` probe uses the default `safe_margin` and does not report
+   already-touching surfaces, so resting on the gate should behave exactly like resting on
+   terrain — but this is the one interaction worth eyeballing.
+5. Confirm the gate disappears on the kill that unlocks it and the player can descend.
 
 ### 2026-07-30 (b) — visual polish pass: figure/ground, tile grid, impact VFX
 

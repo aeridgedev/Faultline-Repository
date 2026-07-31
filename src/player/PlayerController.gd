@@ -817,8 +817,14 @@ func _apply_gravity(delta: float) -> void:
 #
 # It is purely LOCAL navigation over dug terrain: it only ever nudges the player
 # UP-and-forward by a single tile and never touches the descend-only layer gate.
-# DescentTracker runs after this (child processes after parent) and still clamps any
-# attempt to cross a layer boundary, so re-entering upper layers remains fully blocked.
+# Descent past a locked layer boundary is blocked by DescentTracker's KillGateFloor
+# StaticBody2D, which this function can never lift the player through: the two forward
+# probes only ever move up and sideways, never down.
+#
+# NOTE (2026-07-31): the is_on_floor() guard below is why step-up used to fail inside a
+# locked gate trench. The old gate held the player up by writing global_position each
+# frame instead of with a collider, so move_and_slide() reported no floor contact and
+# this function early-returned forever. See DescentTracker's class docs.
 func _try_step_up() -> void:
 	# Never applies in zero-gravity (Core Hollow interior): there is no floor to stand
 	# on there, and free flight makes the ledge-climb irrelevant.

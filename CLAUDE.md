@@ -715,6 +715,37 @@ which item this session targets before writing code.
   (5) Debris is NOT a child of the TileMap, so it is deliberately **not** subject to
   `LayerVisuals`' terrain tint; keep it that way and keep debris legible on its own (the
   colour helper lifts HSV *value*, not toward white, so obsidian stays obsidian).
+- **RESOLVED (2026-07-31) — the layer kill gate is enforced by a COLLIDER, never by
+  writing `global_position`.** The gate used to be a per-frame position write in
+  `DescentTracker._clamp_to_boundary()` (`origin = boundary_y - 1.0`). That produced two
+  bugs at every locked boundary, from one defect: (1) **step-up died inside the gate
+  trench** — the player was held up by the position write rather than resting on anything,
+  so `move_and_slide()` reported no floor, `is_on_floor()` stayed false, and that is the
+  first guard in `PlayerController._try_step_up()`; horizontal movement still worked
+  (`velocity.x` through the trench air), which is exactly the "can walk sideways, can't
+  climb a 1-tile ledge, only while locked" signature. (2) **Total freeze** — the write
+  targets the body ORIGIN while the collision box is `14 × 28` **centred** on it
+  (`Player.tscn`), so the feet landed at `boundary_y + 13`, buried in the tile row below;
+  `move_and_slide()` cannot walk a body already overlapping solid geometry. Drilling kept
+  working throughout because `_handle_drill()` queries `TerrainManager.has_tile()` and never
+  touches physics. Now: `_update_gate()` places a `StaticBody2D` (`KillGateFloor`) whose top
+  edge sits exactly on `get_layer_bottom_y(current_layer)` while the requirement is unmet,
+  and disables it the moment it is met. **Locked rules going forward:** (1) any mechanism
+  that must stop the player at a position — layer gates, future arena/zone bounds, knockback
+  walls — uses **collision**, never a `global_position` write; a direct position write is
+  invisible to the physics engine, can bury the body in terrain, and leaves `is_on_floor()`
+  false, which silently disables step-up (the game's ONLY ascent mechanic — there is no
+  jump). (2) When a position write is genuinely unavoidable as a recovery path, target the
+  **collision-box edge** (feet = `y + half_height`), never the origin, and read the half
+  extent from the real `CollisionShape2D` rather than hardcoding it. (3) **Physics layer bit
+  4 (value 8) is reserved** for `DescentTracker.GATE_COLLISION_LAYER`; bits in use are
+  1 = terrain + player/dummy bodies, 2 = chest areas, 3 = player (chest filtering), 4 = kill
+  gate. The gate bit is OR-ed into the **local player's** `collision_mask` only, so a
+  player's gate is invisible to every other body — keep it that way. (4) The gate must never
+  be weakened to "fix" movement: it blocks descent harder now (resolved inside
+  `move_and_slide()`) than the old after-the-fact correction did. (5) The "vertical escape
+  is manual via the drill" decision stands — this fix restored the existing step-up inside
+  the trench and added **no** jump/climb/fly.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the
