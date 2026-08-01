@@ -8,6 +8,9 @@ class_name WinScreen
 extends Control
 
 signal play_again_requested
+## Emitted by the HOME button. Same split as every other button here: this file
+## only announces the intent — HUD is what calls GameManager.return_to_home().
+signal home_requested
 signal quit_requested
 
 @onready var _panel: PanelContainer = $CenterContainer/Panel
@@ -15,11 +18,13 @@ signal quit_requested
 @onready var _rows_container: VBoxContainer = $CenterContainer/Panel/VBoxContainer/ScrollContainer/RowsContainer
 @onready var _button_row: HBoxContainer = $CenterContainer/Panel/VBoxContainer/ButtonRow
 @onready var _play_again_btn: Button = $CenterContainer/Panel/VBoxContainer/ButtonRow/PlayAgainButton
+@onready var _home_btn: Button = $CenterContainer/Panel/VBoxContainer/ButtonRow/HomeButton
 @onready var _quit_btn: Button = $CenterContainer/Panel/VBoxContainer/ButtonRow/QuitButton
 
-# Reuse the game's existing "top tier" gold (Constants.TIER_COLORS[LEGENDARY])
-# as the winner-row accent so it reads consistently with the rest of the HUD.
-const _COLOR_WINNER := Color("e6a817")
+# The game's existing "top tier" gold (Constants.TIER_COLORS[LEGENDARY]) as the
+# winner-row accent, now sourced from UIStyle so all four menu screens share one
+# definition of it rather than four copies of the same literal.
+const _COLOR_WINNER := UIStyle.ACCENT_GOLD
 const _COLOR_ROW_BG := Color(0.10, 0.12, 0.17, 0.92)
 const _COLOR_ROW_BORDER := Color(0.55, 0.58, 0.65, 0.60)
 
@@ -38,12 +43,21 @@ func _ready() -> void:
 	# here makes the hide independent of the caller's restart path (which reloads
 	# the scene) so the overlay never lingers over the fresh match for a frame.
 	_play_again_btn.pressed.connect(_on_play_again_pressed)
+	# HOME hides the screen for the same reason Play Again does: the scene change
+	# behind it is deferred to end-of-frame, so the overlay would otherwise linger
+	# over the home screen's first frame.
+	_home_btn.pressed.connect(_on_home_pressed)
 	_quit_btn.pressed.connect(func(): quit_requested.emit())
 
 
 func _on_play_again_pressed() -> void:
 	visible = false
 	play_again_requested.emit()
+
+
+func _on_home_pressed() -> void:
+	visible = false
+	home_requested.emit()
 
 
 ## leaderboard: Array of Dictionary shaped {id, name, node, kills,
@@ -61,10 +75,16 @@ func show_results(leaderboard: Array, winner_id: int) -> void:
 		else:
 			rest.append(entry)
 
+	# Rank numbering starts after however many rows the winner actually occupied.
+	# Previously it hardcoded `i + 2`, so if winner_id was not present in the
+	# leaderboard (a freed/unregistered participant) the list silently started at
+	# #2 with no #1 at all. Now the ranks stay contiguous from 1 either way.
+	var next_rank := 1
 	if not winner.is_empty():
-		_rows_container.add_child(_build_row(1, winner, true))
+		_rows_container.add_child(_build_row(next_rank, winner, true))
+		next_rank += 1
 	for i in rest.size():
-		_rows_container.add_child(_build_row(i + 2, rest[i], false))
+		_rows_container.add_child(_build_row(next_rank + i, rest[i], false))
 
 	visible = true
 
@@ -142,35 +162,20 @@ func _style_static() -> void:
 	panel_style.set_content_margin_all(16)
 	_panel.add_theme_stylebox_override("panel", panel_style)
 
-	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title_label.add_theme_font_size_override("font_size", 22)
-	_title_label.add_theme_color_override("font_color", Color(0.90, 0.92, 0.96))
+	UIStyle.style_title(_title_label, 22)
 
 	_panel.get_node("VBoxContainer").add_theme_constant_override("separation", 12)
 	_rows_container.add_theme_constant_override("separation", 5)
 	_button_row.add_theme_constant_override("separation", 14)
 
-	# Make Play Again / Quit unmistakably visible below the leaderboard. They already
-	# sit in a ButtonRow stacked under the ScrollContainer inside the VBox (so they
-	# can never overlap the leaderboard rows), but the default button theme is easy
-	# to miss on the dark modal — give them a solid min size + larger font so the
-	# match-end actions read clearly. Play Again uses the winner-gold accent.
-	_style_button(_play_again_btn, _COLOR_WINNER)
-	_style_button(_quit_btn, Color(0.60, 0.63, 0.70))
-
-
-func _style_button(btn: Button, accent: Color) -> void:
-	btn.custom_minimum_size = Vector2(150, 40)
-	btn.add_theme_font_size_override("font_size", 15)
-	btn.add_theme_color_override("font_color", Color(0.97, 0.97, 1.0))
-	var normal := StyleBoxFlat.new()
-	normal.set_corner_radius_all(5)
-	normal.set_content_margin_all(8)
-	normal.bg_color = accent.darkened(0.55)
-	normal.set_border_width_all(2)
-	normal.border_color = accent
-	var hover := normal.duplicate() as StyleBoxFlat
-	hover.bg_color = accent.darkened(0.35)
-	btn.add_theme_stylebox_override("normal", normal)
-	btn.add_theme_stylebox_override("hover", hover)
-	btn.add_theme_stylebox_override("pressed", hover)
+	# Make the match-end actions unmistakably visible below the leaderboard. They
+	# already sit in a ButtonRow stacked under the ScrollContainer inside the VBox
+	# (so they can never overlap the leaderboard rows), but Godot's default button
+	# theme is easy to miss on the dark modal. Play Again is the primary action and
+	# takes the winner gold; HOME and QUIT are neutral.
+	#
+	# 130 wide (was 150) so three buttons + separations fit inside the panel's
+	# authored 460px width instead of forcing it wider.
+	UIStyle.style_button(_play_again_btn, _COLOR_WINNER, 130.0)
+	UIStyle.style_button(_home_btn, UIStyle.ACCENT_NEUTRAL, 130.0)
+	UIStyle.style_button(_quit_btn, UIStyle.ACCENT_NEUTRAL, 130.0)

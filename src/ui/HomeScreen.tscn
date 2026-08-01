@@ -1,24 +1,23 @@
-[gd_scene load_steps=2 format=3 uid="uid://flt_deathscreen"]
+[gd_scene load_steps=2 format=3 uid="uid://flt_homescreen"]
 
-[ext_resource type="Script" path="res://src/ui/DeathScreen.gd" id="1_ds"]
+[ext_resource type="Script" path="res://src/ui/HomeScreen.gd" id="1_hs"]
 
-[node name="DeathScreen" type="Control"]
+[node name="HomeScreen" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_ds")
+script = ExtResource("1_hs")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.65)
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -38,22 +37,17 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-text = "YOU DIED"
+text = "FAULTLINE"
 horizontal_alignment = 1
 
-[node name="KillerLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+[node name="SubtitleLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-text = "Killed by —"
+text = "descend · loot · survive"
 horizontal_alignment = 1
 
-[node name="DamageLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+[node name="TitleSpacer" type="Control" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-text = "Killing blow: — dmg"
-horizontal_alignment = 1
-
-[node name="StatsSpacer" type="Control" parent="CenterContainer/Panel/VBoxContainer"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 4)
+custom_minimum_size = Vector2(0, 12)
 
 [node name="StatsPanel" type="PanelContainer" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
@@ -61,9 +55,14 @@ layout_mode = 2
 [node name="StatsBox" type="VBoxContainer" parent="CenterContainer/Panel/VBoxContainer/StatsPanel"]
 layout_mode = 2
 
-[node name="StatsHeader" type="Label" parent="CenterContainer/Panel/VBoxContainer/StatsPanel/StatsBox"]
+[node name="LastMatchHeader" type="Label" parent="CenterContainer/Panel/VBoxContainer/StatsPanel/StatsBox"]
 layout_mode = 2
-text = "MATCH SUMMARY"
+text = "LAST MATCH"
+
+[node name="EmptyLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer/StatsPanel/StatsBox"]
+layout_mode = 2
+text = "No matches played yet"
+horizontal_alignment = 1
 
 [node name="StatsGrid" type="GridContainer" parent="CenterContainer/Panel/VBoxContainer/StatsPanel/StatsBox"]
 layout_mode = 2
@@ -71,22 +70,20 @@ columns = 2
 
 [node name="PlacementNote" type="Label" parent="CenterContainer/Panel/VBoxContainer/StatsPanel/StatsBox"]
 layout_mode = 2
-text = "rank at time of death"
+text = "placement is approximate"
 
 [node name="ButtonSpacer" type="Control" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 10)
+custom_minimum_size = Vector2(0, 12)
 
-[node name="ButtonRow" type="HBoxContainer" parent="CenterContainer/Panel/VBoxContainer"]
+[node name="PlayButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-alignment = 1
+text = "PLAY"
 
-[node name="SpectateButton" type="Button" parent="CenterContainer/Panel/VBoxContainer/ButtonRow"]
+[node name="SettingsButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(140, 36)
-text = "SPECTATE"
+text = "SETTINGS"
 
-[node name="HomeButton" type="Button" parent="CenterContainer/Panel/VBoxContainer/ButtonRow"]
+[node name="QuitButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(140, 36)
-text = "HOME"
+text = "QUIT"

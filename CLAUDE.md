@@ -5,9 +5,10 @@ Working brief for Claude when building this project. Read this first every sessi
 > **NEXT SESSION PRIORITY (when the user opens a new session and asks "what should
 > I do" / "what's next", lead with this):** **All offline build steps (1–8) are
 > complete and have been live-playtested in Godot.** The game is a fully functional
-> offline single-player loop: descend through 5 layers, drill/loot/fight, dodge the
-> storm + depth/pressure hazards, die → DeathScreen → spectate → WinScreen/leaderboard
-> → Play Again. Only **step 9 (Networking)** remains from the build order.
+> offline single-player loop: **boot to the home screen → PLAY →** descend through 5
+> layers, drill/loot/fight, dodge the storm + depth/pressure hazards, die → DeathScreen
+> → spectate → WinScreen/leaderboard → Play Again. Only **step 9 (Networking)** remains
+> from the build order.
 >
 > **What the 2026-07-06 playtest session added on top of the step-1–8 base:** (1)
 > DEV `TestDummy`s now **actively attack** (detection `Area2D` + 1.5s-cooldown damage
@@ -29,7 +30,41 @@ Working brief for Claude when building this project. Read this first every sessi
 >   terrain streaming/chunking, the input model, and the `GameManager` roster becoming
 >   the real multi-client participant list instead of local player + dummies. **Confirm
 >   scope/approach with the user before writing code** — do not assume an architecture.
-> - **Visual / art polish pass** (currently under consideration). Everything on screen
+> **Menu pass — COMPLETE (2026-08-01), logic AND visuals.** The pass was
+>   **death → esc → home**. The visual pass (2026-08-01 h) brought all four screens onto
+>   one `UIStyle` palette + button/panel/stat-row recipes; see the RESOLVED entry at the
+>   end of Working Conventions. What remains is the **art** pass (procedural dev-art
+>   sprites and tiles), which is a separate and much larger job.
+> - **Screen 1 — death: DONE (logic + styling).** The DeathScreen is stats-forward (MATCH
+>   SUMMARY block: placement / kills / layer reached / survived).
+> - **Screen 2 — esc / in-match pause menu: DONE (logic + styling).**
+>   `src/ui/PauseMenu.tscn` (a CanvasLayer at layer 30, instanced in `HUD.tscn`). Esc toggles
+>   a real `get_tree().paused` freeze; RESUME / RETURN TO HOME / QUIT all work, SETTINGS is a
+>   disabled placeholder. **This closed the "return to home" gap** (was GAME_STATE Known Issue
+>   #15): the home screen's last-match block is now genuinely reachable in play.
+> - **Screen 3 — home/title: DONE (logic + styling).** `src/ui/HomeScreen.tscn` is the
+>   boot scene; PLAY / QUIT work, SETTINGS is a disabled placeholder, and the previous
+>   match's result is shown from `GameManager.last_match_summary` (in-memory only) in the
+>   same MATCH SUMMARY stat-row language the death screen uses.
+>
+>   Locked rules for the menu screens (see the three RESOLVED entries dated 2026-08-01):
+>   no new match clock, placement stays labelled approximate, reuse the DeathScreen panel
+>   language, and in-match menu screens read data through HUD rather than calling GameManager
+>   themselves (the home screen is the one documented exception — it runs outside a match,
+>   so there is no HUD above it).
+>
+> **Leaderboard audit + HOME buttons (2026-08-01 g) — DONE.** The step-8 leaderboard was
+>   audited and was **not** correct: roster kill credit only ever worked for the local
+>   player (a dummy that killed you scored 0, and the 0-alive wipe branch credits
+>   top-of-leaderboard, so it could never pick the real killer), the kills sort was not a
+>   total order, and `WinScreen`'s rank numbering assumed the winner was always found. All
+>   three are fixed — see the two RESOLVED entries dated 2026-08-01 at the end of Working
+>   Conventions. Both end-of-match screens now also have a **HOME** button, closing
+>   GAME_STATE Known Issue #16. Neither change was verified in a running build (no Godot
+>   binary available); the regression test worth running is: die to a dummy and confirm that
+>   dummy shows **1 kill** on the win screen.
+>
+> - **Art pass** (currently under consideration; the MENU visual pass is done). Everything on screen
 >   today is **dev-art placeholder**: terrain tiles, player, dummy, and loot sprites are
 >   all built procedurally in code (`TerrainManager._build_dev_tileset`, the in-code
 >   `Image`/`Sprite2D` art in `PlayerController`/`TestDummy`/`LootDrop`), and the UI uses
@@ -72,7 +107,7 @@ players → keep ahead of a descending storm → breach the Core Hollow shell
 
 ```
 game/
-├── project.godot            Autoloads: Constants, GameManager. Entry: src/core/Main.tscn
+├── project.godot            Autoloads: Constants, GameManager. Entry: src/ui/HomeScreen.tscn (PLAY → src/core/Main.tscn)
 ├── CLAUDE.md                This file
 ├── README.md
 ├── src/
@@ -93,7 +128,7 @@ game/
 │   │   └── vfx/             VFXManager, DebrisBurst, CameraShake  ← client-local only
 │   ├── hazards/             DepthHazard, StormSystem, PressureSystem
 │   ├── sound/               SoundManager, TerrainAudio, PlayerAudio (detection layer)
-│   ├── ui/                  HUD, LayerIndicator, StormTimer, DeathScreen, SpectatorView
+│   ├── ui/                  HomeScreen (boot), HUD, PauseMenu (esc), LayerIndicator, StormTimer, DeathScreen, WinScreen, SpectatorView
 │   └── network/             server/ (authoritative) + client/   ← built last
 ├── data/                    Tunable balance JSON (loaded by DataLoader)
 ├── assets/                  sprites/, audio/, tilesets/, ui/
@@ -958,6 +993,218 @@ which item this session targets before writing code.
   next tuning pass. Do not re-add any of these keys without also restoring the code that reads them.
   (e) `FaultBeacon` was listed under `special_item_spawn_rates` but is a **consumable** and still
   exists, rolling through the normal `"consumable"` category — it is unaffected.
+- **RESOLVED (2026-08-01) — DeathScreen is now STATS-FORWARD (menu pass, screen 1 of 3:
+  death → esc → home).** The chosen direction for this pass: a death screen leads with a
+  match-summary **result**, not a "you died, click to continue" interstitial. `DeathScreen`
+  gained a **MATCH SUMMARY** block — a `PanelContainer` + code-built 2-column `GridContainer`
+  with **PLACEMENT** (hero row, 18px gold), **KILLS**, **LAYER REACHED**, **SURVIVED** (MM:SS).
+  The esc and home screens should reuse this panel language. **Locked rules going forward:**
+  (1) **`DeathScreen` must never talk to `GameManager`** — `HUD` is the integration layer: it
+  reads the roster/clock and passes plain values in through `show_death(data)`, exactly as the
+  existing locked rule already requires for `WinScreen`. Every `show_death()` key stays optional
+  with a fallback so a partial dict renders rather than crashes. (2) **There is exactly one match
+  clock: `GameManager.match_elapsed`.** It is ticked in `GameManager._process()` while `IN_MATCH`,
+  reset by `start_match()`, and `StormSystem.get_elapsed()` merely returns it — do not add a second
+  elapsed-time counter for any UI. (3) **Placement is APPROXIMATE and must stay labelled as such**
+  — it is `get_living_player_ids().size() + 1`, a rank at the instant of death, NOT a recorded
+  finish order (same-frame deaths can tie). The `+ 1` is load-bearing: `PlayerDeath` calls
+  `mark_player_dead()` **before** emitting `died`, so the local player is already out of the living
+  list when `HUD._on_player_died()` runs. Making it exact means stamping a finish index on the
+  roster in `mark_player_dead()` — a roster-logic change, out of scope for a display-only screen.
+  (4) New stat rows go through `_add_stat_row()` and get their data from `HUD`, never from a new
+  system; the stat block is display-only and must not introduce gameplay state. (5) The stats
+  panel uses `UIStyle.small_panel_style()` (the in-match Layer/Storm/Kills panel recipe) and the
+  accent gold `Color("e6a817")` (= `Constants.TIER_COLORS[LEGENDARY]`, WinScreen's winner row, the
+  HUD kill-progress panel) — keep every menu screen on those two, do not introduce a new palette.
+  (6) The death→spectate handoff is unchanged and must stay that way: SPECTATE only emits
+  `spectate_requested`; `HUD` owns the transition.
+- **RESOLVED (2026-08-01) — the game no longer boots into a match: `src/ui/HomeScreen.tscn` is
+  the boot scene, and the last match's result is kept in memory on `GameManager` (menu pass,
+  screen 3 of 3 — LOGIC ONLY).** Before this, `project.godot`'s `run/main_scene` was
+  `src/core/Main.tscn` and `Main._ready()` generated the world, spawned the player, spawned 32
+  dummies and called `GameManager.start_match()` the instant the executable started — there was
+  no menu of any kind. Now `run/main_scene` is `res://src/ui/HomeScreen.tscn` and **the match
+  scene is entered only by pressing PLAY**. **Locked rules going forward:**
+  (1) **Loading `src/core/Main.tscn` IS the match-start path — never duplicate match init.**
+  PLAY calls `GameManager.start_new_match()`, which is only `_reset_roster()` +
+  `change_scene_to_file(MATCH_SCENE_PATH)`; `Main._ready()` then does exactly what it did at
+  launch before (world gen → player + roster registration → hazards → dummies → HUD →
+  `start_match()`). The path lives in one place, `GameManager.MATCH_SCENE_PATH`. Any future
+  entry point (a lobby, a rematch button, networking's join flow) must go through
+  `start_new_match()` rather than re-implementing the sequence.
+  (2) **`restart_match()` (Play Again) is unchanged in behaviour** — its three reset statements
+  were factored into `_reset_roster()`, which `start_new_match()` shares, and it still calls
+  `reload_current_scene()`. That is deliberate and must stay: Play Again reloads the *match*
+  scene directly (never routes back through the home screen), so the loop the player already
+  knows is untouched.
+  (3) **`GameManager.last_match_summary` is IN-MEMORY ONLY and must stay that way** — no disk
+  persistence (no `user://`, no `ConfigFile`, no save system) unless that is separately specced.
+  It is written by `HUD` via `record_match_summary()` at the two points the local player's match
+  can end (`_on_player_died`, and `_on_match_won` **only when the local player is still alive**,
+  i.e. they won — if they already died, the death-time summary is the correct one and must not
+  be overwritten). It is deliberately **not** cleared by `_reset_roster()`: it is a record of a
+  finished match and has to outlive the roster it came from, or Play Again would wipe it.
+  (4) **The four stats have exactly one definition: `HUD._local_match_stats()`**, used by both
+  the death screen and the home screen, so the two can never disagree. Do not compute placement /
+  kills / layer / survived anywhere else. Placement stays approximate and stays labelled as such
+  on both screens (same rule as the DeathScreen entry above), and `GameManager.match_elapsed`
+  remains the only match clock.
+  (5) **`HomeScreen` reading `GameManager` directly is a documented exception, not a precedent.**
+  The "menu screens read data through HUD" rule exists because `DeathScreen`/`WinScreen` live
+  inside `HUD`, which is their integration layer. The home screen runs outside a match with
+  nothing above it, so it does one read in `_ready()` and passes the dict to the public
+  `show_summary(summary: Dictionary)`; everything that renders is GameManager-free, and a future
+  host (the esc menu) can push values in the same way `HUD` does. The **esc menu is in-match and
+  therefore still goes through `HUD`.**
+  (6) **This pass is logic only.** `HomeScreen.tscn` is plain default `Button`/`Label`/
+  `VBoxContainer` with no styling, theme or colour work — the visual pass should bring it onto
+  `UIStyle` + the gold `Color("e6a817")` accent like the death screen. `SETTINGS` is a
+  deliberately `disabled` placeholder button (disabled in code, next to the comment explaining
+  why — not in the `.tscn`, so there is one source of truth); wiring it is separate scope.
+- **RESOLVED (2026-08-01) — esc/pause menu: a REAL `get_tree().paused` freeze plus the
+  mid-run RETURN TO HOME path (menu pass, screen 2 of 3 — LOGIC ONLY).** New
+  `src/ui/PauseMenu.gd`/`.tscn`, instanced in `HUD.tscn`; new `pause` InputMap action
+  (Escape, physical keycode 4194305); new `GameManager.return_to_home()` +
+  `HOME_SCENE_PATH`. This is the screen that finally gives a match an exit other than
+  ending the process or reloading it — before this, Quit and Play Again were the only
+  two, which is why the home screen's last-match block existed but was unreachable.
+  **Locked rules going forward:**
+  (1) **The pause is the engine's, not a hand-rolled gate.** Every other node in the match
+  resolves to `PROCESS_MODE_PAUSABLE` (they are all `PROCESS_MODE_INHERIT` with no
+  non-inherit ancestor, which Godot resolves to PAUSABLE — this is *also* why the
+  `GameManager` autoload's `match_elapsed` correctly stops ticking), so `get_tree().paused`
+  freezes terrain streaming, TestDummies, storm/depth/pressure ticks, the match clock and
+  all drill/combat input in one assignment. `PauseMenu` opts **itself** out with
+  `PROCESS_MODE_ALWAYS`. Do **not** "fix" a system that keeps running while paused by
+  adding a manual `if paused: return` to it — find out why that node isn't PAUSABLE. The
+  corollary: any future node deliberately set to `ALWAYS`/`WHEN_PAUSED` (VFX, a network
+  keepalive at step 9) is opting out of the pause freeze and must be justified.
+  (2) **`PauseMenu` is a `CanvasLayer` (layer 30), NOT a `Control` inside `HUD.tscn`'s
+  `Control`.** The HUD's Control tree is on layer 1 and the inventory panel builds its own
+  `CanvasLayer` at layer 20, so a Control-child pause menu would render *underneath* an
+  inventory panel left open when Esc was pressed. Layer 30 is above every layer in use
+  (storm tint 1 · HUD 1 · chest popup 10 · inventory 20). Keep it the topmost layer.
+  (3) **Esc is read in `_input()`, not `_unhandled_input()`**, so no Control can swallow it
+  first, and the event is consumed (`set_input_as_handled()`) only when it actually toggles
+  the menu. Same lesson as the 2026-07-31 chest `interact` rebind, generalised: a menu that
+  must be reachable from every game state cannot sit at the end of the input chain.
+  (4) **`PauseMenu` never talks to `GameManager`** — same locked split as `DeathScreen`/
+  `WinScreen`. It emits `home_requested`/`quit_requested`; `HUD` makes the
+  `GameManager.return_to_home()` / `get_tree().quit()` calls. RESUME is the one action
+  handled internally (it needs nothing outside the file) and deliberately emits nothing.
+  (5) **RETURN TO HOME is an ABANDONMENT, not a result: it must never write
+  `GameManager.last_match_summary`.** `return_to_home()` is `paused = false` +
+  `_reset_roster()` + `change_scene_to_file(HOME_SCENE_PATH)` — it reuses the *same*
+  `_reset_roster()` as `start_new_match()`/`restart_match()` so no roster/kill/state leaks
+  into the next match, and it pointedly does not touch the summary, so the home screen keeps
+  showing the last **completed** match. `HUD._leaving_match` backs this up: `change_scene_to_file`
+  is deferred to end-of-frame, so the abandoned scene gets one more unpaused frame in which a
+  hazard tick could in principle kill a player who clicked at ~0 HP, and the flag makes
+  `_on_player_died`/`_on_match_won` inert for it. The two summary writers stay exactly those
+  two HUD handlers. (A player who **died** and then returns home from spectating still shows
+  their death summary — that match genuinely ended for them; the rule is about not
+  manufacturing a new result on the way out.)
+  (6) **`return_to_home()` clears `get_tree().paused` itself even though `PauseMenu` already
+  did.** The paused flag survives a scene change, and `HomeScreen` is PAUSABLE like
+  everything else, so a leaked `paused = true` is a hard soft-lock on a screen with no way to
+  unpause. Any future caller gets that guarantee for free.
+  (7) **When pausing is legal is `HUD`'s call, not `PauseMenu`'s** — `set_available(bool)`:
+  true while playing **and while spectating** (spectating is the one state with no other exit,
+  since Play Again/Quit live on screens a spectator never reaches), false while the DeathScreen
+  is up (its own modal decision point) and once the match has ended (WinScreen owns the exits).
+  Turning availability off force-closes the menu, so the tree can never be left paused with
+  nothing on screen to unpause it.
+  (8) **LOGIC ONLY, like `HomeScreen`** — plain default `Button`/`Label`/`VBoxContainer`. The
+  sole colour is the translucent-black `Background` `ColorRect`, which is functional (it
+  blocks mouse input to the screens below) and reuses `WinScreen`'s existing backdrop value,
+  not a new palette. SETTINGS is a `disabled` placeholder set **in code** next to the comment
+  explaining why, exactly like `HomeScreen`'s. The visual pass owes this screen the DeathScreen
+  panel language + the gold `Color("e6a817")` accent.
+- **RESOLVED (2026-08-01) — leaderboard audit: ROSTER KILL CREDIT IS OWNED BY
+  `GameManager.mark_player_dead()`, not by the attacker's hit site.** An audit of the
+  step-8 win-screen leaderboard found it was **not** correct, and the root defect was
+  structural: `GameManager.record_kill()` had exactly one call site — `PlayerController.
+  _try_attack()` after a lethal swing — so only the LOCAL player could ever score. A
+  `TestDummy` that killed the player showed 0 kills, and because the 0-alive
+  simultaneous-wipe branch credits the **top-of-leaderboard** participant as the nominal
+  winner, that branch could never pick the participant who actually did the killing. Kill
+  credit now lives in `GameManager._credit_killer_of(victim_id)`, called from
+  `mark_player_dead()` — the one point every participant type funnels through on death —
+  reading the victim's own `PlayerStats.last_killer_id`. The `record_kill()` call in
+  `PlayerController` was removed (keeping it would double-count: a lethal swing runs the
+  victim's entire death path synchronously inside that same `take_damage()`).
+  Two smaller fixes in the same pass: `get_leaderboard()` gained deterministic tiebreaks
+  (`_compare_leaderboard`: kills desc → alive before dead → deeper layer → lowest roster
+  id), because a bare `a["kills"] > b["kills"]` is not a total order and the wipe branch
+  reads `[0]` from that list; and `WinScreen.show_results()` no longer hardcodes non-winner
+  ranks as `i + 2`, which produced a list starting at #2 with no #1 whenever `winner_id`
+  was absent from the leaderboard. **Locked rules going forward:** (1) **Never credit a
+  roster kill at the attacker's hit site.** There is exactly one crediting path —
+  `mark_player_dead() -> _credit_killer_of()` — and it works for any participant type,
+  including step 9's networked players, purely because every damage source already has to
+  pass a real `source_id` into `take_damage()` (an existing locked rule). Adding a second
+  `record_kill()` call anywhere will double-count. (2) `PlayerStats.kill_count`
+  (`stats.add_kill()`, still at the hit site) and the roster's `kills` are **two different
+  numbers** and must stay separate: the former drives the local HUD counter and the descent
+  kill gate, the latter is the leaderboard. Do not "unify" them. (3) `_credit_killer_of()`
+  must keep running **before** `_check_win_condition()`, so the killing blow that ends the
+  match is counted before the wipe branch chooses whom to credit. (4) Kills descending stays
+  the leaderboard's primary key and the only one the UI advertises; the tiebreaks exist to
+  make the order total, not to change the ranking rule. The winner is still pinned at rank 1
+  regardless of kills — last standing wins, not most kills.
+- **RESOLVED (2026-08-01) — HOME on the DeathScreen and WinScreen; one handler shared with
+  the esc menu.** Both end-of-match screens gained a `home_requested` signal + button, and
+  `HUD` wires both to the *same* `_on_home_requested()` the pause menu already used. There
+  is deliberately **no** second code path and no branching: `GameManager.return_to_home()`
+  never writes `last_match_summary`, which is exactly what both cases need — on these two
+  paths the summary was already written by `HUD._on_player_died()`/`_on_match_won()` and must
+  survive untouched, and on the esc-menu abandon path the last *completed* match must survive
+  untouched. `HUD._leaving_match` (set by the shared handler) makes both summary writers inert
+  for the one deferred frame between the click and the scene change. **Locked rules going
+  forward:** (1) any future "leave for the home screen" button routes through
+  `HUD._on_home_requested()` → `GameManager.return_to_home()`; do not add a variant that
+  writes or clears `last_match_summary` — the two writers stay exactly `HUD._on_player_died()`
+  and `HUD._on_match_won()`. (2) Both screens keep the locked never-talk-to-`GameManager`
+  split: they emit, `HUD` calls. (3) HOME does not replace anything — WinScreen keeps PLAY
+  AGAIN/QUIT, DeathScreen keeps SPECTATE (SPECTATE = watch the rest of the match, HOME =
+  leave now), and the death→spectate handoff is unchanged. (4) Both HOME buttons were added
+  logic-only and were styled hours later by the menu visual pass (2026-08-01 h): they are now
+  `UIStyle.ACCENT_NEUTRAL` on both screens, against the gold primary action (SPECTATE /
+  PLAY AGAIN). WinScreen's button width stays 130 (down from 150) so three buttons fit the
+  panel's authored 460px.
+- **RESOLVED (2026-08-01) — menu VISUAL pass: `UIStyle` is the single definition of the
+  menu look; no screen declares its own palette or button recipe.** The three-screen menu
+  pass was logically complete but `HomeScreen` and `PauseMenu` were plain default Godot
+  controls, and the DeathScreen/WinScreen styling that did exist was a set of literals
+  copied per file. All of it now comes from `src/ui/UIStyle.gd`, which gained: the palette
+  (`ACCENT_GOLD` = `Color("e6a817")`, `ACCENT_NEUTRAL`, `TEXT_PRIMARY`/`TEXT_BODY`/
+  `TEXT_DIM`/`TEXT_FAINT`, `BACKDROP`, `SCREEN_BG`), `style_button()`, `style_title()` and
+  `add_stat_row()`. `WinScreen._style_button()` was deleted (it was the prototype for
+  `UIStyle.style_button`) and `DeathScreen._add_stat_row()` is now a one-line delegate.
+  Both screens' local colour consts are now aliases of the `UIStyle` ones. `HomeScreen`
+  and `PauseMenu` each gained a `PanelContainer` between their `CenterContainer` and
+  `VBoxContainer` (every `@onready` path updated), and `HomeScreen`'s last-match block was
+  rebuilt as the DeathScreen's `small_panel_style()` + 2-column key/value grid instead of
+  five centred sentences. **No logic changed anywhere in this pass** — `show_summary()`'s
+  contract, the pause semantics, `set_available()`, the signal splits and every button's
+  wiring are untouched. **Locked rules going forward:** (1) **there is exactly one accent,
+  `UIStyle.ACCENT_GOLD`**, and it marks the primary action on a screen (PLAY / RESUME /
+  PLAY AGAIN / SPECTATE) plus the single hero stat; everything else is `ACCENT_NEUTRAL`.
+  Do not introduce a second accent colour or a per-screen palette — that is the exact
+  drift this pass removed. (2) A styled `Button` must go through `UIStyle.style_button()`,
+  which deliberately overrides **all five** states (`normal`/`hover`/`pressed`/`focus`/
+  `disabled`): a Button with only a `normal` override silently falls back to Godot's
+  default light-grey theme the moment it is hovered, focused or disabled — and both
+  SETTINGS placeholders are disabled, while `PauseMenu` calls `grab_focus()` on RESUME.
+  (3) The four match stats render through `UIStyle.add_stat_row()` on BOTH the death screen
+  and the home screen; they are the same four numbers from `HUD._local_match_stats()` and
+  must not get two different row builders. (4) `HomeScreen` uses `SCREEN_BG` (opaque) and
+  every in-match overlay uses `BACKDROP` (translucent) — the home screen has no world
+  behind it, the overlays do, and the overlay backdrop is also what blocks mouse input to
+  the screens below. (5) DeathScreen's red title is the one deliberate exception to
+  `style_title()`; leave it that way. (6) This is the MENU visual pass only — terrain,
+  player, dummy and loot art are all still procedural dev art built in code, which is a
+  separate and much larger job.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

@@ -30,6 +30,10 @@ const PERMANENT_EFFECT_THRESHOLD := 3600.0
 @onready var _kill_progress_bar: ProgressBar = $Control/KillProgressPanel/VBoxContainer/KillBar
 @onready var _effects_panel: PanelContainer = $Control/EffectsPanel
 @onready var _effects_vbox: VBoxContainer = $Control/EffectsPanel/VBoxContainer
+## Sibling of $Control, not a child of it: PauseMenu is its own CanvasLayer
+## (layer 30) so it draws above the HUD's layer 1 AND the inventory panel's
+## layer 20 — the menu must cover an inventory panel left open when Esc was hit.
+@onready var _pause_menu: PauseMenu = $PauseMenu
 
 var _slot_panels: Array[PanelContainer] = []
 var _slot_labels: Array[Label] = []
@@ -42,6 +46,7 @@ var _active_slot: int = 0
 var _inventory: InventoryManager = null
 var _player: PlayerController = null
 var _match_hud_active: bool = true   # false once death/spectating/match-end hides the normal HUD
+var _leaving_match: bool = false     # true once RETURN TO HOME has been chosen; see _on_home_requested
 
 # Armor slot panel — built in code, appended to _bottom_hud after the hotbar.
 var _armor_panel: PanelContainer = null
@@ -93,6 +98,28 @@ func init(player: PlayerController, storm: StormSystem, _layer_manager: LayerMan
 	GameManager.match_won.connect(_on_match_won)
 	_win_screen.play_again_requested.connect(func(): GameManager.restart_match())
 	_win_screen.quit_requested.connect(func(): get_tree().quit())
+
+	# HOME on the two end-of-match screens (Known Issue #16). Both route through
+	# the SAME _on_home_requested() the esc menu uses, so there is one definition
+	# of "leave this match for the home screen". The difference is only in what
+	# has already happened by the time it runs: on these two paths the local
+	# player's match is genuinely OVER and GameManager.last_match_summary has
+	# already been written by _on_player_died()/_on_match_won(), so the home
+	# screen shows this match's real result. `_leaving_match` protects that —
+	# it makes both summary writers inert for the one deferred frame between the
+	# click and the scene change, so nothing can overwrite what is already there.
+	_death_screen.home_requested.connect(_on_home_requested)
+	_win_screen.home_requested.connect(_on_home_requested)
+
+	# Esc / pause menu. Same integration split as the win screen: the screen emits,
+	# HUD makes the GameManager / SceneTree calls. RETURN TO HOME is a mid-run
+	# abandonment — return_to_home() resets the roster but deliberately does NOT
+	# record a match summary, so the home screen keeps showing the last COMPLETED
+	# match rather than this abandoned one.
+	_pause_menu.home_requested.connect(_on_home_requested)
+	_pause_menu.quit_requested.connect(func(): get_tree().quit())
+	# Pausing is legal from here until the local player's match ends.
+	_pause_menu.set_available(true)
 
 	var max_hp := stats.max_health if stats.max_health > 0.0 else 1.0
 	_health_bar.max_value = max_hp
@@ -410,7 +437,28 @@ func _set_armor_slot_style(equipped: bool, tier: int) -> void:
 
 # --- Signal handlers ---
 
+## RETURN TO HOME. Three callers, one behaviour: the esc menu (mid-run
+## abandonment) and the HOME buttons on the DeathScreen and WinScreen (the local
+## player's match has already ended). `GameManager.return_to_home()` never writes
+## last_match_summary, so on the two end-of-match paths the summary already
+## recorded for this match is what the home screen shows, and on the abandon path
+## the last COMPLETED match survives. That is the whole distinction, and it needs
+## no branching here.
+##
+## `change_scene_to_file()` is deferred to the
+## end of the frame, so this scene gets one more (unpaused) frame of simulation
+## before it is freed — long enough, in principle, for a hazard tick to kill a
+## player who clicked at ~0 HP. `_leaving_match` makes that frame inert for the
+## two handlers that would otherwise record a result: abandoning a match must
+## never write GameManager.last_match_summary, whatever happens on the way out.
+func _on_home_requested() -> void:
+	_leaving_match = true
+	GameManager.return_to_home()
+
+
 func _on_player_died() -> void:
+	if _leaving_match:
+		return
 	# Connected to PlayerDeath.died (not the raw PlayerStats.player_died), which
 	# is only emitted after PlayerDeath has already called GameManager.mark_player_dead()
 	# — so by the time we get here, a same-frame match_won (this death happens to
@@ -418,18 +466,63 @@ func _on_player_died() -> void:
 	# win screen has already taken over. Skip a redundant DeathScreen in that case.
 	if GameManager.state == GameManager.MatchState.POST_MATCH:
 		return
+	# The DeathScreen is a modal decision point of its own; don't let the pause
+	# menu stack on top of it. Re-enabled in _on_spectate_requested() so a dead
+	# player watching the rest of the match still has a way back to the home screen.
+	_pause_menu.set_available(false)
 	var stats: PlayerStats = _player.stats
-	_death_screen.show_death({
-		"killer_name": stats.last_killer_name,
-		"damage": stats.last_killing_damage,
-		"layer_name": Constants.LAYER_NAMES.get(stats.get_layer(), "Unknown"),
-		"kills": stats.kill_count,
-	})
+	# Approximate placement: how many participants are still alive at this instant,
+	# plus this player. PlayerDeath calls GameManager.mark_player_dead() BEFORE
+	# emitting `died` (which is what got us here), so the local player is already
+	# out of get_living_player_ids() and must be added back in. This is a rank at
+	# time of death, NOT a historical finishing position — see DeathScreen._build_stats.
+	var summary := _local_match_stats(GameManager.get_living_player_ids().size() + 1, "died")
+	# Stash the exact same four stats for the home screen's "last match" block, so
+	# it can never disagree with what the player just read on the death screen.
+	# In-memory only (GameManager field) — nothing is written to disk.
+	GameManager.record_match_summary(summary)
+
+	# The death screen additionally needs who landed the killing blow; the shared
+	# stats above are passed through unchanged (DeathScreen ignores extra keys).
+	var death_data := summary.duplicate()
+	death_data["killer_name"] = stats.last_killer_name
+	death_data["damage"] = stats.last_killing_damage
+	_death_screen.show_death(death_data)
+
+
+## The local player's end-of-match stats — the single definition shared by the
+## death screen and the home screen's last-match block.
+##
+## HUD is the integration layer exactly as it is for the win screen: it reads
+## GameManager here and hands plain values on, so DeathScreen/HomeScreen never
+## talk to GameManager themselves. Everything below is a READ of already-recorded
+## roster data — no roster/match state is written.
+func _local_match_stats(placement: int, outcome: String) -> Dictionary:
+	var stats: PlayerStats = _player.stats
+	var entry: Dictionary = GameManager.get_player(_player.player_id)
+	# Deepest layer comes from the roster (Main wires PlayerStats.layer_changed ->
+	# GameManager.record_layer_reached), with the live layer as the fallback if this
+	# participant somehow isn't registered. Players only ever descend, so the two
+	# agree; the roster is the one the leaderboard also reports.
+	var deepest_layer: int = entry.get("deepest_layer", stats.get_layer())
+	return {
+		"layer_name": Constants.LAYER_NAMES.get(deepest_layer, "Unknown"),
+		"kills": int(entry.get("kills", stats.kill_count)),
+		# GameManager.match_elapsed is the existing authoritative match clock
+		# (ticked while IN_MATCH); no new timer was added for these screens.
+		"survival_seconds": GameManager.match_elapsed,
+		"placement": placement,
+		"total_players": GameManager.get_leaderboard().size(),
+		"outcome": outcome,
+	}
 
 
 func _on_spectate_requested() -> void:
 	_death_screen.visible = false
 	_hide_match_hud()
+	# Spectating is the one state with no other exit — Play Again and Quit both
+	# live on screens the spectator never reaches — so Esc stays available here.
+	_pause_menu.set_available(true)
 	var camera := _player.get_node("Camera2D") as Camera2D
 	_spectator_view.start_spectating(camera, _player.stats.last_killer_id)
 
@@ -438,14 +531,30 @@ func _on_spectate_requested() -> void:
 ## whoever's HUD instance is running: the winner (still playing, gets frozen
 ## here) or a spectator (already mid-SpectatorView).
 func _on_match_won(winner_id: int) -> void:
+	# Unreachable in practice once RETURN TO HOME has run (_reset_roster() drops
+	# the state out of IN_MATCH, and _check_win_condition() only fires while
+	# IN_MATCH), but paired with the same guard in _on_player_died so that "no
+	# summary is recorded on the abandon path" holds without depending on that.
+	if _leaving_match:
+		return
 	# TEMP DEBUG (remove after win-screen testing): confirms the signal reached
 	# the HUD instance and the WinScreen is about to be shown.
 	print("[Faultline][DEBUG] HUD received match_won — winner_id=%d; showing WinScreen" % winner_id)
+	# The match is over: WinScreen owns the exits from here (Play Again / Quit).
+	# Force-closes the pause menu if it is somehow open, which also unpauses.
+	_pause_menu.set_available(false)
 	_hide_match_hud()
 	_death_screen.visible = false
 	_spectator_view.stop_spectating()
 	if _player != null and is_instance_valid(_player) and not _player.stats.is_dead:
 		_player.freeze_controls()
+		# Surviving to the end of the match is the other way the local player's
+		# match ends, so record the home screen's last-match stats here too.
+		# Placement is 1: the only way to still be alive at match end is to be
+		# the sole survivor (the 0-alive wipe branch only fires once everyone,
+		# including this player, is dead — in which case _on_player_died has
+		# already recorded the summary and must not be overwritten here).
+		GameManager.record_match_summary(_local_match_stats(1, "won"))
 	_win_screen.show_results(GameManager.get_leaderboard(), winner_id)
 
 

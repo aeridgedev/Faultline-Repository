@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://flt_hud"]
+[gd_scene load_steps=8 format=3 uid="uid://flt_hud"]
 
 [ext_resource type="Script" path="res://src/ui/HUD.gd" id="1_hud"]
 [ext_resource type="PackedScene" path="res://src/ui/StormTimer.tscn" id="2_stormtimer"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/SpectatorView.tscn" id="5_spectatorview"]
 [ext_resource type="PackedScene" path="res://src/ui/KillCounter.tscn" id="6_killcounter"]
 [ext_resource type="PackedScene" path="res://src/ui/WinScreen.tscn" id="7_winscreen"]
+[ext_resource type="PackedScene" path="res://src/ui/PauseMenu.tscn" id="8_pausemenu"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
@@ -175,3 +176,5 @@ anchor_bottom = 1.0
 layout_mode = 1
 anchor_right = 1.0
 anchor_bottom = 1.0
+
+[node name="PauseMenu" parent="." instance=ExtResource("8_pausemenu")]

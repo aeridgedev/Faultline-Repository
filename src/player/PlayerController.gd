@@ -1196,7 +1196,13 @@ func _process_hitbox_overlaps() -> void:
 			_camera_shake.add_trauma(CameraShake.TRAUMA_MELEE_HIT)
 		if target_stats.is_dead:
 			stats.add_kill()
-			GameManager.record_kill(player_id)
+			# ROSTER kill credit moved to GameManager.mark_player_dead() ->
+			# _credit_killer_of(), which reads the victim's last_killer_id. Calling
+			# record_kill() here as well would double-count (the victim's death path
+			# already ran synchronously inside the take_damage() above), and this site
+			# only ever covered kills scored BY the local player — a TestDummy that
+			# killed the player scored 0. stats.add_kill() above stays: that is the
+			# local HUD counter + descent-gate progress, which is a separate number.
 			# Bloodthirst (Legendary Swords) heals the killer; no-op for every other weapon.
 			WeaponPassives.on_kill(_equipped_weapon, stats)
 		# Durability is spent once per swing that actually connects.
