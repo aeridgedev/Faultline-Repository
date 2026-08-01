@@ -1,38 +1,36 @@
 {
   "_meta": {
-    "description": "Per-layer chest loot pools. Chest SPAWN chance is computed by Constants.chest_spawn_chance(); this file controls WHAT a spawned chest contains. Upgrade Template = 10% weight within the relevant rarity pool. Loot pools are NOT terrain-specific.",
-    "status": "FIRST-PASS BALANCE; rarity_weights TIGHTENED 2026-07-06 (playtest: high tiers too common early — Epic was findable in Crust). Curve pushed toward Common/Rare early. Each row still sums to 100. category_weights unchanged. Testable values pending playtesting.",
-    "_balanced": "2026-07-05 first-pass; 2026-07-06 rarity tightened per playtest",
-    "_balance_note": "PHILOSOPHY: loot gets RARER but STRONGER deeper. Chest spawn chance already falls sharply with depth via the locked Constants.chest_spawn_chance() formula (Crust 80% -> Inner Core ~13%), so deep chests are few; their contents skew high-tier to compensate. 2026-07-06 rarity curve: Crust 88/12/0/0 (NO Epic or Legendary in Crust) · Mantle 68/27/5/0 · Outer Core 48/38/12/2 · Inner Core 22/40/30/8 · Core Hollow 0/30/52/18 (inert — no chests spawn there).",
-    "_legendary_distribution_note": "TENSION mostly resolved 2026-07-06: Legendary is now 0 in Crust AND Mantle, and only a lottery 2% in Outer Core — very close to the 'Legendary only appears deep' design line while preserving a tiny Outer Core jackpot. To follow the strict reading exactly, set Outer Core.Legendary to 0 and move its 2 into Epic (14) so the row still sums to 100.",
-    "categories": ["drill", "weapon", "armor", "relic", "throwable", "consumable", "special"]
+    "description": "Per-layer chest loot pools. Chest SPAWN chance is computed by Constants.chest_spawn_chance(); this file controls WHAT a spawned chest contains. Loot pools are NOT terrain-specific.",
+    "status": "THIRD-PASS 2026-08-01 — the 'special' category and upgrade_template_weight were REMOVED with the special-item system; category_weights rescaled so each row sums to 100 again. Rarity weights untouched since the 2026-07-31 second pass. Testable values pending playtesting.",
+    "_balanced": "2026-07-05 first-pass; 2026-07-06 rarity tightened; 2026-07-31 deep-layer high-tier odds raised; 2026-08-01 special category removed",
+    "_balance_note": "PHILOSOPHY: loot gets RARER but STRONGER deeper. Chest spawn chance already falls sharply with depth via the locked Constants.chest_spawn_chance() formula (Crust 60% -> Inner Core ~9.6% after the 2026-07-31 base-multiplier cut 0.8 -> 0.6; was 80% -> ~13%), so deep chests are few; their contents skew high-tier to compensate. Rarity curve: Crust 88/12/0/0 (NO Epic or Legendary in Crust) · Mantle 68/27/5/0 · Outer Core 46/37/14/3 · Inner Core 18/38/32/12 · Core Hollow 0/24/52/24 (inert — no chests spawn there).",
+    "_special_removed_2026_08_01": "The 'special' loot category was DELETED along with LayerBreachDevice / LifeCapsule / UpgradeTemplate / DeepRadar. It had never been rollable: LootTable._CATEGORIES always omitted 'special', so the per-layer 'special' weights (0/2/4/6/8) were dead data and the odds the game actually rolled were the normalised remainder of the other six categories. category_weights have therefore been RESCALED to that same effective distribution (each row back to 100, max drift 1.5 points on Mantle) — this is a bookkeeping fix, NOT a balance change: real drop odds are unchanged. The per-layer 'upgrade_template_weight': 10 fields were removed for the same reason; no code ever read them.",
+    "_legendary_rarity_note": "WHY LEGENDARY IS RARE, AND WHY IT WAS ONLY MODERATELY BUMPED. The drop weight multiplies against the locked chest_spawn_chance() curve, which puts Inner Core chests at only ~9.6% per candidate site. A player who reaches Inner Core under storm pressure realistically opens ~2-3 chests, so a deep run's odds of ever seeing a Legendary are roughly 25% (Outer Core at 3% over ~4 chests adds ~11%). Across drill/weapon/armor that is three separate lotteries, so most players finish a match having never seen a Legendary in the slot they cared about. 2026-07-31 raised Inner Core 8->12 and Outer Core 2->3; that was deliberately a moderate correction, since 'lottery-rare' is the stated design intent and there is no playtest data yet.",
+    "_legendary_next_lever_2026_08_01": "IMPORTANT — THE PREVIOUS ANSWER TO 'LEGENDARY IS TOO RARE' NO LONGER EXISTS. Earlier notes in this file pointed at the Upgrade Template (templates raise an item's tier, and were the intended deterministic route to Legendary) as the correct lever instead of another rarity bump. UpgradeTemplate was deleted 2026-08-01, so the raw drop table is now the ONLY way any Legendary enters a match. If Legendary proves too rare in playtest, the levers are: raise the deep-layer Legendary weights here, raise Constants.CHEST_BASE_SPAWN, or reinstate a tier-upgrade item. Do not assume a template path still exists.",
+    "_crust_mantle_unchanged_note": "Crust (88/12/0/0) and Mantle (68/27/5/0) are intentionally untouched. The 2026-07-06 pass removed Epic/Legendary from the shallow layers after a playtest showed high tiers arriving too early; that finding is not in tension with the 'Legendary too rare' one, which is about the DEEP layers. Keeping Legendary at 0 in both shallow layers also preserves the 'Legendary only appears deep' design line.",
+    "categories": ["drill", "weapon", "armor", "relic", "throwable", "consumable"]
   },
   "layers": {
     "Crust": {
       "rarity_weights":   { "Common": 88, "Rare": 12, "Epic": 0,  "Legendary": 0  },
-      "category_weights": { "drill": 25,  "weapon": 25, "armor": 12, "relic": 2,  "throwable": 6,  "consumable": 30, "special": 0 },
-      "upgrade_template_weight": 10
+      "category_weights": { "drill": 25,  "weapon": 25, "armor": 12, "relic": 2,  "throwable": 6,  "consumable": 30 }
     },
     "Mantle": {
       "rarity_weights":   { "Common": 68, "Rare": 27, "Epic": 5,  "Legendary": 0  },
-      "category_weights": { "drill": 22,  "weapon": 22, "armor": 14, "relic": 5,  "throwable": 9,  "consumable": 26, "special": 2 },
-      "upgrade_template_weight": 10
+      "category_weights": { "drill": 22,  "weapon": 22, "armor": 14, "relic": 5,  "throwable": 9,  "consumable": 28 }
     },
     "Outer Core": {
-      "rarity_weights":   { "Common": 48, "Rare": 38, "Epic": 12, "Legendary": 2  },
-      "category_weights": { "drill": 18,  "weapon": 20, "armor": 17, "relic": 8,  "throwable": 12, "consumable": 21, "special": 4 },
-      "upgrade_template_weight": 10
+      "rarity_weights":   { "Common": 46, "Rare": 37, "Epic": 14, "Legendary": 3  },
+      "category_weights": { "drill": 19,  "weapon": 21, "armor": 18, "relic": 8,  "throwable": 12, "consumable": 22 }
     },
     "Inner Core": {
-      "rarity_weights":   { "Common": 22, "Rare": 40, "Epic": 30, "Legendary": 8  },
-      "category_weights": { "drill": 14,  "weapon": 18, "armor": 19, "relic": 12, "throwable": 14, "consumable": 17, "special": 6 },
-      "upgrade_template_weight": 10
+      "rarity_weights":   { "Common": 18, "Rare": 38, "Epic": 32, "Legendary": 12 },
+      "category_weights": { "drill": 15,  "weapon": 19, "armor": 20, "relic": 13, "throwable": 15, "consumable": 18 }
     },
     "Core Hollow": {
-      "_note": "Core Hollow's design states 'no loot spawns inside it,' and ChestSpawner currently EXCLUDES Core Hollow — so this entry is inert today. It exists only so that IF Core Hollow chests are ever enabled, sensible odds already exist. Rarity here is the richest in the game (no Common at all; Legendary 30%), matching the 'rarest but strongest deepest' philosophy.",
-      "rarity_weights":   { "Common": 0,  "Rare": 30, "Epic": 52, "Legendary": 18 },
-      "category_weights": { "drill": 8,   "weapon": 20, "armor": 20, "relic": 16, "throwable": 16, "consumable": 12, "special": 8 },
-      "upgrade_template_weight": 10
+      "_note": "Core Hollow's design states 'no loot spawns inside it,' and ChestSpawner currently EXCLUDES Core Hollow — so this entry is inert today. It exists only so that IF Core Hollow chests are ever enabled, sensible odds already exist. Rarity here is the richest in the game (no Common at all; Legendary 24%), matching the 'rarest but strongest deepest' philosophy.",
+      "rarity_weights":   { "Common": 0,  "Rare": 24, "Epic": 52, "Legendary": 24 },
+      "category_weights": { "drill": 9,   "weapon": 22, "armor": 22, "relic": 17, "throwable": 17, "consumable": 13 }
     }
   }
 }

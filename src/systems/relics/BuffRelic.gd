@@ -5,6 +5,10 @@ extends RefCounted
 
 var relic_type: Constants.Relic = Constants.Relic.HASTE
 var is_active: bool = false
+## Duration of the most recent activation, in seconds. Exposed so RelicManager can mirror
+## the same value into PlayerStats.apply_status() for the HUD countdown — the panel must
+## never be able to disagree with the real expiry computed here.
+var duration: float = 0.0
 var _expires_at: float = 0.0   # in seconds, on the Time.get_ticks_msec() / 1000.0 clock
 
 
@@ -13,7 +17,8 @@ func activate(current_time: float) -> void:
 		Constants.RELIC_NAMES[relic_type].to_lower(), null
 	)
 	# TBD: duration null → use 3.5s midpoint of the ~3–4s window.
-	_expires_at = current_time + (float(dur) if dur != null else 3.5)
+	duration = float(dur) if dur != null else 3.5
+	_expires_at = current_time + duration
 	is_active = true
 
 

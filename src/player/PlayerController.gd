@@ -5,14 +5,11 @@ extends CharacterBody2D
 @export var player_id: int = 0
 
 @onready var stats: PlayerStats = $PlayerStats
-@onready var stamina: Stamina = $Stamina
 
 var _move_speed: float = 0.0    # TBD: loaded from GameManager.data["player_move_speed"]
 var _gravity: float = 0.0       # TBD: loaded from GameManager.data["player_gravity"]
 var _gravity_default: float = 0.0
 var _zero_gravity: bool = false  # true inside the Core Hollow: free movement, no gravity, no step-up
-var _sprint_mult: float = 1.0   # TBD: loaded from GameManager.data["sprint_speed_mult"]
-var _sprint_cost: float = 0.0   # TBD: stamina/sec while sprinting
 
 var _terrain_manager: TerrainManager = null
 var _storm: StormSystem = null
@@ -63,6 +60,11 @@ const TOOL_SWORD := 1
 const TOOL_NONE  := 2
 var _active_tool: int = TOOL_NONE
 
+## -1.0 = facing left, +1.0 = facing right. Updated from the swing aim (and from movement
+## when not swinging). Read via get_facing_sign() by WeaponPassives._is_behind() to decide
+## whether an Assassin's Mark backstab crit applies.
+var _facing: float = 1.0
+
 var _active_slot: int = 0
 var _consumable_cache: Dictionary = {}  # slot_index -> ConsumableBase instance
 var _hotbar: Hotbar = null
@@ -80,8 +82,6 @@ func _ready() -> void:
 	_move_speed = float(d.get("player_move_speed", 0.0))
 	_gravity = float(d.get("player_gravity", 0.0))
 	_gravity_default = _gravity
-	_sprint_mult = float(d.get("sprint_speed_mult", 1.0))
-	_sprint_cost = float(d.get("stamina_sprint_cost_per_sec", 0.0))
 	var wtiles: int = d.get("world_width_tiles", 0)
 	_world_width_px = float(wtiles) * float(Constants.TILE_SIZE)
 	_build_dev_sprite()
@@ -558,6 +558,13 @@ func setup_hotbar() -> void:
 		_on_active_slot_changed(_hotbar.get_active_slot())
 
 
+## -1.0 (facing left) / +1.0 (facing right). Public so WeaponPassives can decide whether an
+## attacker is behind this player for the Assassin's Mark backstab crit. TestDummy exposes
+## the same method; anything without it is never treated as backstabbable.
+func get_facing_sign() -> float:
+	return _facing
+
+
 func _active_item() -> Variant:
 	if _hotbar == null:
 		return null
@@ -691,18 +698,36 @@ func _use_scanner(item: Dictionary) -> void:
 		_inventory.remove_item(_active_slot)   # single-use (placeholder decision — design doesn't specify; revisit at balance pass)
 
 
+## DeepRadar was removed 2026-08-01 with the "special" loot category, so BasicScanner is
+## the only scanner left. The match is kept (rather than collapsed to a single return) so
+## adding a second scanner class stays a one-line change.
 func _make_scanner(item_class: int) -> ScannerBase:
 	match item_class:
 		Constants.Scanner.BASIC_SCANNER: return BasicScanner.new()
-		Constants.Scanner.DEEP_RADAR:    return DeepRadar.new()
 	return null
 
 
+## Activates the relic in the active hotbar slot and CONSUMES it (single use).
+##
+## Consumption is what enforces the locked "~3-4s" duration. Without it the relic stayed
+## in the slot and nothing guarded re-activation, so holding G down and mashing it simply
+## re-applied the buff every press — BuffRelic.activate() recomputes _expires_at and
+## apply_status() overwrites the panel entry, both by design — giving effectively permanent
+## Haste/Speed/Strength and making the duration meaningless. A re-activation cooldown was
+## considered instead and rejected: the buff could still be refreshed the instant it lapsed,
+## so uptime would stay near 100% and the duration would still not mean anything.
+##
+## Single-use also matches every other G-usable item type (throwables, consumables and
+## scanners all remove_item() after use) and fits "relics cannot be dropped after pickup" —
+## the slot is freed by SPENDING the relic, never by discarding it. remove_item() only
+## clears the slot; it does not spawn a world LootDrop, so the no-drop rule is untouched.
 func _use_relic(item: Dictionary) -> void:
 	if _relic_manager == null:
 		return
 	_relic_manager.activate_relic(item.get("item_class"))
 	print("[Item] Activated relic: ", Constants.RELIC_NAMES.get(item.get("item_class"), "?"))
+	if _inventory != null:
+		_inventory.remove_item(_active_slot)   # activated = consumed
 
 
 func _get_or_create_consumable(slot: int, item_class: int) -> ConsumableBase:
@@ -880,11 +905,9 @@ func _handle_movement(delta: float) -> void:
 	# gravity, no terrain to walk on). Outside it, vertical motion is gravity-only.
 	var vertical := Input.get_axis("move_up", "move_down") if _zero_gravity else 0.0
 	var speed := _move_speed
-	# Sprint: hold sprint while moving to go faster, draining stamina. Blocked while
-	# depleted so the player must let it recover (recovery threshold in Stamina).
-	if (direction != 0.0 or vertical != 0.0) and Input.is_action_pressed("sprint") and not stamina.is_depleted:
-		if stamina.drain(_sprint_cost * delta):
-			speed *= _sprint_mult
+	# Sprint REMOVED 2026-08-01 — the Speed relic is now the only movement boost in the
+	# game, by design. Do not reintroduce a hold-to-sprint key: sustained self-serve speed
+	# would make the relic (single-use, ~3-4s) worthless.
 	# Active Speed relic multiplies movement (1.0 when no relic / not active).
 	if _relic_manager != null:
 		speed *= _relic_manager.move_speed_mult()
@@ -892,6 +915,8 @@ func _handle_movement(delta: float) -> void:
 	speed *= stats.status_move_speed_mult()
 	# Tempest armor passive: movement bonus while worn (1.0 when no/broken armor or TBD).
 	speed *= stats.armor_move_speed_mult()
+	if direction != 0.0:
+		_facing = signf(direction)   # walking re-orients the player (swings override it)
 	velocity.x = direction * speed
 	if _zero_gravity:
 		velocity.y = vertical * speed
@@ -1090,6 +1115,14 @@ func _activate_attack_hitbox() -> void:
 	if aim.length_squared() < 0.0001:
 		aim = Vector2.RIGHT
 	aim = aim.normalized()
+	# Facing follows the swing so a backstab check (Assassin's Mark) reads the direction
+	# the player is actually striking in, not stale movement input.
+	if absf(aim.x) > 0.001:
+		_facing = signf(aim.x)
+	# Swing-start passives: Riposte's parry window (self buff) and Impaling Lunge's dash.
+	# Fires on the swing itself, so a whiff still costs/grants them — deliberate: both are
+	# commitment mechanics, not rewards for connecting.
+	WeaponPassives.on_swing(_equipped_weapon, self, stats, aim)
 	var reach: Variant = _equipped_weapon.attack_range
 	var reach_px := float(reach) if reach != null else float(Constants.TILE_SIZE * 3)
 
@@ -1144,8 +1177,17 @@ func _process_hitbox_overlaps() -> void:
 			total_dmg *= _relic_manager.damage_mult()
 		# Status effects: Weakness Bomb (< 1.0), Bloodstim (> 1.0).
 		total_dmg *= stats.status_damage_output_mult()
+		# Weapon passive damage multiplier — Assassin's Mark (backstab crit) and
+		# Executioner (low-HP bonus). 1.0 for every other class/tier.
+		total_dmg *= WeaponPassives.damage_mult(_equipped_weapon, self, body, target_stats)
 		var attacker_name: String = GameManager.get_player(player_id).get("name", "Unknown")
-		target_stats.take_damage(total_dmg, attacker_name, player_id)
+		# Piercing Thrust weakens the target's armor for this hit only (0.0 otherwise).
+		target_stats.take_damage(total_dmg, attacker_name, player_id, true,
+			WeaponPassives.armor_pierce(_equipped_weapon))
+		# On-hit passives: bleed / stagger / knockback / armor shred. Runs after the
+		# damage so a lethal blow does not also apply a debuff to a corpse (on_hit
+		# early-returns when the target is already dead).
+		WeaponPassives.on_hit(_equipped_weapon, self, body, target_stats)
 		# Impact feedback for the swing connecting. Fires per body hit, so an arc
 		# that catches several targets stacks into a heavier jolt (trauma clamps at
 		# 1.0). Whiffs never reach here, so a miss is silent — which is the point.
@@ -1155,6 +1197,8 @@ func _process_hitbox_overlaps() -> void:
 		if target_stats.is_dead:
 			stats.add_kill()
 			GameManager.record_kill(player_id)
+			# Bloodthirst (Legendary Swords) heals the killer; no-op for every other weapon.
+			WeaponPassives.on_kill(_equipped_weapon, stats)
 		# Durability is spent once per swing that actually connects.
 		if not _swing_consumed:
 			_swing_consumed = true

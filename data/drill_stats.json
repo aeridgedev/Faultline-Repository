@@ -1,9 +1,11 @@
 {
   "_meta": {
     "description": "Drill Class x Tier matrix. Class and Tier are INDEPENDENT — any class can be any tier. Upgrade Templates raise tier and fully restore durability. Legendary is the ceiling. No movement weight penalty.",
-    "status": "FIRST-PASS BALANCED (2026-07-05) — dig_time_mult and durability set on a deliberate dramatic tier curve (Common→Rare→Epic→Legendary big power leaps, Legendary a huge windfall); spawn_weights sum to 100. Values are testable first-pass, NOT final; pending playtesting.",
-    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
-    "_balance_note": "Precision/Thermal/Resonance share one base curve; Burst is intentionally slightly slower and less durable per tier because it destroys 2 tiles per dig. Tier jumps are dramatic by design.",
+    "status": "SECOND-PASS BALANCED (2026-07-31) — tier curve compressed; the first pass's 'dramatic tier jumps' made Legendary drills a run-defining windfall and made Legendary durability effectively infinite. spawn_weights unchanged and still sum to 100. Values are testable, NOT final; pending playtesting.",
+    "_balanced": "2026-07-05 first-pass; 2026-07-31 second pass — testable values pending playtesting",
+    "_balance_note": "Precision/Thermal/Resonance share one base curve; Burst is intentionally ~10% slower and ~15% less durable per tier because it destroys 2 tiles per dig.",
+    "_tier_curve_2026_07_31": "dig_time_mult 1.00/0.72/0.50/0.32 -> 1.00/0.78/0.60/0.46. Legendary now digs 2.17x faster than Common instead of 3.13x, and the per-tier steps are even (-22%/-23%/-23%) instead of compounding (-28%/-31%/-36%). A Legendary drill is a strong edge, not a different game. Burst mirrors this at x1.10: 1.10/0.86/0.66/0.51.",
+    "_durability_2026_07_31": "durability 150/350/750/1600 -> 150/280/480/800 (Burst 130/310/680/1450 -> 130/240/410/680). 1600 tile-breaks exceeded what a player can physically dig in an 18-22 min match, so a Legendary drill never broke — which silently removed the Upgrade Template's 'fully restores durability' payoff for the tier that matters most. 800 is still roughly a full match of heavy digging but is finite. Tier ratio tightened from 10.7x to 5.3x. Common deliberately unchanged.",
     "fields": {
       "dig_time_mult": "multiplier on base terrain dig time (lower = faster). Per-terrain class strength lives in terrain_stats.json class_effectiveness.",
       "durability": "number of tile-breaks before the drill is consumed/needs an Upgrade Template",
@@ -18,9 +20,9 @@
       "spawn_weight": 40,
       "tiers": {
         "Common":    { "dig_time_mult": 1.00, "durability": 150 },
-        "Rare":      { "dig_time_mult": 0.72, "durability": 350 },
-        "Epic":      { "dig_time_mult": 0.50, "durability": 750 },
-        "Legendary": { "dig_time_mult": 0.32, "durability": 1600 }
+        "Rare":      { "dig_time_mult": 0.78, "durability": 280 },
+        "Epic":      { "dig_time_mult": 0.60, "durability": 480 },
+        "Legendary": { "dig_time_mult": 0.46, "durability": 800 }
       }
     },
     "Burst": {
@@ -29,9 +31,9 @@
       "spawn_weight": 28,
       "tiers": {
         "Common":    { "dig_time_mult": 1.10, "durability": 130 },
-        "Rare":      { "dig_time_mult": 0.80, "durability": 310 },
-        "Epic":      { "dig_time_mult": 0.56, "durability": 680 },
-        "Legendary": { "dig_time_mult": 0.36, "durability": 1450 }
+        "Rare":      { "dig_time_mult": 0.86, "durability": 240 },
+        "Epic":      { "dig_time_mult": 0.66, "durability": 410 },
+        "Legendary": { "dig_time_mult": 0.51, "durability": 680 }
       }
     },
     "Thermal": {
@@ -40,9 +42,9 @@
       "spawn_weight": 18,
       "tiers": {
         "Common":    { "dig_time_mult": 1.00, "durability": 150 },
-        "Rare":      { "dig_time_mult": 0.72, "durability": 350 },
-        "Epic":      { "dig_time_mult": 0.50, "durability": 750 },
-        "Legendary": { "dig_time_mult": 0.32, "durability": 1600 }
+        "Rare":      { "dig_time_mult": 0.78, "durability": 280 },
+        "Epic":      { "dig_time_mult": 0.60, "durability": 480 },
+        "Legendary": { "dig_time_mult": 0.46, "durability": 800 }
       }
     },
     "Resonance": {
@@ -51,9 +53,9 @@
       "spawn_weight": 14,
       "tiers": {
         "Common":    { "dig_time_mult": 1.00, "durability": 150 },
-        "Rare":      { "dig_time_mult": 0.72, "durability": 350 },
-        "Epic":      { "dig_time_mult": 0.50, "durability": 750 },
-        "Legendary": { "dig_time_mult": 0.32, "durability": 1600 }
+        "Rare":      { "dig_time_mult": 0.78, "durability": 280 },
+        "Epic":      { "dig_time_mult": 0.60, "durability": 480 },
+        "Legendary": { "dig_time_mult": 0.46, "durability": 800 }
       }
     }
   }

@@ -1,27 +1,19 @@
 {
   "_meta": {
-    "description": "Chest spawn formula parameters and special-item spawn rates. The chest spawn chance per layer is derived, not hand-set.",
-    "status": "PARTIAL — formula LOCKED, special rates first-pass balanced",
-    "formula": "spawnChance = 0.8 * (1 - depthFactor)^2",
+    "description": "Chest spawn formula parameters. The chest spawn chance per layer is derived, not hand-set.",
+    "status": "MIRROR ONLY — formula LOCKED. Nothing in this file is read at runtime.",
+    "formula": "spawnChance = 0.6 * (1 - depthFactor)^2",
     "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
-    "_balance_note": "special_item_spawn_rates filled as relative weights inside the loot 'special' category; kept low because these are powerful/rare items. chest_spawn block untouched (LOCKED formula + derived chances)."
+    "_special_removed_2026_08_01": "The special_item_spawn_rates block was DELETED with the 'special' loot category and its items (LayerBreachDevice / LifeCapsule / UpgradeTemplate / DeepRadar). Its old contents, for the record: layer_breach_device 4, life_capsule 3, upgrade_template '10% weight in relevant rarity pool', fault_beacon 5, deep_radar 4. NOTE: fault_beacon was listed there but FaultBeacon is a CONSUMABLE and still exists — it rolls through the normal 'consumable' loot category and is unaffected by this removal.",
+    "_chest_spawn_note": "MIRROR ONLY — NOT THE SOURCE OF TRUTH. ChestSpawner calls Constants.chest_spawn_chance(), which reads Constants.CHEST_BASE_SPAWN. Nothing reads this file at runtime any more — the special_item_spawn_rates block was the only reason DataLoader's copy was ever consulted, and it is gone. This block is kept in sync purely so the file does not mislead. 2026-07-31: base 0.8 -> 0.6 (-25%) at explicit user request, chests spawned too often; per-layer 0.800/0.512/0.288/0.128 -> 0.600/0.384/0.216/0.096. The squared depth falloff is unchanged, so every layer scaled by the same 0.75. If you change the rate, change Constants.CHEST_BASE_SPAWN and update this mirror to match."
   },
   "chest_spawn": {
-    "base": 0.8,
+    "base": 0.6,
     "by_layer": {
-      "Crust":      { "depth_factor": 0.0, "chance": 0.800 },
-      "Mantle":     { "depth_factor": 0.2, "chance": 0.512 },
-      "Outer Core": { "depth_factor": 0.4, "chance": 0.288 },
-      "Inner Core": { "depth_factor": 0.6, "chance": 0.128 }
+      "Crust":      { "depth_factor": 0.0, "chance": 0.600 },
+      "Mantle":     { "depth_factor": 0.2, "chance": 0.384 },
+      "Outer Core": { "depth_factor": 0.4, "chance": 0.216 },
+      "Inner Core": { "depth_factor": 0.6, "chance": 0.096 }
     }
-  },
-  "special_item_spawn_rates": {
-    "_status": "first-pass balanced",
-    "_interpretation_note": "These are relative spawn weights inside the loot_tables.json 'special' category, not probabilities. Kept low because these items are powerful/rare. Pending playtest tuning.",
-    "layer_breach_device": 4,
-    "life_capsule": 3,
-    "upgrade_template": "10% weight in relevant rarity pool (see loot_tables.json)",
-    "fault_beacon": 5,
-    "deep_radar": 4
   }
 }

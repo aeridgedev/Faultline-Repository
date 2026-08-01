@@ -78,7 +78,7 @@ game/
 ├── src/
 │   ├── core/                Constants.gd, GameManager.gd, DataLoader.gd, Main.gd/.tscn
 │   ├── world/               WorldGenerator, TerrainManager, TerrainTypes, LayerManager, ChestSpawner, LayerVisuals
-│   ├── player/              PlayerController, PlayerStats, Stamina, DescentTracker, PlayerDeath
+│   ├── player/              PlayerController, PlayerStats, DescentTracker, PlayerDeath
 │   ├── systems/
 │   │   ├── inventory/       InventoryManager, Hotbar, AutoCollect
 │   │   ├── drill/           DrillBase, DrillClass, DrillTier, DrillUpgrade
@@ -88,8 +88,8 @@ game/
 │   │   ├── relics/          RelicManager, BuffRelic, ToughnessRelic
 │   │   ├── throwables/      ThrowableBase + 7 throwables
 │   │   ├── consumables/     Lytes, Medkit, ThermalCapsule, Bloodstim, FaultBeacon
-│   │   ├── special/         LayerBreachDevice, LifeCapsule, UpgradeTemplate
-│   │   ├── scanners/        ScannerBase, BasicScanner, DeepRadar
+│   │   ├── special/         (empty — whole category deleted 2026-08-01)
+│   │   ├── scanners/        ScannerBase, BasicScanner
 │   │   └── vfx/             VFXManager, DebrisBurst, CameraShake  ← client-local only
 │   ├── hazards/             DepthHazard, StormSystem, PressureSystem
 │   ├── sound/               SoundManager, TerrainAudio, PlayerAudio (detection layer)
@@ -126,9 +126,10 @@ Crust → Mantle: 1 kill · Mantle → Outer Core: 2 kills · Outer Core → Inn
 
 **Drills — Class × Tier matrix, fully independent.** 4 classes: Precision /
 Burst / Thermal / Resonance. Any class can be any tier (a Legendary Resonance
-Drill is valid). Upgrade Templates raise tier (ceiling = Legendary) and **fully
-restore durability** when applied. **No drill weight / movement penalty.** Class
-strengths vs terrain: yes (values TBD).
+Drill is valid). ~~Upgrade Templates raise tier (ceiling = Legendary) and fully
+restore durability when applied.~~ **REMOVED 2026-08-01 — there is no tier-upgrade
+item any more; an item's tier is fixed at the moment it drops.** **No drill weight /
+movement penalty.** Class strengths vs terrain: yes (values TBD).
 
 **Weapons — 5 classes:** Daggers / Swords / Hammers / Spears / Axes. 4 tiers.
 Tier scaling (LOCKED, in `Constants.WEAPON_TIER_SCALING`): Rare +20% dmg/+10%
@@ -146,11 +147,16 @@ to collect it; when several drops are in range, the **closest is picked up first
 (one item per press). If it can't fit, a brief **"Inventory full"** message shows
 and nothing is collected. Do not reintroduce automatic pickup.
 
-**Chest / loot:** spawn chance `= 0.8 × (1 − depthFactor)²` →
-Crust 80% / Mantle 51.2% / Outer Core 28.8% / Inner Core 12.8%. Independent of
-terrain type; no terrain-specific loot pools. Upgrade Template = **10% weight in
-the relevant rarity pool** (not a flat per-chest roll). Use
-`Constants.chest_spawn_chance()`.
+**Chest / loot:** spawn chance `= 0.6 × (1 − depthFactor)²` →
+Crust 60% / Mantle 38.4% / Outer Core 21.6% / Inner Core 9.6%. Independent of
+terrain type; no terrain-specific loot pools. ~~Upgrade Template = 10% weight in
+the relevant rarity pool.~~ **REMOVED 2026-08-01 with the whole special category —
+the `upgrade_template_weight` fields are gone from `loot_tables.json` and no code
+ever read them.** Use `Constants.chest_spawn_chance()`.
+*(Base multiplier changed 0.8 → 0.6 on 2026-07-31 at explicit user request — chests were
+spawning too often. This is a LOCKED value; it was changed deliberately, not silently. The
+squared depth falloff was NOT touched, so every layer scales by the same 0.75 and the
+per-layer ratio is unchanged. Retune the multiplier, never the exponent.)*
 
 **Terrain:** tile-based, fully destructible, persistent per match, procedural
 (different every match). Affects movement speed (TBD) and drill dig time (by
@@ -560,11 +566,12 @@ which item this session targets before writing code.
   deliberate difference from Echo Charge's `"Revealed"` status). (2) Detection is
   client-local as a documented step-9 deviation — networking must run the roster query
   server-side and send results only to the scanning player; do not "fix" the offline
-  version by broadcasting markers. (3) Scanners are in NO loot pool: the `"special"`
-  loot category exists in `loot_tables.json`/`spawn_rates.json` data but
-  `LootTable._CATEGORIES` deliberately doesn't roll it yet — wiring the special
-  category (LayerBreachDevice/LifeCapsule/DeepRadar) is its own future task, not a
-  scanner bug; the DEV `BASIC_SCANNER` in `setup_hotbar()` is the offline test path
+  version by broadcasting markers. (3) Scanners are in NO loot pool. This was originally
+  because the `"special"` loot category was never wired into `LootTable._CATEGORIES`;
+  **as of 2026-08-01 that category and all its items are deleted outright**, so a scanner
+  is now obtainable ONLY through the DEV loadout. If scanners should be lootable, they
+  need adding to an existing category — there is no special category to revive;
+  the DEV `BASIC_SCANNER` in `setup_hotbar()` is the offline test path
   (backpack slot 6 → drag to hotbar via F → G).
 - **RESOLVED (2026-07-06) — `SpectatorView` crashed on SPECTATE (Godot 3 → 4 Camera2D
   API).** `_reparent_camera()` set `_camera.current = true`, but in Godot 4 `Camera2D.current`
@@ -746,6 +753,211 @@ which item this session targets before writing code.
   `move_and_slide()`) than the old after-the-fact correction did. (5) The "vertical escape
   is manual via the drill" decision stands — this fix restored the existing step-up inside
   the trench and added **no** jump/climb/fly.
+- **RESOLVED (2026-07-31) — chest interact rebound `E` → **Mouse Button 4**, and promoted from a
+  raw keycode check to a named `interact` InputMap action.** **This is a CHANGE to a previously
+  documented binding, not a new one: chest open/close was `E` and is now MB4 only — `E` is fully
+  unbound and is no longer read anywhere in `src/`.** Two things were not as expected when this was
+  picked up, both worth recording: (1) there was **no `interact` action in the InputMap at all** —
+  `Chest.gd._unhandled_input()` tested `event.physical_keycode == KEY_E` directly, so there was
+  nothing to rebind and the action had to be created; (2) CLAUDE.md had **no Input Bindings
+  section** — individual bindings were only ever recorded ad hoc in RESOLVED entries like this one.
+  The action is now `interact` in `project.godot`, and `Chest.gd` calls
+  `event.is_action_pressed("interact")` (which already filters releases and key echo, so the old
+  `pressed`/`echo` guards were dropped). **Locked rules going forward:** (1) **"MB4" means
+  `MOUSE_BUTTON_XBUTTON1`, which is `button_index` 8** — NOT Godot's `button_index` 4. In Godot's
+  `MouseButton` enum index 4 is `WHEEL_UP` and index 5 is `WHEEL_DOWN`, and **both are already bound
+  to `hotbar_next`/`hotbar_prev`**; binding an action to index 4 would fire it on every scroll-up
+  alongside the hotbar cycle. Never bind anything else to index 4 or 5 — the wheel belongs to hotbar
+  cycling. (2) New interaction verbs get a **named InputMap action**, never a raw
+  `physical_keycode ==` comparison; the project already migrated `use_item` (G) this way, and a raw
+  check is invisible to any future rebinding or remap UI. (3) Any on-screen prompt naming a key
+  (`Chest.gd`'s `_prompt.text`, the popup close hint, and the `Prompt` label default in
+  `Chest.tscn`) must be updated in the same change as the binding — a rebind that leaves the prompt
+  saying "Press E" is a broken feature from the player's side, not a cosmetic mismatch.
+  (4) **MOUSE-BUTTON ACTIONS MUST BE POLLED VIA THE `Input` SINGLETON, NEVER READ AS EVENTS.**
+  The first version of this rebind kept `Chest.gd`'s existing `_unhandled_input()` handler and
+  silently never fired. `HUD.tscn`'s root `Control` is full-rect (`anchors_preset = 15`) and does
+  not set `mouse_filter`, so it defaults to `MOUSE_FILTER_STOP` and **swallows every mouse button
+  event in the GUI pass before `_input`/`_unhandled_input` is reached**. Keyboard events are
+  unaffected (a `Control` only consumes those while focused), which is exactly why the same handler
+  worked for `E` and broke the instant it became a mouse button — and why `drill`/`attack` never hit
+  this: `PlayerController` polls `Input.is_action_pressed("drill")`. `Chest.gd` now polls
+  `Input.is_action_just_pressed("interact")` in `_process()`. Because polling has no equivalent of
+  `set_input_as_handled()`, it also needs a `static var _interact_frame_claimed` guard so two chests
+  with overlapping ranges don't both consume one press. Do not "tidy" any polled mouse action back
+  into an event handler, and do not fix this by setting the HUD Control to `MOUSE_FILTER_IGNORE` —
+  the HUD's own buttons (death/win screens, inventory panel) need to receive clicks.
+- **RESOLVED (2026-07-31) — the inventory panel's background is MEASURED from its content, never
+  hardcoded.** The panel background was a fixed 220×270 `Panel` while its contents are built at
+  runtime from `Constants.TOTAL_CARRY_SLOTS` (title + 3 sections, each an `HSeparator` + header
+  `Label` + its rows = 15 VBox children, 14×3px separations, 8 rows at ~20px, plus 10px margins).
+  The content is taller than 270, so the `VBoxContainer` overflowed and the last backpack row
+  (**BP2**) drew outside the background/border with the world visible behind it. It bled rather than
+  clipped because **`Panel` is not a `Container`** — it draws a background at whatever size it is
+  given and imposes no layout on its children. **Two measure-then-resize attempts failed** (setting
+  `offset_top`/`offset_bottom` from `_panel_margin.get_combined_minimum_size().y`, deferred and on
+  `open_panel()`): a screenshot of the open panel showed the background still exactly 270 tall with
+  BP2 a full row outside it, because the rows' real laid-out height (~27px) exceeds the minimum the
+  containers report, so the measurement under-read. **The fix is structural, not arithmetic:** the
+  background is now a `CenterContainer` (full-rect) → **`PanelContainer`** → `MarginContainer` →
+  `VBoxContainer`. A `PanelContainer` IS a Container and sizes itself to its content; there is no
+  height constant and no measurement anywhere. `_msg_label` moved from a bottom-anchored overlay to
+  the **last row of the VBox**, permanently visible with `custom_minimum_size.y =
+  PANEL_MSG_STRIP_HEIGHT` and blanked text when idle, so `_flash_message()` sets/clears `.text`
+  instead of `.visible`. **Locked rules going forward:** (1) a code-built panel background that
+  wraps dynamic content must be a **`PanelContainer`**, never a bare `Panel` with a computed size —
+  do not reintroduce a height constant or a `get_combined_minimum_size()` fit; both have now failed
+  here. (2) `_msg_label` must stay a laid-out row with reserved height and must be blanked by text,
+  never by `.visible` — hiding it removes its height and reflows every slot row above it. (3) The
+  `CenterContainer` must stay `MOUSE_FILTER_IGNORE` so click-outside still reaches the dim backdrop
+  beneath it. (4) Remember that a `Panel` overflowing looks like a rendering/z-order bug, not a
+  layout bug; if UI content appears outside its background, check the container type first.
+- **RESOLVED (2026-07-31) — relics now register on the HUD buff panel; "G does nothing" was
+  missing FEEDBACK, not a broken dispatch.** The whole path was already correct and is unchanged:
+  `LootTable.roll()` emits `{"type": "relic", …}` → `Hotbar.get_active_item()` → 
+  `PlayerController._handle_item_use()`'s `"relic"` branch → `_use_relic()` →
+  `RelicManager.activate_relic()` → `BuffRelic.activate()` / `ToughnessRelic.activate()`, and
+  `relic_duration`/`relic_strength` in `world_config.json` are populated (not null). Activation
+  worked; nothing on screen said so. **Why it looked dead:** relics were the only G-usable item
+  type that never called `PlayerStats.apply_status()`, so no HUD buff row appeared; the relic is
+  not consumed on use, so the hotbar slot is unchanged; and 3 of 4 effects are invisible
+  (Toughness = a `damage_reduction` field, Haste = a swing-cooldown divisor, Strength = an
+  outgoing-damage multiplier). The only evidence of success was a `print()`. `RelicManager` now
+  calls `apply_status()` for all 4. **Locked rules going forward:** (1) the relic's
+  `apply_status()` payload MUST stay **empty** — the multipliers are already applied by their own
+  consumers (`PlayerController._handle_movement`/swing/hit read `move_speed_mult()`/
+  `attack_speed_mult()`/`damage_mult()`, and `ToughnessRelic` writes `PlayerStats.damage_reduction`
+  directly), so adding `move_speed_mult`/`damage_output_mult` params would apply each buff a
+  SECOND time and silently change every relic's strength. It is a display registration only.
+  (2) Toughness is permanent, and `apply_status()` is duration-based, so it registers with
+  `RelicManager.PERMANENT_DURATION` (1e9) and the HUD prints `∞` for anything above
+  `HUD.PERMANENT_EFFECT_THRESHOLD` (3600s) instead of a nine-digit countdown — keep those two
+  constants consistent. (3) `BuffRelic.duration` exists so the panel countdown is mirrored from
+  the same value that sets `_expires_at`; do not recompute the duration separately in
+  `RelicManager` or the panel and the real expiry can drift apart. (4) The DEV loadout still
+  carries **no relic** and all 5 hotbar slots plus BP1 are occupied, so a looted relic lands in
+  **BP2** — it must be dragged onto a hotbar slot in the F panel before G can reach it, exactly
+  like the DEV scanner. This is expected, not a bug.
+  (5) **RELICS ARE SINGLE-USE — activating one CONSUMES it** (`_use_relic()` calls
+  `_inventory.remove_item(_active_slot)`, added 2026-07-31 after the HUD fix above made the
+  problem visible in play). Consumption is what enforces the locked ~3–4s duration: previously
+  the relic stayed in its slot with no re-activation guard, so mashing G re-applied the buff every
+  press (`BuffRelic.activate()` recomputes `_expires_at` and `apply_status()` overwrites the panel
+  entry — both correct in isolation), giving effectively permanent Haste/Speed/Strength. A
+  re-activation cooldown was considered and **rejected**: the buff could still be refreshed the
+  instant it lapsed, so uptime stays ~100% and the duration still means nothing. Single-use also
+  matches every other G-usable type — throwables, consumables and scanners all `remove_item()`
+  after use. This does **not** touch the locked "cannot be dropped after pickup" rule:
+  `remove_item()` only clears the slot and never spawns a world `LootDrop` (that is
+  `_spawn_loot_drop()`, the discard-button path) — the slot is freed by SPENDING the relic, never
+  by discarding it. Do not reintroduce a reusable relic without also solving the uptime problem.
+- **RESOLVED (2026-07-31) — a consumable's effect must apply in `_on_use_complete()`, NEVER in
+  `tick_use()`; Medkit was an infinite heal.** Same defect class as the relic spam above: an item
+  that delivers value without reaching the point where it is consumed. `Medkit.tick_use()` healed
+  incrementally (`medkit_heal_total * (0.5 / use_time)` every 0.5s of channel), but a consumable is
+  only removed from the hotbar when the channel COMPLETES (`ConsumableBase` emits `use_completed` →
+  `PlayerController._on_consumable_completed` → `InventoryManager.remove_item`). So holding G for
+  ~0.5s banked a 15 HP tick, releasing before the 2.0s channel finished reset the progress via
+  `interrupt_use()`, and repeating healed indefinitely from a single Medkit — it never completed,
+  so it was never consumed. Compounding it, Medkit did not override `interrupt_use()`, so its
+  `_last_tick` accumulator carried across attempts and even short taps eventually fired a heal.
+  Medkit now applies the full heal in `_on_use_complete()`. **Locked rules going forward:** (1) a
+  consumable's effect belongs in `_on_use_complete()` — Lytes, Bloodstim, ThermalCapsule and
+  FaultBeacon all already did this and Medkit was the sole exception; do not move an effect into
+  `tick_use()` unless partial-use consumption is solved first (today the inventory has no concept
+  of a partly-spent item). (2) More generally: **any item that grants value must grant it at the
+  same moment it is consumed.** Both bugs found this session — relic G-spam and Medkit tap-heal —
+  were the same mismatch between "effect fires" and "item is removed". (3) Balance values were not
+  touched: still `medkit_heal_total` 60 over `medkit_use_time` 2.0; only the moment of application
+  changed, so interrupting now yields nothing instead of partial healing.
+- **RESOLVED (2026-07-31) — all 10 weapon passives implemented (`src/systems/weapon/WeaponPassives.gd`).**
+  They were previously display strings only: `minor_passive`/`unique_passive` in
+  `weapon_stats.json` were never read, and `WeaponTier.has_passive()` / `WeaponClass.passive_name()`
+  had zero callers, so an Epic and a Legendary differed only by stat multipliers. All logic now
+  lives in one static helper with five hooks called from `PlayerController`'s melee path:
+  `on_swing` (Riposte, Impaling Lunge) · `damage_mult` (Assassin's Mark, Executioner) ·
+  `armor_pierce` (Piercing Thrust) · `on_hit` (Serrated Edge, Concussive Blow, Seismic Shockwave,
+  Rend) · `on_kill` (Bloodthirst). **Locked rules going forward:** (1) **One passive per weapon,
+  NOT cumulative** — `Constants.WEAPON_TIER_SCALING` stores a single `"passive"` string per tier
+  (`""`/`"minor"`/`"unique"`), so Epic gets its class's minor and Legendary gets its unique
+  **instead**. A Legendary Dagger has Assassin's Mark but *not* Serrated Edge. Stacking both would
+  be a change to the locked tier table, not to `WeaponPassives`. (2) All magnitudes live in
+  `weapon_stats.json` → `"passives"` and are **first-pass TBD**; every read goes through
+  `WeaponPassives._val()` with a fallback, so a missing/null value makes that passive a silent
+  no-op rather than an error. (3) `take_damage()` gained a 5th optional param `armor_pierce`
+  (attacker-supplied) which combines additively with the defender's `armor_shred()` status (Rend)
+  and scales the flat AND percent components together; the sum is clamped so armor can be
+  nullified but never inverted. (4) **Riposte's parry is gated on `armor_applies`** — that flag is
+  this project's discriminator between a discrete hit and continuous environmental damage, so a
+  parry window can never blunt storm/depth/pressure ticks. Any future defensive passive must use
+  the same gate. (5) Backstab detection requires the target to expose `get_facing_sign()`
+  (−1 left / +1 right); `PlayerController` and `TestDummy` both do, and anything without it is
+  never treated as backstabbable rather than guessed at. (6) New per-target passive state must go
+  through `apply_status()` so it ticks, expires and renders on the HUD panel like every other
+  effect — Bleed reuses `dot_dps`, Stagger reuses `frozen`, Rend uses the new `armor_shred`.
+- **RESOLVED (2026-08-01) — hazard "loiter-time" pass: THE STORM IS THE CLOCK, depth+pressure are
+  an ATTRITION TAX (data only; no `.gd` changes).** Playtesting the new weapon passives was blocked
+  on a prerequisite, not on the passives: every passive is Epic/Legendary, those tiers only drop at
+  Outer Core / Inner Core after the 2026-07-06 loot retune, and those layers could not be survived
+  long enough to open a chest — so all 10 passives and every deep-tier item were **unreachable
+  content**. Root cause was the **ambient** hazards, not the storm: `DepthHazard` and
+  `PressureSystem` both tick every second, unconditionally, the moment a player enters a layer, and
+  both bypass armor — unlike the storm there is no front to outrun, so their sum is a hard ceiling on
+  how long a player may stay anywhere. At Inner Core that was `4.0 + 1.2 = 5.2` dps ≈ **19s of life
+  with the storm nowhere near**. Changed in `data/*.json` only: `pressure_dps_base` 2.0 → 0.8;
+  `depth_hazard` Mantle 0.3 → 0.2, Outer Core 1.3 → 0.5, Inner Core 4.0 → 1.0 (Crust/Core Hollow stay
+  0); storm per-phase 1.0/2.0/4.0/6.5/1.5 → 0.8/1.5/2.5/4.0/1.0 (Atmosphere 0.2 unchanged,
+  unreachable). Resulting ambient time-to-kill: Mantle 278s / Outer Core 122s / Inner Core 68s /
+  Core Hollow 156s; caught in the storm at the same depth: 54s / 30s / 18s / 61s. **Locked rules
+  going forward:** (1) **the ambient hazards (depth + pressure) must never be a harder timer than the
+  storm at the same depth** — that inversion is what made the deep layers unplayable; the storm is the
+  system that forces descent, the ambient pair only taxes you for lingering. (2) Never tune any of
+  the three in isolation — they stack and all three bypass armor, so tune against the per-layer
+  **totals** recorded in `storm_timings.json` `_combined_note` (kept current on every pass).
+  (3) Whenever a loot tier is gated behind a layer, that layer's ambient time-to-kill must comfortably
+  exceed the time it takes to find and open a chest there, or the tier is unreachable content no
+  matter what the drop table says. (4) Thermal Capsule (`hazard_resist` 0.75 / 20s) is the intended
+  counterplay to ambient damage — keep ambient values in a range where carrying one is a real
+  decision rather than mandatory. (5) Untouched and still locked: storm phase count/names/timings
+  (`Constants.STORM_PHASES`), `core_hollow_deadline_seconds` 1050, the 17:30 deadline instakill,
+  `armor_applies=false` on all three systems, and `LAYER_DEPTH_FACTOR`. All values remain first-pass
+  TBD — not validated in a running build.
+- **RESOLVED (2026-08-01) — SCOPE CUT: oxygen drain, sprint + the whole Stamina system, and the
+  entire `"special"` item category are all DELETED.** Four developer decisions in one session,
+  recorded together because each removes something CLAUDE.md previously described as design.
+  **(1) Oxygen is gone.** `DepthHazard`'s `oxygen_drained` signal, `_apply_oxygen_drain()`,
+  `_layer_oxygen_drain()` and its injected `Stamina` reference are deleted, `init()` is now
+  `(stats)` only, and the five `{layer}_oxygen_drain` keys are removed from `world_config.json`.
+  This was **live code, not dead code** — it drained 1.5/4.0/8.0 stamina per second at
+  Mantle/Outer Core/Inner Core — but `stamina_regen_rate` (20/sec) always exceeded it, so it never
+  did anything except quietly raise the cost of sprinting at depth, with no signposting.
+  **(2) Sprint is gone**, and with it the `sprint` InputMap action (Shift), `_sprint_mult` /
+  `_sprint_cost`, and `sprint_speed_mult` / `stamina_sprint_cost_per_sec`. **The Speed relic is now
+  the only movement boost in the game.** Do not reintroduce a hold-to-sprint key: sustained
+  self-serve speed makes a single-use ~3–4s relic worthless. Movement is base `player_move_speed`
+  modified by the Speed relic, status effects (Dust slow / Bloodstim) and the Tempest armor passive.
+  **(3) The Stamina system is gone** — `src/player/Stamina.gd`, its node in `Player.tscn`,
+  `PlayerController`'s `@onready var stamina`, and the four remaining `stamina_*` config values.
+  Oxygen and sprint were its only two consumers; removing both left it with zero readers.
+  **(4) The `"special"` category is gone** — `src/systems/special/` (LayerBreachDevice, LifeCapsule,
+  UpgradeTemplate), plus `DeepRadar` (that category's scanner), `Constants.Scanner.DEEP_RADAR`,
+  `deep_radar_range`, `PlayerStats.life_capsule_active` **and its reader** (a "survive one lethal hit
+  at 1 HP" branch in `take_damage()` that was unreachable because nothing set the flag, but was still
+  compiled), the `"special"` weights in `loot_tables.json`, every `upgrade_template_weight`, and
+  `spawn_rates.json`'s `special_item_spawn_rates`. **Locked rules going forward:** (a) **There is no
+  tier-upgrade item any more.** An item's tier is fixed when it drops, so the raw drop table is the
+  ONLY source of Legendary — earlier notes pointing at the Upgrade Template as the lever for
+  "Legendary is too rare" are void, and the levers are now the deep-layer Legendary weights or
+  `Constants.CHEST_BASE_SPAWN`. (b) `BasicScanner` is the only scanner; `ScannerBase` keeps its
+  base/subclass split because a scanner's sole per-class difference is its `_range_key()` lookup.
+  (c) Removing `"special"` from `category_weights` left each row summing to 92–98, so the rows were
+  **rescaled back to 100**; because `LootTable._CATEGORIES` never included `"special"`, the game was
+  already rolling the normalised remainder, so this changed real drop odds by nothing (max rounding
+  drift 1.5 points, on Mantle). (d) Every deleted data key leaves a `_*_removed` tombstone string
+  recording its old value — an orphaned key with no reader looks like live balance and misleads the
+  next tuning pass. Do not re-add any of these keys without also restoring the code that reads them.
+  (e) `FaultBeacon` was listed under `special_item_spawn_rates` but is a **consumable** and still
+  exists, rolling through the normal `"consumable"` category — it is unaffected.
 - **Every session that makes a logic change must update both `CLAUDE.md` and
   `GAME_STATE.md` before finishing.** CLAUDE.md holds locked design decisions;
   GAME_STATE.md holds the current implemented state, deviations, and the

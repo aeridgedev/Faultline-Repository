@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" path="res://src/player/PlayerController.gd" id="1_ctrl"]
 [ext_resource type="Script" path="res://src/player/PlayerStats.gd" id="2_stats"]
-[ext_resource type="Script" path="res://src/player/Stamina.gd" id="3_stamina"]
 [ext_resource type="Script" path="res://src/player/DescentTracker.gd" id="4_descent"]
 [ext_resource type="Script" path="res://src/player/PlayerDeath.gd" id="5_death"]
 [ext_resource type="Script" path="res://src/systems/inventory/InventoryManager.gd" id="6_inv"]
@@ -29,9 +28,6 @@ position_smoothing_speed = 8.0
 
 [node name="PlayerStats" type="Node" parent="."]
 script = ExtResource("2_stats")
-
-[node name="Stamina" type="Node" parent="."]
-script = ExtResource("3_stamina")
 
 [node name="DescentTracker" type="Node" parent="."]
 script = ExtResource("4_descent")

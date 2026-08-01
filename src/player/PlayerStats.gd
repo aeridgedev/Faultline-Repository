@@ -14,7 +14,8 @@ var current_health: float
 
 var is_dead: bool = false
 var damage_reduction: float = 0.0   # 0.0–1.0; set by ToughnessRelic
-var life_capsule_active: bool = false  # set by LifeCapsule; consumed on first lethal hit
+# life_capsule_active removed 2026-08-01 with the "special" loot category. It was never
+# set by anything (LifeCapsule was unwired), so no death logic depended on it.
 var kill_count: int = 0
 
 # Set on every take_damage() call; read by PlayerDeath/HUD on player_died to
@@ -39,6 +40,8 @@ var equipped_armor: ArmorBase = null   # single sidebar slot; null = unarmored
 #   "dot_interval":       float — seconds between DoT ticks (default 1.0)
 #   "hazard_resist":      float — 0.0–1.0 reduction of depth/pressure hazard damage
 #   "revealed":           bool  — position exposed (Echo Charge); marker rendered separately
+#   "armor_shred":        float — 0.0–1.0; weakens THIS body's armor (Axes "Rend" passive)
+#   "parry_reduction":    float — 0.0–1.0; reduces incoming DISCRETE hits (Swords "Riposte")
 var _active_effects: Dictionary = {}
 var _effects_tick: float = 0.0
 
@@ -168,6 +171,36 @@ func equip_armor(armor: ArmorBase) -> void:
 	equipped_armor = armor
 
 
+## Strongest active armor shred on THIS body, 0.0–1.0 (Axes "Rend" weapon passive).
+## Read by take_damage() to weaken this body's own armor. Strongest-wins rather than
+## product, because Rend stacks by re-applying a single growing value (see WeaponPassives).
+func armor_shred() -> float:
+	var best := 0.0
+	for effect_name: String in _active_effects:
+		best = maxf(best, float(_active_effects[effect_name]["params"].get("armor_shred", 0.0)))
+	return clampf(best, 0.0, 1.0)
+
+
+## Strongest active parry reduction, 0.0–1.0 (Swords "Riposte" weapon passive).
+## Applied ONLY to discrete hits (see take_damage) so a parry window can never blunt
+## storm/depth/pressure damage — those must stay unmitigated per the locked
+## environmental-damage rule.
+func parry_reduction() -> float:
+	var best := 0.0
+	for effect_name: String in _active_effects:
+		best = maxf(best, float(_active_effects[effect_name]["params"].get("parry_reduction", 0.0)))
+	return clampf(best, 0.0, 1.0)
+
+
+## Current value of one param on one named active effect, or `def` if absent.
+## Used by stacking passives (Rend) that need to read their own current magnitude
+## before re-applying a larger one.
+func get_status_param(effect_name: String, key: String, def: float = 0.0) -> float:
+	if not _active_effects.has(effect_name):
+		return def
+	return float(_active_effects[effect_name]["params"].get(key, def))
+
+
 ## Strongest active hazard resistance, 0.0–1.0 (Thermal Capsule).
 func hazard_resist() -> float:
 	var best := 0.0
@@ -197,7 +230,13 @@ func is_revealed() -> bool:
 ## Bypassing the armor block keeps the storm lethal and stops it from destroying
 ## armor. The Toughness relic's percent damage_reduction still applies to everything
 ## (it scales fractional damage fine and never zeroes it).
-func take_damage(amount: float, source_name: String = "Unknown", source_id: int = -1, armor_applies: bool = true) -> void:
+## armor_pierce (0.0-1.0, added 2026-07-31 for the Spears "Piercing Thrust" passive) is
+## supplied by the ATTACKER and weakens this body's armor for that one hit. It combines
+## additively with armor_shred(), which is a debuff the attacker previously applied to this
+## body (Axes "Rend"), and the sum is clamped so armor can be nullified but never inverted.
+## Both scale the flat AND percent components together, so piercing is meaningful against
+## every armor tier rather than only the flat-heavy ones.
+func take_damage(amount: float, source_name: String = "Unknown", source_id: int = -1, armor_applies: bool = true, armor_pierce: float = 0.0) -> void:
 	if is_dead:
 		return
 	# Damage order: armor first (flat subtracted, then percent of the remainder), THEN
@@ -206,18 +245,23 @@ func take_damage(amount: float, source_name: String = "Unknown", source_id: int 
 	# so each burn tick counts as a hit; accepted as-is for now (balance pass may revisit).
 	var effective := amount
 	if armor_applies and equipped_armor != null and not equipped_armor.is_broken:
-		var post_flat := maxf(effective - equipped_armor.flat_reduction(), 0.0)
-		effective = post_flat * (1.0 - equipped_armor.percent_reduction())
+		# Pierce (attacker's weapon) + shred (debuff already on this body) weaken armor.
+		var weaken := clampf(armor_pierce + armor_shred(), 0.0, 1.0)
+		var flat := equipped_armor.flat_reduction() * (1.0 - weaken)
+		var pct := equipped_armor.percent_reduction() * (1.0 - weaken)
+		var post_flat := maxf(effective - flat, 0.0)
+		effective = post_flat * (1.0 - pct)
 		equipped_armor.register_hit()
-		# DEBUG — remove later: verify armor flat/percent reduction is actually applied.
-		# Inside the armor block on purpose so continuous storm/hazard ticks (which
-		# bypass armor) don't spam this print 60x/sec — it only fires on real hits.
-		print("[ARMOR DEBUG - remove later] incoming=%s post_flat=%s final=%s" % [amount, post_flat, effective])
+	# Riposte parry window. Gated on armor_applies for the same reason armor is: that flag
+	# is this project's discriminator between a discrete hit and continuous environmental
+	# damage, and a parry must never blunt the storm/depth/pressure tick.
+	if armor_applies:
+		effective *= (1.0 - parry_reduction())
 	effective *= (1.0 - clampf(damage_reduction, 0.0, 1.0))
 	current_health = clampf(current_health - effective, 0.0, max_health)
-	if current_health == 0.0 and life_capsule_active:
-		life_capsule_active = false
-		current_health = 1.0
+	# The Life Capsule "survive one lethal hit at 1 HP" branch used to sit here. Removed
+	# 2026-08-01 with the "special" loot category — nothing ever set the flag, so the
+	# branch was unreachable, but it WAS compiled and referenced the deleted variable.
 	if effective > 0.0:
 		_spawn_damage_number(effective)
 	health_changed.emit(current_health, max_health)

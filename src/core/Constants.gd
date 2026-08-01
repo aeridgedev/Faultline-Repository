@@ -79,12 +79,24 @@ const LAYER_DEPTH_FACTOR := {
 
 # ---------------------------------------------------------------------------
 # CHEST / LOOT SPAWN FORMULA
-#   spawnChance = 0.8 * (1 - depthFactor)^2
-#   -> Crust 80%, Mantle 51.2%, Outer Core 28.8%, Inner Core 12.8%
+#   spawnChance = 0.6 * (1 - depthFactor)^2
+#   -> Crust 60%, Mantle 38.4%, Outer Core 21.6%, Inner Core 9.6%
 # Independent of terrain type. Upgrade Template = 10% weight in the relevant
 # rarity loot pool (handled in data/loot_tables.json, NOT a flat per-chest roll).
+#
+# CHEST_BASE_SPAWN 0.8 -> 0.6 (2026-07-31, -25%): playtest reported chests spawning
+# too often. This is a LOCKED structural value and was changed only on explicit user
+# request, not as part of a routine balance pass.
+#
+# ONLY the base multiplier moved; the squared depth falloff is deliberately untouched,
+# so every layer scales by the same 0.75 factor and the shape ("shallower = far more
+# chests") is preserved exactly: 80/51.2/28.8/12.8 -> 60/38.4/21.6/9.6. Changing the
+# exponent instead would have altered the relative spacing between layers, which the
+# design depends on — deep chests are rare BUT their contents skew high-tier
+# (loot_tables.json) to compensate, and that trade only holds if the falloff shape
+# stays fixed. Retune the multiplier, never the exponent.
 # ---------------------------------------------------------------------------
-const CHEST_BASE_SPAWN := 0.8
+const CHEST_BASE_SPAWN := 0.6
 
 func chest_spawn_chance(depth_factor: float) -> float:
 	return CHEST_BASE_SPAWN * pow(1.0 - depth_factor, 2.0)
@@ -211,15 +223,17 @@ const CONSUMABLE_NAMES := {
 # SCANNERS — 8s scan/detection duration (LOCKED). Scanned players are NOT
 # notified (LOCKED — never apply a "Revealed" status from a scanner; that
 # would show on the victim's HUD debuff panel). Range values live in
-# data/world_config.json (basic_scanner_range / deep_radar_range, TBD).
+# data/world_config.json (basic_scanner_range, TBD).
+#
+# DEEP_RADAR was removed 2026-08-01 along with the whole "special" loot category
+# (it was that category's scanner). BASIC_SCANNER is the only scanner in the game.
 # ---------------------------------------------------------------------------
 const SCANNER_DURATION_SECONDS := 8.0
 
-enum Scanner { BASIC_SCANNER, DEEP_RADAR }
+enum Scanner { BASIC_SCANNER }
 
 const SCANNER_NAMES := {
 	Scanner.BASIC_SCANNER: "Basic Scanner",
-	Scanner.DEEP_RADAR: "Deep Radar",
 }
 
 # ---------------------------------------------------------------------------

@@ -15,12 +15,7 @@
   "player_move_speed":    200.0,
   "player_gravity":       800.0,
 
-  "sprint_speed_mult":          1.6,
-  "stamina_max":                100.0,
-  "stamina_sprint_cost_per_sec": 30.0,
-  "stamina_regen_rate":         20.0,
-  "stamina_regen_delay":        1.0,
-  "stamina_recovery_threshold": 20.0,
+  "_sprint_and_stamina_removed": "DELETED 2026-08-01: sprint_speed_mult (1.6), stamina_sprint_cost_per_sec (30.0), stamina_max (100.0), stamina_regen_rate (20.0), stamina_regen_delay (1.0), stamina_recovery_threshold (20.0) — together with the sprint mechanic and the entire Stamina system (src/player/Stamina.gd and its node in Player.tscn). Sprint was Stamina's last consumer once the depth oxygen drain was removed earlier the same day. Movement speed is now base player_move_speed only, modified by the Speed relic, status effects (Dust slow / Bloodstim) and the Tempest armor passive. Do not re-add a sustained self-serve speed boost — it would make the single-use ~3-4s Speed relic worthless.",
 
   "pickup_radius": 48.0,
 
@@ -31,24 +26,20 @@
   "storm_heal_mult": 0.4,
   "storm_overlay_alpha": 0.35,
 
-  "_pressure_dps_base_meta": "FIRST-PASS BALANCED 2026-07-05; HALVED 2026-07-06 (playtest: too punishing) 6.0 → 3.0. pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8) → Crust 0 / Mantle 0.6 / Outer 1.2 / Inner 1.8 / Core Hollow 2.4 per sec.",
-  "pressure_dps_base": 3.0,
+  "_pressure_dps_base_meta": "FIRST-PASS 2026-07-05 (6.0); HALVED 2026-07-06 (too punishing) 6.0 → 3.0; REDUCED 2026-07-31 (still too high in playtest) 3.0 → 2.0 (-33%); REDUCED AGAIN 2026-08-01 (loiter-time pass) 2.0 → 0.8 (-60%). pressure_dps_base × LAYER_DEPTH_FACTOR (0.0/0.2/0.4/0.6/0.8, LOCKED in Constants) → Crust 0 / Mantle 0.16 / Outer 0.32 / Inner 0.48 / Core Hollow 0.64 per sec (was 0/0.4/0.8/1.2/1.6). REASON for the 2026-08-01 cut: pressure is a CONSTANT, always-on, armor-bypassing tax that starts the moment you enter a layer and never stops — unlike the storm, there is no way to outrun it, so it sets the hard ceiling on how long a player may stay in a layer to loot and fight. Combined with depth_hazard it left only ~19s of life in Inner Core, the layer with the best loot. NOTE: pressure is the ONLY hazard that applies inside the Core Hollow (depth_hazard.core_hollow_dps is 0), so it stacks with the post-17:30 storm to set the finale's time-to-kill — see storm_timings.json _combined_note.",
+  "pressure_dps_base": 0.8,
 
   "depth_hazard": {
-    "_meta": "FIRST-PASS BALANCED 2026-07-05; layer DPS HALVED 2026-07-06 (playtest: too punishing). DPS/oxygen/visibility scale low Crust / moderate Mantle / noticeable Outer Core / high Inner Core; Core Hollow left to the storm. Testable, pending playtesting.",
-    "_balance_note": "Layer DPS (depth_hazard only), halved 2026-07-06: Crust 0 / Mantle 0.5 / Outer Core 2 / Inner Core 6 / Core Hollow 0 (was 0/1/4/12/0). Combined with pressure this yields the intended forgiving-early, punishing-deep curve. Oxygen drain and pressure_dps_base unchanged.",
+    "_meta": "FIRST-PASS BALANCED 2026-07-05; layer DPS HALVED 2026-07-06; REDUCED 2026-07-31; REDUCED AGAIN 2026-08-01 (loiter-time pass); OXYGEN DRAIN REMOVED 2026-08-01. DPS/visibility scale low Crust / moderate Mantle / noticeable Outer Core / high Inner Core; Core Hollow left to the storm. Testable, pending playtesting.",
+    "_balance_note": "Layer DPS (depth_hazard only). 2026-07-05 first pass 0/1/4/12/0 → 2026-07-06 halved 0/0.5/2/6/0 → 2026-07-31 reduced 0/0.3/1.3/4/0 → 2026-08-01 REDUCED AGAIN: Crust 0 (unchanged) / Mantle 0.3 → 0.2 (-33%) / Outer Core 1.3 → 0.5 (-62%) / Inner Core 4.0 → 1.0 (-75%) / Core Hollow 0 (unchanged). Shape preserved: 0 at both ends, monotonically increasing Mantle → Inner Core. Visibility alpha deliberately NOT touched — the feedback was about damage. (Oxygen drain was also untouched by the damage passes, then REMOVED outright later the same day — see _oxygen_removed below.) REASON for the deep cuts: depth_hazard was the DOMINANT term deep down (at Inner Core, 4.0 dps here vs 1.2 pressure vs 6.5 storm), so it — not the storm — was what made Outer Core / Inner Core unlootable: 2.1 combined ambient dps at Outer Core and 5.2 at Inner Core meant ~48s and ~19s of life on a full-health player with the storm nowhere near, which is less time than opening a chest. Since Epic and Legendary loot only drops at those depths, every deep-tier item and all 10 weapon passives were unreachable content. Inner Core took the largest cut of any value in the project for that reason. See storm_timings.json _combined_note for the resulting per-layer totals.",
 
     "crust_dps": 0.0,
-    "mantle_dps": 0.5,
-    "outer_core_dps": 2.0,
-    "inner_core_dps": 6.0,
+    "mantle_dps": 0.2,
+    "outer_core_dps": 0.5,
+    "inner_core_dps": 1.0,
     "core_hollow_dps": 0.0,
 
-    "crust_oxygen_drain": 0.0,
-    "mantle_oxygen_drain": 1.5,
-    "outer_core_oxygen_drain": 4.0,
-    "inner_core_oxygen_drain": 8.0,
-    "core_hollow_oxygen_drain": 0.0,
+    "_oxygen_removed": "The five *_oxygen_drain keys were DELETED 2026-08-01 at the developer's request, together with DepthHazard._apply_oxygen_drain(). They were live (Mantle 1.5 / Outer Core 4.0 / Inner Core 8.0 stamina per second) but produced no visible feedback beyond a slightly shorter sprint. Do not re-add these keys without also restoring the code that reads them — an orphaned key here reads as live balance and will mislead the next tuning pass.",
 
     "crust_visibility_alpha": 0.0,
     "mantle_visibility_alpha": 0.10,
@@ -67,7 +58,7 @@
   },
 
   "basic_scanner_range": 220.0,
-  "deep_radar_range": 460.0,
+  "_deep_radar_removed": "deep_radar_range (460.0) was DELETED 2026-08-01 with DeepRadar.gd and the whole 'special' loot category. BasicScanner is now the only scanner.",
 
   "consumables": {
     "_meta": "FIRST-PASS BALANCED 2026-07-05 — use times / durations / strengths tuned to be meaningful on a 100 HP player. Testable, pending playtesting.",

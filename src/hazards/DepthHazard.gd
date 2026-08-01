@@ -2,17 +2,22 @@
 ## Tick-based: checks once per second so stats.take_damage() isn't called every frame.
 ##
 ## Two effects scale with depth:
-##   Oxygen instability → stamina drain (Mantle and below)
+##   Ambient damage → HP drain (Mantle and below)
 ##   Pressure distortion → screen darkening vignette (Mantle and below)
 ## Ambient damage is reduced by an active Thermal Capsule (PlayerStats.hazard_resist()).
+##
+## REMOVED 2026-08-01 — oxygen instability. This used to drain Stamina per tick
+## (1.5/4.0/8.0 per second at Mantle/Outer Core/Inner Core) via an injected Stamina
+## reference. Cut at the developer's request: it was a second, invisible depth tax
+## layered on top of the damage tick, and the only feedback it produced was a slightly
+## shorter sprint. Sprint was removed later the same day, which left Stamina with no
+## consumers at all, so the entire Stamina system was deleted too.
 class_name DepthHazard
 extends Node
 
 signal depth_hazard_tick(damage: float)
-signal oxygen_drained(amount: float)
 
 var _stats: PlayerStats = null
-var _stamina: Stamina = null
 var _tick_timer: float = 0.0
 const _TICK_INTERVAL := 1.0
 
@@ -29,9 +34,8 @@ const _LAYER_VIGNETTE_COLOR := {
 }
 
 
-func init(stats: PlayerStats, stamina: Stamina = null) -> void:
+func init(stats: PlayerStats) -> void:
 	_stats = stats
-	_stamina = stamina
 	_build_vignette()
 
 
@@ -83,9 +87,7 @@ func _set_vignette(color: Color) -> void:
 
 
 func _apply_tick() -> void:
-	var layer: int = _stats.get_layer()
-	_apply_damage(layer)
-	_apply_oxygen_drain(layer)
+	_apply_damage(_stats.get_layer())
 
 
 func _apply_damage(layer: int) -> void:
@@ -105,24 +107,6 @@ func _apply_damage(layer: int) -> void:
 	depth_hazard_tick.emit(dmg)
 
 
-func _apply_oxygen_drain(layer: int) -> void:
-	if _stamina == null:
-		return
-	var drain: Variant = _layer_oxygen_drain(layer)
-	if drain == null:
-		return
-	var amount := float(drain) * _TICK_INTERVAL
-	if amount <= 0.0:
-		return
-	_stamina.drain(amount)
-	oxygen_drained.emit(amount)
-
-
 func _layer_dps(layer: int) -> Variant:
 	var key: String = (Constants.LAYER_NAMES[layer] as String).to_lower().replace(" ", "_") + "_dps"
-	return (GameManager.data.get("depth_hazard", {}) as Dictionary).get(key, null)
-
-
-func _layer_oxygen_drain(layer: int) -> Variant:
-	var key: String = (Constants.LAYER_NAMES[layer] as String).to_lower().replace(" ", "_") + "_oxygen_drain"
 	return (GameManager.data.get("depth_hazard", {}) as Dictionary).get(key, null)

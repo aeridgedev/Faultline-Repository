@@ -1,4 +1,6 @@
-## Faultline — shared scanner logic for BasicScanner / DeepRadar.
+## Faultline — shared scanner logic. BasicScanner is the only subclass; DeepRadar was
+## deleted 2026-08-01 with the "special" loot category. The base/subclass split is kept
+## because a scanner's only per-class difference is its _range_key() data lookup.
 ##
 ## OFFLINE PLACEHOLDER (documented deviation, same spirit as TestDummy roster
 ## registration — see GAME_STATE.md Known Issues #7): detection queries the

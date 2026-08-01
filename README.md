@@ -49,7 +49,7 @@ project memory: `project_canonical_decisions.md`.
 - 4 tiers only: Common / Rare / Epic / Legendary (no Uncommon, no Mythic).
 - 5 layers: Crust → Mantle → Outer Core → Inner Core → Core Hollow (descend only).
 - Inventory: 5 hotbar + 1 armor + 2 backpack; 1 item = 1 slot.
-- Chest spawn: `0.8 × (1 − depthFactor)²` → 80% / 51.2% / 28.8% / 12.8%.
+- Chest spawn: `0.6 × (1 − depthFactor)²` → 60% / 38.4% / 21.6% / 9.6%.
 - Drills: Class × Tier, independent; Upgrade Templates raise tier + restore durability.
 - Storm descends 1 layer / ~3.5 min; not in Core Hollow by 17:30 → death. No Sudden Death.
 

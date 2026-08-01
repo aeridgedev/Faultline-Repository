@@ -5,6 +5,11 @@
 class_name HUD
 extends CanvasLayer
 
+## Buff/debuff rows with more remaining time than this are treated as permanent and shown
+## as "∞". Only the Toughness relic uses it (RelicManager.PERMANENT_DURATION); it is well
+## above any real effect duration and above the 18-22 minute match length.
+const PERMANENT_EFFECT_THRESHOLD := 3600.0
+
 @onready var _fps_label: Label = $Control/FPSLabel
 @onready var _health_bar: ProgressBar = $Control/BottomHUD/HealthSection/HealthBar
 @onready var _armor_label: Label = $Control/BottomHUD/HealthSection/ArmorLabel
@@ -708,7 +713,11 @@ func _on_effects_changed(effects: Array) -> void:
 		var col: Color = Color(0.38, 0.90, 0.45) if effect["is_buff"] else Color(0.92, 0.30, 0.30)
 		name_lbl.add_theme_color_override("font_color", col)
 		var dur_lbl := Label.new()
-		dur_lbl.text = "%ds" % ceili(effect["remaining"])
+		# Permanent effects (the Toughness relic) are registered with a duration longer
+		# than any match rather than a real countdown, so show them as endless instead of
+		# printing a nine-digit second count.
+		var remaining: float = float(effect["remaining"])
+		dur_lbl.text = "∞" if remaining > PERMANENT_EFFECT_THRESHOLD else "%ds" % ceili(remaining)
 		dur_lbl.add_theme_font_size_override("font_size", 8)
 		dur_lbl.add_theme_color_override("font_color", Color(0.70, 0.74, 0.82))
 		row.add_child(name_lbl)

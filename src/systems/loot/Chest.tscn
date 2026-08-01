@@ -16,7 +16,7 @@ offset_left = -18.0
 offset_top = -26.0
 offset_right = 18.0
 offset_bottom = -14.0
-text = "Press E"
+text = "Press MB4"
 horizontal_alignment = 1
 
 [node name="Area2D" type="Area2D" parent="."]

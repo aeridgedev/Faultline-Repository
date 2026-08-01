@@ -1,7 +1,7 @@
 ## Faultline — physical chest placed by ChestSpawner.
-## Player walks into range and presses E to open an interactive popup.
-## The item inside is shown as a clickable button that transfers it directly
-## to the player's inventory. Popup closes on E or click outside.
+## Player walks into range and presses the "interact" action (Mouse Button 4) to open
+## an interactive popup. The item inside is shown as a clickable button that transfers
+## it directly to the player's inventory. Popup closes on interact or click outside.
 class_name Chest
 extends Node2D
 
@@ -30,7 +30,7 @@ var _status_label: Label = null
 
 func _ready() -> void:
 	_build_chest_sprite(false)
-	_prompt.text = "Press E"
+	_prompt.text = "Press MB4"
 	_prompt.visible = false
 	_prompt.add_theme_font_size_override("font_size", 7)
 	_area.body_entered.connect(_on_body_entered)
@@ -181,7 +181,7 @@ func _build_popup() -> void:
 	vbox.add_child(_status_label)
 
 	var hint := Label.new()
-	hint.text = "Press E or click outside to close"
+	hint.text = "Press MB4 or click outside to close"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 7)
 	hint.add_theme_color_override("font_color", Color(0.32, 0.32, 0.38))
@@ -263,19 +263,47 @@ func _on_item_pressed() -> void:
 	_refresh_button_state()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo
-			and event.physical_keycode == KEY_E):
+# Interact is POLLED, not handled as an event — this is load-bearing, see below.
+#
+# The binding moved E -> Mouse Button 4 on 2026-07-31, and the first version of that
+# change kept the old _unhandled_input() event handler. It silently never fired.
+# HUD.tscn's root "Control" is a full-rect node (anchors_preset = 15) that does NOT set
+# mouse_filter, so it defaults to MOUSE_FILTER_STOP and swallows EVERY mouse button
+# event in the GUI pass, before _unhandled_input() is ever reached. Keyboard events were
+# unaffected — a Control only eats those while focused — which is exactly why the same
+# handler worked fine for E and died the moment it became a mouse button.
+#
+# Polling through the Input singleton bypasses the GUI/event pipeline entirely. This is
+# already how every other working mouse action in the project is read: PlayerController
+# polls Input.is_action_pressed("drill") and is_action_just_pressed("drill") rather than
+# listening for events. Do NOT "tidy" this back into _unhandled_input().
+#
+# The chest popup's own backdrop still uses gui_input for click-outside-to-close, and is
+# unaffected: it lives on the popup's own CanvasLayer ABOVE the HUD, so it receives mouse
+# events normally, and it filters to MOUSE_BUTTON_LEFT so MB4 never reaches it.
+
+# Shared across all chests: polling has no equivalent of set_input_as_handled(), so
+# without this two chests whose interact ranges overlap would both consume the same
+# press and open two popups at once. First chest to see the frame claims it.
+static var _interact_frame_claimed: int = -1
+
+
+func _process(_delta: float) -> void:
+	if not Input.is_action_just_pressed("interact"):
 		return
+	if not (_popup_visible or _player_nearby):
+		return
+	var frame := Engine.get_process_frames()
+	if _interact_frame_claimed == frame:
+		return
+	_interact_frame_claimed = frame
 	if _popup_visible:
 		_close_popup()
-		get_viewport().set_input_as_handled()
-	elif _player_nearby:
+	else:
 		if not _opened:
 			_open()
 		else:
 			_show_popup()   # re-open popup for an already-opened chest
-		get_viewport().set_input_as_handled()
 
 
 func _on_body_entered(body: Node) -> void:

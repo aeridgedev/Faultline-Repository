@@ -38,6 +38,19 @@ var _style_invalid: StyleBoxFlat   # red tint shown on a wrong-type drop target 
 var _msg_label: Label = null       # transient "Wrong slot type" message on the panel
 var _msg_token: int = 0            # guards overlapping _flash_message timers
 
+# --- Panel bounds (visual container only) ---
+## Only the WIDTH is fixed. The height is not specified anywhere: the panel background is
+## a PanelContainer, which is a Container and therefore sizes itself to its content's
+## minimum height. Overflow is structurally impossible — see _build_panel().
+const PANEL_WIDTH := 220.0
+## Height reserved for the drag-error message row at the bottom of the slot list. The row
+## is always present (text is blanked when idle) so flashing a message never reflows the
+## slot rows above it.
+const PANEL_MSG_STRIP_HEIGHT := 18.0
+
+var _panel: PanelContainer = null      # the panel background/border; self-sizing
+var _panel_margin: MarginContainer = null   # 10px inset between the border and the rows
+
 
 ## Draggable + droppable slot control for the inventory panel. Godot's built-in
 ## drag-and-drop virtual callbacks are overridden here and forwarded to the owning
@@ -129,16 +142,28 @@ func _build_panel() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	_panel_layer.add_child(backdrop)
 
-	# Centered panel — 220×270.
-	var panel := Panel.new()
-	panel.anchor_left   = 0.5
-	panel.anchor_right  = 0.5
-	panel.anchor_top    = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left   = -110.0
-	panel.offset_right  =  110.0
-	panel.offset_top    = -135.0
-	panel.offset_bottom =  135.0
+	# The panel background is a CONTAINER, not a bare Panel, and this is the whole fix for
+	# the BP2 overflow. A `Panel` draws a background at whatever size it is given and
+	# imposes no layout on its children, so a hardcoded 220x270 simply let the VBox spill
+	# out of the bottom — the last row drew outside the border with the world behind it.
+	# Two earlier attempts to compute the right height from
+	# `get_combined_minimum_size()` did not hold up, because the rows' real laid-out
+	# height (~27px each) is larger than the minimum the containers report.
+	#
+	# A PanelContainer sizes ITSELF to its content's minimum height, and a CenterContainer
+	# centres a child at that size. So the background is now derived from the rows by
+	# construction: no height constant, no measurement, no timing to get wrong, and adding
+	# or resizing a row can never push content outside the border again.
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# IGNORE so a click outside the panel still reaches the backdrop beneath it.
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel_layer.add_child(center)
+
+	var panel := PanelContainer.new()
+	# Width stays fixed; height is entirely content-driven.
+	panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+	_panel = panel
 
 	var ps := StyleBoxFlat.new()
 	ps.bg_color = Color(0.06, 0.07, 0.10, 0.97)
@@ -146,15 +171,17 @@ func _build_panel() -> void:
 	ps.border_color = Color(0.35, 0.40, 0.50)
 	ps.set_corner_radius_all(4)
 	panel.add_theme_stylebox_override("panel", ps)
-	_panel_layer.add_child(panel)
+	center.add_child(panel)
 
+	# No anchors preset here any more: inside a PanelContainer the child is laid out by
+	# the container, and a FULL_RECT preset would fight it.
 	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left",   10)
 	margin.add_theme_constant_override("margin_right",  10)
 	margin.add_theme_constant_override("margin_top",    10)
 	margin.add_theme_constant_override("margin_bottom", 10)
 	panel.add_child(margin)
+	_panel_margin = margin
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 3)
@@ -171,24 +198,23 @@ func _build_panel() -> void:
 	_add_section(vbox, "ARMOR", [ARMOR_SLOT])
 	_add_section(vbox, "BACKPACK", [BACKPACK_START, BACKPACK_END])
 
-	# Transient drag-error message ("Wrong slot type"), hidden until flashed. Overlaid
-	# on the panel (bottom-anchored, so showing it doesn't reflow the slot list) and on
-	# the panel's own CanvasLayer (layer 20): the HUD sits on a lower layer and would be
-	# occluded by this panel, so a HUD-hosted message wouldn't be visible here. Added
-	# last so it draws above the slot rows.
+	# Transient drag-error message ("Wrong slot type"). It lives on the panel's own
+	# CanvasLayer (layer 20) because the HUD sits on a lower layer and would be occluded
+	# by this panel, so a HUD-hosted message would be invisible here.
+	#
+	# It is the LAST ROW of the VBox rather than an overlay anchored to the panel's
+	# bottom edge. As a real row it is counted in the content height the PanelContainer
+	# sizes to, so it can never sit on top of the BP2 row (which the old bottom-anchored
+	# overlay did once the content filled the panel). It stays permanently visible with a
+	# reserved height and blanked text, so flashing a message never reflows the rows above.
 	_msg_label = Label.new()
 	_msg_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_msg_label.anchor_left = 0.0
-	_msg_label.anchor_right = 1.0
-	_msg_label.anchor_top = 1.0
-	_msg_label.anchor_bottom = 1.0
-	_msg_label.offset_top = -18.0
-	_msg_label.offset_bottom = -4.0
+	_msg_label.custom_minimum_size = Vector2(0, PANEL_MSG_STRIP_HEIGHT)
 	_msg_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_msg_label.add_theme_font_size_override("font_size", 8)
 	_msg_label.add_theme_color_override("font_color", Color(0.96, 0.40, 0.38))
-	_msg_label.visible = false
-	panel.add_child(_msg_label)
+	_msg_label.text = ""
+	vbox.add_child(_msg_label)
 
 
 # Shared styleboxes for slot drop-target feedback: transparent normally, a subtle
@@ -538,14 +564,15 @@ func _reset_all_dim() -> void:
 func _flash_message(text: String) -> void:
 	if _msg_label == null:
 		return
+	# Text is set/cleared rather than toggling .visible: the label is a real row in the
+	# VBox now, so hiding it would remove its height and reflow every slot row above.
 	_msg_label.text = text
-	_msg_label.visible = true
 	_msg_token += 1
 	var my_token := _msg_token
 	var timer := get_tree().create_timer(1.2)
 	timer.timeout.connect(func() -> void:
 		if my_token == _msg_token and _msg_label != null:
-			_msg_label.visible = false)
+			_msg_label.text = "")
 
 
 func _spawn_loot_drop(item_data_dict: Dictionary) -> void:

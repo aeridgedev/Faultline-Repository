@@ -33,8 +33,10 @@ func _ready() -> void:
 	# Resources. No separate equip-starter step is needed.
 	player.get_node("DescentTracker").init(layer_manager)
 
-	var stamina := player.get_node("Stamina") as Stamina
-	var storm := _init_hazards(player.stats, stamina, layer_manager)
+	# NOTE: there is no Stamina node to fetch any more. It was injected into DepthHazard
+	# for the depth oxygen drain, and both that and the sprint mechanic were removed
+	# 2026-08-01, leaving the whole Stamina system with no consumers — so it was deleted.
+	var storm := _init_hazards(player.stats, layer_manager)
 	player.init_storm(storm)
 	(_world.get_node("PressureSystem") as PressureSystem).zero_gravity_changed.connect(player.set_zero_gravity)
 	_init_layer_visuals(terrain_manager, player.stats)
@@ -110,9 +112,9 @@ func _init_layer_visuals(terrain_manager: TerrainManager, stats: PlayerStats) ->
 	layer_visuals.init(terrain_manager, stats)
 
 
-func _init_hazards(stats: PlayerStats, stamina: Stamina, layer_manager: LayerManager) -> StormSystem:
+func _init_hazards(stats: PlayerStats, layer_manager: LayerManager) -> StormSystem:
 	var depth := _world.get_node("DepthHazard") as DepthHazard
-	depth.init(stats, stamina)
+	depth.init(stats)
 
 	var pressure := _world.get_node("PressureSystem") as PressureSystem
 	pressure.init(stats)

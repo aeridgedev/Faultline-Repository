@@ -28,6 +28,11 @@ var _detect_area: Area2D = null
 var _targets_in_range: Array = []     # PlayerController bodies currently within DETECT_RADIUS
 var _attack_cooldown: float = 0.0     # counts down; a hit fires when it reaches 0
 var _flash_timer: float = 0.0         # >0 while showing the red attack flash
+## -1.0 left / +1.0 right; mirrors _sprite.flip_h. Exposed via get_facing_sign() so the
+## Assassin's Mark backstab crit can tell whether the player struck from behind. A dummy
+## with no target keeps its last facing, so approaching from behind a distracted dummy
+## still counts.
+var _facing: float = 1.0
 
 
 func _ready() -> void:
@@ -133,6 +138,7 @@ func _process_attack(delta: float) -> void:
 	# Face the target (attack-mode indicator #1: the dummy turns toward the player).
 	if _sprite:
 		_sprite.flip_h = target.global_position.x < global_position.x
+		_facing = -1.0 if _sprite.flip_h else 1.0
 
 	_attack_cooldown -= delta
 	if _attack_cooldown <= 0.0:
@@ -166,6 +172,12 @@ func _on_body_entered(body: Node) -> void:
 
 func _on_body_exited(body: Node) -> void:
 	_targets_in_range.erase(body)
+
+
+## -1.0 (facing left) / +1.0 (facing right). Matches PlayerController's accessor so
+## WeaponPassives._is_behind() can treat dummies and players identically.
+func get_facing_sign() -> float:
+	return _facing
 
 
 func _display_name() -> String:

@@ -1,67 +1,69 @@
 {
   "_meta": {
     "description": "Armor Class x Tier. 5 classes (Titan/Hellforge/Tempest/Echo/Expedition), 4 tiers (no Uncommon, no Mythic). Read by ArmorBase/ArmorTier via GameManager.data['armor'].",
-    "status": "FIRST-PASS BALANCED (2026-07-05), REDUCTIONS BUFFED (2026-07-06) — tier flat/percent reductions raised significantly so armor is clearly felt in gameplay; still testable/pending playtesting, not locked final.",
-    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
-    "_tbd": "2026-07-06 flat_reduction/percent_reduction buffed across ALL tiers+classes (armor was too weak to notice). Anchored to 100 HP / weapon dmg 8-30. Common noticeable (~30% off a 20-dmg hit), Legendary dramatic (~90% off). Still placeholder pending playtest, NOT locked final.",
+    "status": "SECOND-PASS BALANCED (2026-07-31) — the 2026-07-06 buff was reverted and re-derived: it had made high-tier armor grant literal IMMUNITY to several weapons. Still testable/pending playtesting, not locked final.",
+    "_balanced": "2026-07-05 first-pass; 2026-07-06 buff; 2026-07-31 second pass — testable values pending playtesting",
+    "_tbd": "2026-07-31 flat_reduction cut hard (Common 4->1, Rare 7->2, Epic 11->3, Legendary 16->4) and percent_reduction rebalanced (0.15/0.28/0.42/0.58 -> 0.10/0.18/0.26/0.34). Still placeholder pending playtest, NOT locked final.",
+    "_critical_fix_2026_07_31": "THE 2026-07-06 VALUES CREATED HARD IMMUNITY. PlayerStats.take_damage() computes maxf(amount - flat_reduction, 0.0). Legendary flat was 16, and Titan's Bulwark passive added 3 more = 19. Weapon per-hit damage at Common is Daggers 9 / Spears 15 / Swords 17 — ALL below 19, so a Legendary Titan wearer took EXACTLY ZERO damage from three of the five weapon classes, and even a Legendary Dagger (13.5) could not scratch them. The wearer could only be killed by Hammers/Axes or by environmental damage (which bypasses armor entirely). INVARIANT GOING FORWARD: max total flat (highest tier flat + Titan bonus_flat_reduction) must stay STRICTLY BELOW the lowest per-hit weapon damage in weapon_stats.json (Daggers Common 9.0). Current max total is 4 + 2 = 6. Mitigation is now carried mostly by percent_reduction, which scales with hit size and can never zero a hit.",
     "schema": {
       "tiers.<Tier>.flat_reduction": "flat damage subtracted BEFORE percent_reduction",
       "tiers.<Tier>.percent_reduction": "fraction 0.0-1.0 of remaining damage ignored",
       "tiers.<Tier>.durability": "hits absorbed before the armor breaks; degrades 1 per hit",
       "passive.<param>": "class-unique passive strength — now filled with first-pass balanced value"
     },
-    "tier_curve_note": "First-pass balanced: tier stats are identical across all 5 classes (monotonic Common<Rare<Epic<Legendary with dramatic tier jumps); class identity comes from the now-filled passive. Player has 100 HP; pipeline is armor flat -> armor percent -> durability -> Toughness relic -> HP.",
-    "_balance_note": "Dramatic tier jumps by design: Common is a solid chip-blocker (4 flat + 15%), Legendary is a fortress (16 flat + 58% + 180 durability, cuts a 20-dmg hit to <2). Passives are tuned to be noticeable but not overwhelming."
+    "tier_curve_note": "Tier stats are identical across all 5 classes (monotonic Common<Rare<Epic<Legendary); class identity comes from the passive. Player has 100 HP; pipeline is armor flat -> armor percent -> durability -> Toughness relic -> HP.",
+    "_balance_note": "Total mitigation against a Swords Common hit (17 dmg): Common 15% | Rare 28% | Epic 39% | Legendary 50%. Was 15% / 33% / 63% / 97.5% — Legendary now halves a hit instead of erasing it. Sword-vs-Legendary TTK on a 100-HP target moves from ~159s (unwinnable) to ~7.8s. Tier jumps are still clearly felt but no longer decide fights on their own.",
+    "_durability_note": "Durability 40/65/90/120 (was 40/75/120/180). Legendary cut because 180 x Expedition's 1.5 mult = 270 hits, longer than any realistic 18-22 min match, making top-tier armor effectively permanent. Common deliberately unchanged — the flagged problem was the top of the curve, not the bottom. Tier ratio tightened from 4.5x to 3.0x."
   },
   "classes": {
     "Titan": {
       "theme": "heavy physical protection",
-      "passive": { "name": "Bulwark", "_desc": "extra flat reduction on top of tier flat", "bonus_flat_reduction": 3, "_tbd": false },
+      "passive": { "name": "Bulwark", "_desc": "extra flat reduction on top of tier flat", "bonus_flat_reduction": 2, "_tbd": false, "_note_2026_07_31": "3 -> 2. Stacks on top of tier flat, so it sets the game's maximum total flat (Legendary 4 + 2 = 6). Kept strictly below Daggers Common 9.0 so Titan can never be immune to any weapon — see _critical_fix_2026_07_31." },
       "tiers": {
-        "Common":    { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 40 },
-        "Rare":      { "flat_reduction": 7,  "percent_reduction": 0.28, "durability": 75 },
-        "Epic":      { "flat_reduction": 11, "percent_reduction": 0.42, "durability": 120 },
-        "Legendary": { "flat_reduction": 16, "percent_reduction": 0.58, "durability": 180 }
+        "Common":    { "flat_reduction": 1, "percent_reduction": 0.10, "durability": 40 },
+        "Rare":      { "flat_reduction": 2, "percent_reduction": 0.18, "durability": 65 },
+        "Epic":      { "flat_reduction": 3, "percent_reduction": 0.26, "durability": 90 },
+        "Legendary": { "flat_reduction": 4, "percent_reduction": 0.34, "durability": 120 }
       }
     },
     "Hellforge": {
       "theme": "thermal/heat resistance",
       "passive": { "name": "Heat Ward", "_desc": "fraction 0-1 of burn (DoT) damage ignored", "burn_resist": 0.5, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 40 },
-        "Rare":      { "flat_reduction": 7,  "percent_reduction": 0.28, "durability": 75 },
-        "Epic":      { "flat_reduction": 11, "percent_reduction": 0.42, "durability": 120 },
-        "Legendary": { "flat_reduction": 16, "percent_reduction": 0.58, "durability": 180 }
+        "Common":    { "flat_reduction": 1, "percent_reduction": 0.10, "durability": 40 },
+        "Rare":      { "flat_reduction": 2, "percent_reduction": 0.18, "durability": 65 },
+        "Epic":      { "flat_reduction": 3, "percent_reduction": 0.26, "durability": 90 },
+        "Legendary": { "flat_reduction": 4, "percent_reduction": 0.34, "durability": 120 }
       }
     },
     "Tempest": {
       "theme": "speed/mobility",
       "passive": { "name": "Tailwind", "_desc": "movement speed multiplier while worn (>1 faster)", "move_speed_mult": 1.12, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 40 },
-        "Rare":      { "flat_reduction": 7,  "percent_reduction": 0.28, "durability": 75 },
-        "Epic":      { "flat_reduction": 11, "percent_reduction": 0.42, "durability": 120 },
-        "Legendary": { "flat_reduction": 16, "percent_reduction": 0.58, "durability": 180 }
+        "Common":    { "flat_reduction": 1, "percent_reduction": 0.10, "durability": 40 },
+        "Rare":      { "flat_reduction": 2, "percent_reduction": 0.18, "durability": 65 },
+        "Epic":      { "flat_reduction": 3, "percent_reduction": 0.26, "durability": 90 },
+        "Legendary": { "flat_reduction": 4, "percent_reduction": 0.34, "durability": 120 }
       }
     },
     "Echo": {
       "theme": "stealth/detection resistance",
       "passive": { "name": "Dampen", "_desc": "multiplier on incoming debuff durations (<1 shortens)", "debuff_duration_mult": 0.6, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 40 },
-        "Rare":      { "flat_reduction": 7,  "percent_reduction": 0.28, "durability": 75 },
-        "Epic":      { "flat_reduction": 11, "percent_reduction": 0.42, "durability": 120 },
-        "Legendary": { "flat_reduction": 16, "percent_reduction": 0.58, "durability": 180 }
+        "Common":    { "flat_reduction": 1, "percent_reduction": 0.10, "durability": 40 },
+        "Rare":      { "flat_reduction": 2, "percent_reduction": 0.18, "durability": 65 },
+        "Epic":      { "flat_reduction": 3, "percent_reduction": 0.26, "durability": 90 },
+        "Legendary": { "flat_reduction": 4, "percent_reduction": 0.34, "durability": 120 }
       }
     },
     "Expedition": {
       "theme": "balanced/utility (digging & survival)",
       "passive": { "name": "Reinforced", "_desc": "max-durability multiplier (>1 more hits)", "durability_mult": 1.5, "_tbd": false },
       "tiers": {
-        "Common":    { "flat_reduction": 4,  "percent_reduction": 0.15, "durability": 40 },
-        "Rare":      { "flat_reduction": 7,  "percent_reduction": 0.28, "durability": 75 },
-        "Epic":      { "flat_reduction": 11, "percent_reduction": 0.42, "durability": 120 },
-        "Legendary": { "flat_reduction": 16, "percent_reduction": 0.58, "durability": 180 }
+        "Common":    { "flat_reduction": 1, "percent_reduction": 0.10, "durability": 40 },
+        "Rare":      { "flat_reduction": 2, "percent_reduction": 0.18, "durability": 65 },
+        "Epic":      { "flat_reduction": 3, "percent_reduction": 0.26, "durability": 90 },
+        "Legendary": { "flat_reduction": 4, "percent_reduction": 0.34, "durability": 120 }
       }
     }
   }

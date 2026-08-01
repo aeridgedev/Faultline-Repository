@@ -29,14 +29,37 @@ func _process(_delta: float) -> void:
 			relic_expired.emit(relic_type)
 
 
+## Toughness is permanent for the match, but apply_status() is duration-based, so it is
+## registered with a duration no match can outlast. HUD renders anything this long as "∞".
+const PERMANENT_DURATION := 1.0e9
+
+
 func activate_relic(relic_type: Constants.Relic) -> void:
+	var display_name: String = Constants.RELIC_NAMES.get(relic_type, "Relic")
 	if relic_type == Constants.Relic.TOUGHNESS:
 		_toughness.activate(_stats)
+		_show_on_hud(display_name, PERMANENT_DURATION)
 	else:
 		var buff: BuffRelic = _buffs.get(relic_type)
 		if buff != null:
 			buff.activate(Time.get_ticks_msec() / 1000.0)
+			_show_on_hud(display_name, buff.duration)
 	relic_activated.emit(relic_type)
+
+
+## Registers the relic on the HUD buff/debuff panel.
+##
+## THE PAYLOAD IS DELIBERATELY EMPTY. Relic multipliers are already applied by their own
+## consumers — PlayerController reads move_speed_mult() in _handle_movement(),
+## attack_speed_mult() when starting a swing and damage_mult() on a landed hit, and
+## ToughnessRelic writes PlayerStats.damage_reduction directly. Passing a mechanical
+## payload here (move_speed_mult / damage_output_mult) would apply the SAME buff a second
+## time on top of those, silently changing every relic's strength. This call is display
+## only: it is what makes pressing G visibly do something.
+func _show_on_hud(display_name: String, dur: float) -> void:
+	if _stats == null:
+		return
+	_stats.apply_status(display_name, dur, true, {})
 
 
 # --- Multiplier queries (used by PlayerController and WeaponBase at runtime) ---

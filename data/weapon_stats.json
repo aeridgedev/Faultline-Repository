@@ -1,17 +1,35 @@
 {
   "_meta": {
     "description": "Weapon Class x Tier. 5 classes, 4 tiers (Mythic removed). Tier scaling multipliers are LOCKED in Constants.WEAPON_TIER_SCALING; only each class's Common BASE stats are tuned here.",
-    "status": "FIRST-PASS BALANCED (pre-playtest) — Common base stats tuned for distinct per-class feel vs 100 HP. Tier scaling still applied at runtime. Values remain provisional until playtesting.",
+    "status": "SECOND-PASS BALANCED (2026-07-31, pre-playtest) — Common base stats retuned to close the class DPS spread and remove the Legendary Hammer two-shot. Tier scaling still applied at runtime and still LOCKED. Values remain provisional until playtesting.",
     "schema_note": "Each class has a 'base' object read by WeaponBase.init_from_data(): damage, swing_speed (attacks/sec), durability (hits before breaking), range (pixels).",
     "tier_scaling_note": "Rare +20%dmg/+10%swing/+15%dur | Epic +35/+15/+25 +Minor Passive | Legendary +50/+20/+40 +Unique Passive",
-    "_balanced": "2026-07-05 first-pass balance pass — testable values pending playtesting",
-    "_balance_note": "DPS at Common (dmg x swing): Daggers 23.4 | Swords 25.5 | Hammers 23.4 | Spears 20.25 | Axes 25.0. Classes differentiated by burst-per-hit, reach, and durability rather than raw DPS."
+    "_balanced": "2026-07-05 first-pass; 2026-07-31 second pass — testable values pending playtesting",
+    "_tier_scaling_locked": "WEAPON_TIER_SCALING lives in Constants.gd and is marked LOCKED in CLAUDE.md. The 2026-07-31 pass therefore did NOT touch the multipliers, even though the brief listed weapon tier scaling as tunable: weapon tier GAPS can only be changed by editing that locked table. Common base stats are the only weapon lever available in data.",
+    "_balance_note": "DPS at Common (dmg x swing): Daggers 23.4 | Swords 25.5 | Hammers 22.4 | Spears 21.75 | Axes 25.0. Spread tightened from 1.26x (20.25-25.5) to 1.17x. Classes differentiated by burst-per-hit, reach, and durability rather than raw DPS.",
+    "_lowest_per_hit_invariant": "Daggers Common 9.0 is the LOWEST per-hit damage in the game. armor_stats.json max total flat_reduction (Legendary 4 + Titan Bulwark 2 = 6) must stay strictly below it — PlayerStats.take_damage() does maxf(amount - flat, 0.0), so flat >= per-hit damage means literal immunity. Do not raise armor flat past 8 without raising this."
+  },
+  "passives": {
+    "_meta": "Weapon passive magnitudes, implemented 2026-07-31 (previously name-only strings with no code behind them). ALL VALUES ARE FIRST-PASS TBD PLACEHOLDERS — no playtesting. Read by WeaponPassives.gd via GameManager.data['weapons']['passives'].",
+    "_tier_rule": "One passive per weapon, not cumulative: Epic gets its class's MINOR passive, Legendary gets its class's UNIQUE passive INSTEAD (Constants.WEAPON_TIER_SCALING stores a single 'passive' string per tier: '' / 'minor' / 'unique'). A Legendary Dagger therefore has Assassin's Mark but NOT Serrated Edge. If Legendary should stack both, that is a design change to the locked tier table, not to this file.",
+    "_null_safety": "Every value here is read with a documented fallback; a missing or null field makes that passive a no-op rather than an error.",
+
+    "serrated_edge":     { "_class": "Daggers Epic",     "bleed_dps": 3.0,  "bleed_duration": 3.0, "bleed_interval": 0.5 },
+    "assassins_mark":    { "_class": "Daggers Legendary", "crit_mult": 2.0 },
+    "riposte":           { "_class": "Swords Epic",      "window": 0.45, "damage_reduction": 0.6 },
+    "bloodthirst":       { "_class": "Swords Legendary", "heal_on_kill": 25.0 },
+    "concussive_blow":   { "_class": "Hammers Epic",     "stagger_duration": 0.4 },
+    "seismic_shockwave": { "_class": "Hammers Legendary", "knockback_force": 320.0 },
+    "piercing_thrust":   { "_class": "Spears Epic",      "armor_pierce": 0.35 },
+    "impaling_lunge":    { "_class": "Spears Legendary", "lunge_speed": 260.0 },
+    "rend":              { "_class": "Axes Epic",        "shred_per_stack": 0.10, "max_shred": 0.40, "duration": 4.0 },
+    "executioner":       { "_class": "Axes Legendary",   "hp_threshold": 0.30, "damage_mult": 1.6 }
   },
   "classes": {
     "Daggers":  { "base": { "damage": 9.0,  "swing_speed": 2.6,  "durability": 55.0,  "range": 26.0 }, "minor_passive": "Serrated Edge (bleed on hit)",      "unique_passive": "Assassin's Mark (critical strike from behind)" },
     "Swords":   { "base": { "damage": 17.0, "swing_speed": 1.5,  "durability": 85.0,  "range": 60.0 }, "minor_passive": "Riposte (parry window on swing)",   "unique_passive": "Bloodthirst (lifesteal on kill)" },
-    "Hammers":  { "base": { "damage": 36.0, "swing_speed": 0.65, "durability": 110.0, "range": 34.0 }, "minor_passive": "Concussive Blow (brief stagger)",   "unique_passive": "Seismic Shockwave (ground-slam knockback)" },
-    "Spears":   { "base": { "damage": 15.0, "swing_speed": 1.35, "durability": 70.0,  "range": 74.0 }, "minor_passive": "Piercing Thrust (partial armor pierce)", "unique_passive": "Impaling Lunge (dash-through strike)" },
+    "Hammers":  { "base": { "damage": 32.0, "swing_speed": 0.70, "durability": 110.0, "range": 34.0 }, "minor_passive": "Concussive Blow (brief stagger)",   "unique_passive": "Seismic Shockwave (ground-slam knockback)" },
+    "Spears":   { "base": { "damage": 15.0, "swing_speed": 1.45, "durability": 70.0,  "range": 74.0 }, "minor_passive": "Piercing Thrust (partial armor pierce)", "unique_passive": "Impaling Lunge (dash-through strike)" },
     "Axes":     { "base": { "damage": 25.0, "swing_speed": 1.0,  "durability": 95.0,  "range": 40.0 }, "minor_passive": "Rend (stacking armor shred)",       "unique_passive": "Executioner (bonus damage to low-HP targets)" }
   }
 }
